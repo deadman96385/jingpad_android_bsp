@@ -1,0 +1,1156 @@
+/*
+ * Spreadtrum Whale platform DTS file
+ *
+ * Copyright (C) 2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/pinctrl/sc9850_pinctrl.h>
+
+/ {
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	soc: soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		funnel_soc@10001000 {
+			compatible = "arm,coresight-funnel", "arm,primecell";
+			reg = <0 0x10001000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					funnel_soc_out_port0: endpoint {
+						remote-endpoint = <&etb_in>;
+					};
+				};
+				port@1 {
+					reg = <0>;
+					funnel_soc_in_port0: endpoint {
+						slave-mode;
+						remote-endpoint = <&funnel_ca53_out_port0>;
+					};
+				};
+			};
+		};
+
+		etb@10003000 {
+			compatible = "arm,coresight-tmc", "arm,primecell";
+			reg = <0 0x10003000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port {
+				etb_in: endpoint {
+					slave-mode;
+					remote-endpoint = <&funnel_soc_out_port0>;
+				};
+			};
+		};
+
+		funnel_little@11001000 {
+			compatible = "arm,coresight-funnel", "arm,primecell";
+			reg = <0 0x11001000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					funnel_little_out_port0: endpoint {
+						remote-endpoint = <&etf_little_in>;
+					};
+				};
+				port@1 {
+					reg = <0>;
+					funnel_little_in_port0: endpoint {
+						slave-mode;
+						remote-endpoint = <&etm0_out>;
+					};
+				};
+				port@2 {
+					reg = <1>;
+					funnel_little_in_port1: endpoint {
+						slave-mode;
+						remote-endpoint = <&etm1_out>;
+					};
+				};
+				port@3 {
+					reg = <2>;
+					funnel_little_in_port2: endpoint {
+						slave-mode;
+						remote-endpoint = <&etm2_out>;
+					};
+				};
+				port@4 {
+					reg = <4>;
+					funnel_little_in_port3: endpoint {
+						slave-mode;
+						remote-endpoint = <&etm3_out>;
+					};
+				};
+			};
+		};
+
+		funnel_big@11002000 {
+			compatible = "arm,coresight-funnel", "arm,primecell";
+			reg = <0 0x11002000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					funnel_big_out_port0: endpoint {
+						remote-endpoint = <&etf_big_in>;
+					};
+				};
+			};
+		};
+
+		etf_little@11003000 {
+			compatible = "arm,coresight-tmc", "arm,primecell";
+			reg = <0 0x11003000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port@0 {
+				etf_little_out: endpoint {
+					remote-endpoint = <&funnel_ca53_in_port0>;
+				};
+			};
+			port@1 {
+				etf_little_in: endpoint {
+					slave-mode;
+					remote-endpoint = <&funnel_little_out_port0>;
+				};
+			};
+		};
+
+		etf_big@11004000 {
+			compatible = "arm,coresight-tmc", "arm,primecell";
+			reg = <0 0x11004000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port@0 {
+				etf_big_out: endpoint {
+					remote-endpoint = <&funnel_ca53_in_port1>;
+				};
+			};
+			port@1 {
+				etf_big_in: endpoint {
+					slave-mode;
+					remote-endpoint = <&funnel_big_out_port0>;
+				};
+			};
+		};
+
+		funnel_ca53@11005000 {
+			compatible = "arm,coresight-funnel", "arm,primecell";
+			reg = <0 0x11005000 0 0x1000>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+					funnel_ca53_out_port0: endpoint {
+						remote-endpoint = <&funnel_soc_in_port0>;
+					};
+				};
+				port@1 {
+					reg = <0>;
+					funnel_ca53_in_port0: endpoint {
+						slave-mode;
+						remote-endpoint = <&etf_little_out>;
+					};
+				};
+				port@2 {
+					reg = <1>;
+					funnel_ca53_in_port1: endpoint {
+						slave-mode;
+						remote-endpoint = <&etf_big_out>;
+					};
+				};
+			};
+		};
+
+		etm@11440000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0 0x11440000 0 0x1000>;
+			cpu = <&CPU0>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port {
+				etm0_out: endpoint {
+					remote-endpoint = <&funnel_little_in_port0>;
+				};
+			};
+		};
+
+		etm@11540000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0 0x11540000 0 0x1000>;
+			cpu = <&CPU1>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port {
+				etm1_out: endpoint {
+					remote-endpoint = <&funnel_little_in_port1>;
+				};
+			};
+		};
+
+		etm@11640000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0 0x11640000 0 0x1000>;
+			cpu = <&CPU2>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port {
+				etm2_out: endpoint {
+					remote-endpoint = <&funnel_little_in_port2>;
+				};
+			};
+		};
+
+		etm@11740000 {
+			compatible = "arm,coresight-etm4x", "arm,primecell";
+			reg = <0 0x11740000 0 0x1000>;
+			cpu = <&CPU3>;
+			clocks = <&ext_26m>;
+			clock-names = "apb_pclk";
+			port {
+				etm3_out: endpoint {
+					remote-endpoint = <&funnel_little_in_port3>;
+				};
+			};
+		};
+
+
+		ap_ahb_controller: syscon@20210000 {
+			compatible = "sprd,sys-ap-ahb", "syscon";
+			reg = <0 0x20210000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		pmu_apb_controller: syscon@402b0000 {
+			compatible = "sprd,sys-pmu-apb", "syscon";
+			reg = <0 0x402b0000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		aon_apb_controller: syscon@402e0000 {
+			compatible = "sprd,sys-aon-apb", "syscon";
+			reg = <0 0x402e0000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		ana_apb_controller: syscon@40400000 {
+			compatible = "sprd,sys-ana-apb", "syscon";
+			reg = <0 0x40400000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		agcp_ahb_controller: syscon@415e0000 {
+			compatible = "sprd,sys-agcp-ahb", "syscon";
+			reg = <0 0x415e0000 0 0x1000000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		vsp_ahb_controller: syscon@61100000 {
+			compatible = "sprd,sys-vsp-ahb", "syscon";
+			reg = <0 0x61100000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		cam_ahb_controller: syscon@62100000 {
+			compatible = "sprd,sys-cam-ahb", "syscon";
+			reg = <0 0x62100000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		disp_ahb_controller: syscon@63100000 {
+			compatible = "sprd,sys-disp-ahb", "syscon";
+			reg = <0 0x63100000 0 0x10000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		ap_apb_controller: syscon@70b00000 {
+			compatible = "sprd,sys-ap-apb", "syscon";
+			reg = <0 0x70b00000 0 0x40000>;
+			hwlocks = <&hwslock1 1>;
+			hwlock-names = "syscon";
+		};
+
+		ap-apb {
+			compatible = "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			uart0: serial@70000000 {
+				compatible = "sprd,sc9836-uart",
+					     "sprd,sc9838-uart";
+				reg = <0 0x70000000 0 0x100>;
+				interrupts = <GIC_SPI 2 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "uart", "source","enable";
+				clocks = <&clk_uart0>, <&ext_26m>,
+					<&clk_ap_apb_gates 14>;
+				status = "disabled";
+			};
+
+			uart1: serial@70100000 {
+				compatible = "sprd,sc9836-uart",
+					     "sprd,sc9838-uart";
+				reg = <0 0x70100000 0 0x100>;
+				interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "uart", "source","enable";
+				clocks = <&clk_uart1>, <&ext_26m>,
+					<&clk_ap_apb_gates 15>;
+				status = "disabled";
+			};
+
+			uart2: serial@70200000 {
+				compatible = "sprd,sc9836-uart",
+					     "sprd,sc9838-uart";
+				reg = <0 0x70200000 0 0x100>;
+				interrupts = <GIC_SPI 4 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "uart", "source","enable";
+				clocks = <&clk_uart2>, <&ext_26m>,
+					<&clk_ap_apb_gates 16>;
+				status = "disabled";
+			};
+
+			uart3: serial@70300000 {
+				compatible = "sprd,sc9836-uart",
+					     "sprd,sc9838-uart";
+				reg = <0 0x70300000 0 0x100>;
+				interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "uart", "source","enable";
+				clocks = <&clk_uart3>, <&ext_26m>,
+					<&clk_ap_apb_gates 17>;
+				status = "disabled";
+			};
+
+			i2c0: i2c@70d00000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x70d00000 0 0x1000>;
+				interrupts = <GIC_SPI 11 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_i2c0>, <&ext_26m>,
+					 <&clk_ap_apb_gates 8>;
+				clock-frequency = <100000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			i2c1: i2c@70e00000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x70e00000 0 0x1000>;
+				interrupts = <GIC_SPI 12 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_i2c1>, <&ext_26m>,
+					<&clk_ap_apb_gates 9>;
+				clock-frequency = <100000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			i2c2: i2c@70f00000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x70f00000 0 0x1000>;
+				interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_i2c2>, <&ext_26m>,
+					<&clk_ap_apb_gates 10>;
+				clock-frequency = <100000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			i2c3: i2c@71000000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x71000000 0 0x1000>;
+				interrupts = <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_i2c3>, <&ext_26m>,
+					<&clk_ap_apb_gates 11>;
+				clock-frequency = <400000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			i2c4: i2c@71100000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x71100000 0 0x1000>;
+				interrupts = <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_i2c4>, <&ext_26m>,
+					<&clk_ap_apb_gates 12>;
+				clock-frequency = <100000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+			i2c5: i2c@71200000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x71200000 0 0x1000>;
+				interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_i2c5>, <&ext_26m>,
+					<&clk_ap_apb_gates 13>;
+				clock-frequency = <100000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			spi0: spi@71400000{
+				compatible = "sprd,spi-r4p0";
+				reg = <0 0x71400000 0 0x1000>;
+				interrupts = <GIC_SPI 7 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "spi", "source","enable";
+				clocks = <&clk_spi0>,<&ext_26m>,
+				<&clk_ap_apb_gates 5>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			spi1: spi@71500000{
+				compatible = "sprd,spi-r4p0";
+				reg = <0 0x71500000 0 0x1000>;
+				interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "spi", "source","enable";
+				clocks = <&clk_spi1>,<&ext_26m>,
+					<&clk_ap_apb_gates 6>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+			spi2: spi@71600000{
+				compatible = "sprd,spi-r4p0";
+				reg = <0 0x71600000 0 0x1000>;
+				interrupts = <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "spi", "source","enable";
+				clocks = <&clk_spi2>,<&ext_26m>,
+				<&clk_ap_apb_gates 7>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+			spi3: spi@71700000{
+				compatible = "sprd,spi-r4p0";
+				reg = <0 0x71700000 0 0x1000>;
+				interrupts = <GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "spi", "source","enable";
+				clocks = <&clk_spi3>,<&ext_26m>,
+				<&clk_ap_apb_gates 20>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+		};
+
+		aon {
+			compatible = "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			adi_bus: spi@40030000 {
+				compatible = "sprd,r1p0-adi";
+				reg = <0 0x40030000 0 0x10000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+			};
+
+			aon_timer0: timer@40050000 {
+				compatible = "sprd,gp-timer";
+				reg = <0 0x40050000 0 0x14>;
+				interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
+				clock-frequency = <32768>;
+				status = "disabled";
+			};
+
+			aon_timer1: timer@40050020 {
+				compatible = "sprd,gp-timer";
+				reg = <0 0x40050020 0 0x14>;
+				interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
+				clock-frequency = <32768>;
+				status = "disabled";
+			};
+
+			aon_timer2: timer@40050040 {
+				compatible = "sprd,gp-timer";
+				reg = <0 0x40050040 0 0x14>;
+				clock-frequency = <26000000>;
+				status = "disabled";
+			};
+
+			ap_eic: gpio-controller@40210000 {
+				compatible = "sprd,ap-eic";
+				reg = <0 0x40210000 0 0x1000>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				sprd,gpiobase = <288>;
+				sprd,ngpios = <16>;
+				interrupt-controller;
+				#interrupt-cells = <2>;
+				interrupts = <GIC_SPI 52 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
+			ap_efuse: efuse@40240000 {
+				compatible = "sprd,ap_256X32_efuse";
+				sprd,syscon-enable = <&aon_apb_controller>;
+				reg = <0 0x40240000 0 0x48>;
+				clock-names = "enable";
+				clocks = <&clk_aon_apb_gates0 13>;
+				sprd,block-num = <256>;
+				sprd,block-width = <32>;
+			};
+
+			pwms: pwm@40260000 {
+				#pwm-cells = <2>;
+				compatible = "sprd,pwm";
+				reg = <0 0x40260000 0 0x10000>;
+				clock-names = "sprd_pwm_clk_parent", "clk_pwm";
+				clocks = <&ext_26m>, <&clk_pwm0>;
+				status = "okay";
+			};
+
+			ap_gpio: gpio-controller@40280000 {
+				compatible = "sprd,ap-gpio";
+				reg = <0 0x40280000 0 0x1000>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				sprd,gpiobase = <0>;
+				sprd,ngpios = <256>;
+				interrupt-controller;
+				#interrupt-cells = <2>;
+				interrupts = <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
+			ap_thm: thermal@402f0000 {
+				compatible = "sprd,whale-thermal";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				sprd,syscon-enable = <&aon_apb_controller>;
+				reg = <0 0x402f0000 0 0x1000>;
+				clock-names = "enable";
+				clocks = <&clk_aon_apb_gates1 1>;
+				#thermal-sensor-cells = <1>;
+
+				cpu_sensor:sensor@0{
+					reg = <0>;
+				};
+
+				ddr_nsensor:sensor@2{
+					reg = <2>;
+				};
+
+				gpu_sensor:sensor@3{
+					reg = <3>;
+				};
+
+				ddr_esensor:sensor@4{
+					reg = <4>;
+				};
+
+				ddr_wsensor:sensor@5{
+					reg = <5>;
+				};
+
+			};
+
+			i2c6: i2c@40080000 {
+				compatible = "sprd,r7p0-i2c";
+				reg = <0 0x40080000 0 0x1000>;
+				interrupts = <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "i2c", "source","enable";
+				clocks = <&clk_aon_i2c>, <&ext_26m>,
+					<&clk_aon_apb_gates0 31>;
+				clock-frequency = <100000>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			pin_controller: pinctrl@402a0000 {
+				compatible = "sprd,sc9850-pinctrl";
+				reg = <0 0x402a0000 0 0x1000>;
+				vio_sd0_ms: regctrl {
+					pins = <SC9850_VIO_SD0_MS 0x1>;
+				};
+
+				/*sys iis0*/
+				vbc_iis0_0:reg3-iis0-c {
+					pins = <SC9850_IIS0_SYS_SEL 0xc>;
+				};
+
+				vbc_iis1_0:reg3-iis0-d {
+					pins = <SC9850_IIS0_SYS_SEL 0xd>;
+				};
+
+				vbc_iis2_0:reg3-iis0-e {
+					pins = <SC9850_IIS0_SYS_SEL 0xe>;
+				};
+
+				vbc_iis3_0:reg3-iis0-f {
+					pins = <SC9850_IIS0_SYS_SEL 0xf>;
+				};
+
+				/*sys iis2*/
+				vbc_iis0_2:reg3-iis2-c {
+					pins = <SC9850_IIS2_SYS_SEL 0xc>;
+				};
+
+				vbc_iis1_2:reg3-iis2-d {
+					pins = <SC9850_IIS2_SYS_SEL 0xd>;
+				};
+
+				vbc_iis2_2:reg3-iis2-e {
+					pins = <SC9850_IIS2_SYS_SEL 0xe>;
+				};
+				vbc_iis3_2:reg3-iis2-f {
+					pins = <SC9850_IIS2_SYS_SEL 0xf>;
+				};
+
+				/*sys iis3*/
+				vbc_iis0_3:reg3-iis3-c {
+					pins = <SC9850_IIS3_SYS_SEL 0xc>;
+				};
+
+				vbc_iis1_3:reg3-iis3-d {
+					pins = <SC9850_IIS3_SYS_SEL 0xd>;
+				};
+
+				vbc_iis2_3:reg3-iis3-e {
+					pins = <SC9850_IIS3_SYS_SEL 0xe>;
+				};
+
+				vbc_iis3_3:reg3-iis3-f {
+					pins = <SC9850_IIS3_SYS_SEL 0xf>;
+				};
+				lcm_rstn_label: lcm-rstn {
+					pins = <SC9850_LCM_RSTN 0x2031>;
+				};
+			};
+
+			aon_rst: reset@402e0008 {
+				compatible = "sprd,aon-apb-reset";
+				reg = <0 0x402e0008 0 0x4>;
+				#reset-cells = <1>;
+			};
+
+			sprd_wdt: watchdog@40310000 {
+				compatible = "sprd,whale-wdt";
+				reg = <0 0x40310000 0 0x1000>;
+				interrupts = <GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>;
+				sprd,wdt-enable  = <&aon_apb_controller>;
+				sprd,wdt-phandle = <&pmic_wdt>;
+			};
+
+			bm_djtag@40340000 {
+				compatible  = "sprd,bm_djtag_whale2";
+				reg = <0 0x40340000 0 0x10000>;
+				interrupts = <GIC_SPI 62 IRQ_TYPE_LEVEL_HIGH>;
+				bm_djtag_aon,syscon-enable = <&aon_apb_controller>;
+				bm_djtag_ap,syscon-enable = <&ap_ahb_controller>;
+				hwlocks = <&hwslock1 10>;
+				hwlock-names = "djtag";
+			};
+
+			aon_intc0_controller: syscon@40350000 {
+				compatible = "sprd,sys-aon-intc", "syscon";
+				reg = <0 0x40350000 0 0x10000>;
+			};
+
+			aon_intc1_controller: syscon@40360000 {
+				compatible = "sprd,sys-aon-intc", "syscon";
+				reg = <0 0x40360000 0 0x10000>;
+			};
+
+			aon_intc2_controller: syscon@40370000 {
+				compatible = "sprd,sys-aon-intc", "syscon";
+				reg = <0 0x40370000 0 0x10000>;
+			};
+
+			aon_intc3_controller: syscon@40380000 {
+				compatible = "sprd,sys-aon-intc", "syscon";
+				reg = <0 0x40380000 0 0x10000>;
+			};
+
+			aon_intc4_controller: syscon@40390000 {
+				compatible = "sprd,sys-aon-intc", "syscon";
+				reg = <0 0x40390000 0 0x10000>;
+			};
+
+			aon_intc5_controller: syscon@403a0000 {
+				compatible = "sprd,sys-aon-intc", "syscon";
+				reg = <0 0x403a0000 0 0x10000>;
+			};
+
+			hwslock1: hwspinlock@40500000 {
+				compatible  = "sprd,hwspinlock-r2p0";
+				reg = <0 0x40500000 0 0x1000>;
+				#hwlock-cells = <1>;
+				hwlocks-base = <0>;
+				hwlocks-num = <32>;
+				resets = <&aon_rst 24>;
+				reset-names = "hwspinlock1";
+				clock-names = "enable";
+				clocks = <&clk_aon_apb_gates0 22>;
+			};
+
+			crypto_engine: crypto-engine@40610000 {
+				compatible = "sprd,aes-r1p0";
+				reg = <0 0x40610000 0 0x100>;
+				interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
+				status = "disabled";
+			};
+		};
+
+		ap-ahb {
+			compatible = "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			ap_dma: dma-controller@20100000 {
+				compatible = "sprd,ap-dma-v2.0";
+				reg = <0 0x20100000 0 0x4000>;
+				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
+				#dma-cells = <1>;
+				#dma-channels = <32>;
+				sprd,full-type-offset = <0>;
+				sprd,syscon-dma-glb = <&ap_ahb_controller>;
+			};
+
+			usb3: usb3@20500000 {
+				compatible = "sprd,dwc-usb3";
+				reg = <0 0x20500000 0 0x100000>;
+				#address-cells = <2>;
+				#size-cells = <2>;
+				ranges;
+
+				sprd,por-after-power-collapse;
+
+				clocks = <&clk_ap_ahb_gates 2>, <&clk_ap_ahb_gates 3>, <&clk_ap_ahb_gates 4>;
+				clock-names = "core_clk", "susp_clk", "ref_clk";
+
+				dwc3@20500000 {
+					compatible = "synopsys,dwc3";
+					reg = <0 0x20500000 0 0xcc00>;
+					interrupts = <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
+					interrupt-names = "irq";
+					usb-phy = <&ssphy>, <&ssphy>;
+					snps,usb3-u1u2-disable;
+					snps,overlap_check_quirk;
+					snps,ep_out_aligned_size_quirk;
+					snps,disconnect_event_quirk;
+				};
+			};
+
+			ssphy: ssphy@40400000 {
+				compatible = "sprd,ssphy";
+				reg = <0 0x40400000 0 0x214>;
+				reg-names = "phy_glb_regs";
+				sprd,syscon-ap-ahb = <&ap_ahb_controller>;
+
+				vdd-supply = <&vddusb33>;
+				sprd,vdd-voltage = <3300000>;
+			};
+
+			ce_ssi_pub: crypto@50100000 {
+				compatible = "dx,cc63p";
+				reg = <0 0x50100000 0 0x1000>;
+				interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "enable";
+				clocks = <&clk_ap_ahb_gates 23>;
+				status = "disabled";
+			};
+
+			sdio3: sdio@50430000 {
+				compatible  = "sprd,sdhc-r7";
+				reg = <0 0x50430000 0 0x1000>;
+				interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "sdio", "source","source2",
+						"enable","ckg_eb";
+				clocks = <&clk_emmc_2x>, <&clk_twpll_384m>,
+					<&clk_1m>, <&clk_ap_ahb_gates 10>, <&clk_sdio_gates 9>;
+				status = "disabled";
+			};
+
+			sdio0: sdio@50400000 {
+				compatible  = "sprd,sdhc-r7";
+				reg = <0 0x50400000 0 0x1000>;
+				interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "sdio", "source","source2",
+						"enable","ckg_eb";
+				clocks = <&clk_sdio0_2x>, <&clk_twpll_384m>,
+					 <&clk_1m>,<&clk_ap_ahb_gates 7>, <&clk_sdio_gates 2>;
+				status = "disabled";
+			};
+
+			sdio1: sdio@50410000 {
+				compatible  = "sprd,sdhc-r7";
+				reg = <0 0x50410000 0 0x1000>;
+				interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "sdio", "source","source2",
+						"enable","ckg_eb";
+				clocks = <&clk_sdio1_2x>,<&clk_twpll_384m>,
+					<&clk_1m>, <&clk_ap_ahb_gates 8>, <&clk_sdio_gates 4>;
+				status = "disabled";
+			};
+
+			sdio2: sdio@50420000 {
+				compatible  = "sprd,sdhc-r7";
+				reg = <0 0x50420000 0 0x1000>;
+				interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
+				clock-names = "sdio", "source","source2",
+						"enable","ckg_eb";
+				clocks = <&clk_sdio2_2x>, <&clk_twpll_384m>,
+					<&clk_1m>, <&clk_ap_ahb_gates 9>, <&clk_sdio_gates 6>;
+				status = "disabled";
+			};
+
+		};
+
+		pub {
+			compatible = "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			dmc_mpu: dmc-mpu@30010000{
+				compatible = "sprd,dmc-mpu-v1.0";
+				reg = <0 0x30010000 0 0x1000>,
+					<0 0x30810000 0 0x1000>;
+				#mpu-channels = <11 11>;
+				interrupts = <GIC_SPI 143 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>;
+			};
+
+			bm-perf@30020000{
+				compatible = "sprd,bm-perf-whale2";
+				reg = <0 0x30020000 0 0xe0000>,
+					<0 0x30820000 0 0xe0000>,
+					<0 0x404D0000 0 0x10000>,
+					<0 0x30010000 0 0x4>,
+					<0 0x30810000 0 0x4>;
+				reg_name = "pub0","pub1","timer","pub0_glb","pub1_glb";
+				interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>;
+				bm_perf_aon,syscon-enable =  <&aon_apb_controller>;
+			};
+		};
+
+		agcp {
+			compatible = "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			agcp_dma: dma-controller@41580000 {
+				compatible = "sprd,agcp-dma-v2.0";
+				reg = <0 0x41580000 0 0x4000>;
+				interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>;
+				#dma-cells = <1>;
+				#dma-channels = <32>;
+				sprd,full-type-offset = <0>;
+				sprd,syscon-dma-glb = <&agcp_ahb_controller>;
+			};
+		};
+
+		mm {
+			compatible = "simple-bus";
+			#address-cells = <2>;
+			#size-cells = <2>;
+			ranges;
+
+			iommu_vsp: iommu@61300000 {
+				compatible  = "sprd,iommu-vsp";
+				reg = <0 0x61300000 0 0x20000>,
+					<0 0x61320000 0 0x2000>,
+					<0 0x10000000 0 0x8000000>;
+				reg_name = "pgt","ctrl_reg","iova pool";
+				clock-names = "clk_vsp_ahb_mmu_eb","clk_vsp_apb_gate";
+				clocks = <&clk_ahb_vsp_gates 2>,
+						<&clk_aon_apb_gates1 28>;
+				status = "disable";
+				#iommu-cells = <0>;
+			};
+
+			iommu_cpp_jpg: iommu@62900000 {
+				compatible = "sprd,iommu-cpp-jpg";
+				reg = <0 0x62900000 0 0x24000>,
+					<0 0x62940000 0 0x2000>,
+					<0 0x20000000 0 0x9000000>;
+				reg_name = "pgt","ctrl_reg",	"iova pool";
+				clock-names = "clk_cam_ahb_mmu_eb","clk_cam_apb_gate";
+				clocks = <&clk_ahb_cam_gates 8>,
+						<&clk_aon_apb_gates1 29>;
+				status = "disable";
+				#iommu-cells = <0>;
+			};
+
+			iommupf_dcam: iommu@62c00000 {
+				compatible = "sprd,iommupf-r1-dcam";
+				reg = <0 0x62c00000 0 0x2000>,
+					<0 0x62c02000 0 0x2000>,
+					<0 0x90000000 0 0x2000000>,
+					<0 0xa0000000 0 0x40000000>;
+				reg_name = "pgt",
+					"ctrl_reg",
+					"iova fullmode pool",
+					"iova pf pool";
+				clock-names = "clk_cam_mmupf_ahb_eb",
+					"clk_cam_apb_eb";
+				clocks = <&clk_ahb_cam_gates 11>,
+						<&clk_aon_apb_gates1 29>;
+				fullmode-en = <1>;
+				total-ch-num = <24>;
+				pf-ch-write-start = <0>;
+				pf-ch-write-end = <20>;
+				pf-ch-read-start = <21>;
+				pf-ch-read-end = <23>;
+				fullmode-ch-write = <0>;
+				fullmode-ch-read = <21>;
+				status = "disable";
+				#iommu-cells = <0>;
+			};
+
+			dispc0: dispc@63200000 {
+				compatible = "sprd,whale2-dispc";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <0 0x63200000 0 0x1000>;
+				dev-id = <0>;
+				sprd,dpi_clk_div = <1>;
+				interrupts = <GIC_SPI 85 IRQ_TYPE_NONE>;
+				clock-src = <512000000 256000000 128000000>;
+				clock-names =   "dispc_clk_parent",
+						"dispc_dbi_clk_parent",
+						"dispc_dpi_clk_parent",
+						"dispc_emc_clk_parent",
+						"dispc_clk",
+						"dispc_dbi_clk",
+						"dispc_dpi_clk",
+						"dispc_emc_clk";
+				clocks = <&clk_twpll_512m>,
+				       <&clk_twpll_256m>,
+				       <&clk_twpll_128m>,
+				       <&clk_aon_apb>,
+				       <&clk_dispc0>,
+				       <&clk_dispc0_dbi>,
+				       <&clk_dispc0_dpi>,
+				       <&clk_aon_apb_gates1 11>;
+				status = "disabled";
+
+				port@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+					dispc_out: endpoint@0{
+						reg = <0>;
+						remote-endpoint = <&dsi_in>;
+					};
+				};
+			};
+
+			iommupf_dispc: iommu@63400000 {
+				compatible = "sprd,iommupf-r2-dispc";
+				reg = <0 0x63400000 0 0x2000>,
+					<0 0x63402000 0 0x2000>,
+					<0 0x90000000 0 0x2000000>,
+					<0 0x50000000 0 0x10000000>;
+				reg_name = "pgt",
+					"ctrl_reg",
+					"iova fullmode pool",
+					"iova pf pool";
+				clock-names = "clk_dispc_mmu_ahb_eb",
+					"clk_disp_eb";
+				clocks = <&clk_ahb_disp_gates 2>,
+						<&clk_aon_apb_gates1 30>;
+				fullmode-en = <0>;
+				total-ch-num = <6>;
+				pf-ch-write-start = <0>;
+				pf-ch-write-end = <0>;
+				pf-ch-read-start = <0>;
+				pf-ch-read-end = <5>;
+				fullmode-ch-write = <0>;
+				fullmode-ch-read = <0>;
+				status = "disable";
+				#iommu-cells = <0>;
+			};
+
+			gsp_core0: gsp@63500000 {
+				compatible = "sprd,gsp-core";
+				reg = <0 0x63500000 0 0x1000>;
+				core-id = <0>;
+				kcfg-num = <16>;
+				interrupts = <GIC_SPI 79 IRQ_TYPE_LEVEL_HIGH>;
+				iommus = <&iommu_gsp0>;
+				clock-names = "clk_gsp0",
+					"clk_gsp_parent",
+					"clk_gsp0_mmu_eb",
+					"clk_gsp0_eb",
+					"clk_gsp0_force_gate",
+					"clk_gsp_ahb_disp",
+					"clk_gsp_ahb_disp_parent",
+					"clk_disp_ckg_eb",
+					"clk_disp_sys_eb",
+					"clk_gsp_mtx_eb",
+					"clk_gsp_mtx_force_gate",
+					"clk_gsp_noc_force_gate";
+				clocks = <&clk_gsp0>,
+					<&clk_l0_614m4>,
+					<&clk_ahb_disp_gates 5>,
+					<&clk_ahb_disp_gates 3>,
+					<&clk_disp_axi_gates 2>,
+					<&clk_ahb_disp>,
+					<&clk_twpll_153m6>,
+					<&clk_ahb_disp_gates 9>,
+					<&clk_aon_apb_gates1 30>,
+					<&clk_ahb_disp_gates 14>,
+					<&clk_disp_axi_gates 11>,
+					<&clk_disp_axi_gates 13>;
+			};
+
+			iommu_gsp0: iommu@63700000 {
+				compatible  = "sprd,iommu-gsp0";
+				reg = <0 0x63700000 0 0x14000>,
+				<0 0x63720000 0 0x2000>,
+				<0 0x30000000 0 0x5000000>;
+				reg_name = "pgt","ctrl_reg","iova pool";
+				clock-names = "clk_dispc_gsp0_mmu_ahb_eb",
+						"clk_disp_eb";
+				clocks = <&clk_ahb_disp_gates 5>,
+						<&clk_aon_apb_gates1 30>;
+				status = "disable";
+				#iommu-cells = <0>;
+			};
+
+			iommu_gsp1: iommu@63800000 {
+				compatible  = "sprd,iommu-gsp1";
+				reg = <0 0x63800000 0 0x14000>,
+					<0 0x63820000 0 0x2000>,
+					<0 0x40000000 0 0x5000000>;
+				reg_name = "pgt","ctrl_reg","iova pool";
+				clock-names = "clk_dispc_gsp1_mmu_ahb_eb",
+						"clk_disp_eb";
+				clocks = <&clk_ahb_disp_gates 6>,
+						<&clk_aon_apb_gates1 30>;
+				status = "disable";
+				#iommu-cells = <0>;
+			};
+
+			dsi0: dsi0@63900000 {
+				compatible = "sprd,dsi0";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				#phy-cells = <1>;
+				dev-id = <0>;
+				reg = <0 0x63900000 0 0x1000>;
+				interrupts = <GIC_SPI 80 IRQ_TYPE_NONE>,
+					<GIC_SPI 81 IRQ_TYPE_NONE>;
+				phy-names = "dsi_phy";
+				phys = <&dsi_phy 1>;
+				status = "disabled";
+
+				port{
+					dsi_out: endpoint@0{
+						remote-endpoint = <&dphy_in>;
+					};
+					dsi_in: endpoint@1{
+						remote-endpoint = <&dispc_out>;
+					};
+				};
+			};
+
+			dsi_phy: dsi-phy {
+				compatible = "sprd,mipi-video-phy";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				#phy-cells = <1>;
+				reg = <0>;
+				status = "disabled";
+
+				port@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+					dphy_out: endpoint@0{
+						reg = <1>;
+						remote-endpoint = <&panel>;
+					};
+
+					dphy_in: endpoint@1{
+						reg = <0>;
+						remote-endpoint = <&dsi_out>;
+					};
+				};
+			};
+
+		};
+	};
+
+	deep-sleep {
+		compatible = "sprd,deep-sleep";
+
+		sprd,sys-ap-ahb = <&ap_ahb_controller>;
+		sprd,sys-pmu-apb = <&pmu_apb_controller>;
+		sprd,sys-aon-apb = <&aon_apb_controller>;
+		sprd,sys-ana-apb = <&ana_apb_controller>;
+		sprd,sys-agcp-ahb = <&agcp_ahb_controller>;
+		sprd,sys-ap-apb = <&ap_apb_controller>;
+
+		sprd,sys-aon-intc0 = <&aon_intc0_controller>;
+		sprd,sys-aon-intc1 = <&aon_intc1_controller>;
+		sprd,sys-aon-intc2 = <&aon_intc2_controller>;
+		sprd,sys-aon-intc3 = <&aon_intc3_controller>;
+		sprd,sys-aon-intc4 = <&aon_intc4_controller>;
+		sprd,sys-aon-intc5 = <&aon_intc5_controller>;
+	};
+
+	clk26mhz: clk26mhz {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <26000000>;
+	};
+
+	sprd-sensorhub {
+		compatible = "sprd,sensorhub";
+	};
+};
+

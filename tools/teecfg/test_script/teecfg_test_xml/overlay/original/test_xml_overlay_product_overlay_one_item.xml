@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is /bsp/tools/teecfg/user_guide.
+-->
+<test_xml_overlay_product_overlay_one_item>
+	<property ID="one_item">
+		<name type="ATTR_TYPE_STRING">overlay_product</name>
+		<value type="ATTR_TYPE_UINT32">0x50607080</value>
+		<attr type="ATTR_TYPE_UINT8">0xaa</attr>
+	</property>
+</test_xml_overlay_product_overlay_one_item>
+
+
+

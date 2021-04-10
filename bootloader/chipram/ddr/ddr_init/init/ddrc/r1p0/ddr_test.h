@@ -1,0 +1,9 @@
+
+//#define MEM_DEBUG
+//#define MEM_TEST
+//#define SR_TEST
+#define DDR_START_ADDR_PHY	0x80000000
+#define SOURCE_ADDR 0x80000000
+#define DST_ADDR    0xC0000000
+#define MEM_TEST_LEN 0x10000000
+

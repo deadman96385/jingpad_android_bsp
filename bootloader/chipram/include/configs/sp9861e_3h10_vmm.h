@@ -1,0 +1,28 @@
+#ifndef __CONFIG_VMM_H
+#define __CONFIG_VMM_H
+
+#include "sp9861e_3h10.h"
+
+/* VMM add-on define */
+#define CONFIG_MOBILEVISOR 1
+
+/* vmm image layout
+VMM-END 0x20000000
+DRAM l @0x00100000 mvconfig.bin
+DRAM l @0x00140000 mobilevisor.bin
+DRAM l @0x08000000 secvm.bin
+*/
+#define CONFIG_MVCONFIG_ADDR (0x48100000)
+#define CONFIG_MOBILEVISOR_ADDR (0x48140000)
+#define CONFIG_MOBILEVISOR_END  (0x48800000)
+
+#define CONFIG_MVCONFIG_SIZE (CONFIG_MOBILEVISOR_ADDR - CONFIG_MVCONFIG_ADDR)
+#define CONFIG_MOBILEVISOR_SIZE (CONFIG_MOBILEVISOR_END - CONFIG_MOBILEVISOR_ADDR)
+
+#define CONFIG_SECVM_ADDR (0x48800000)
+#define CONFIG_SECVM_SIZE (96 * 0x100000) /* 96M */
+
+
+#define ddr_print_string(string)
+
+#endif /* __CONFIG_H */

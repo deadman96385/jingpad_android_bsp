@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is /bsp/tools/teecfg/user_guide.
+-->
+<test_attr_type_string_exceed_max_length>
+	<property ID="exceed_max_length">
+		<value type="ATTR_TYPE_STRING">abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567899876543210~!@#$%^*()_+-={}|[]\;':",./?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567899876543210~!@#$%^*()_+-={}|[]\;':",./?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012</value>
+	</property>
+</test_attr_type_string_exceed_max_length>
+
+
+

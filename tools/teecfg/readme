@@ -1,0 +1,4 @@
+1、代码中inc/libxml来源于sprdroid9.0_trunk/external/libxml2/include/libxml
+2、代码中的lib/lib32/libxml2.so.2.9.1来源于PC的/usr/lib/i386-linux-gnu
+           lib/lib64/libxml2.so.2.9.1来源于PC的/usr/lib/x86_64-linux-gnu
+           PC上安装的是ubuntu14.04 LTS 64-bit版本

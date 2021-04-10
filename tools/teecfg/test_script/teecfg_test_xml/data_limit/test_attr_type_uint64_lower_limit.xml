@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is /bsp/tools/teecfg/user_guide.
+-->
+<test_attr_type_uint64_lower_limit>
+	<property ID="lower_limit">
+		<value type="ATTR_TYPE_UINT64">-1</value>
+	</property>
+</test_attr_type_uint64_lower_limit>
+
+
+

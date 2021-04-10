@@ -1,0 +1,177 @@
+/*
+ * Copyright (C) 2019 Unigroup Spreadtrum & RDA Technologies Co., Ltd.
+ *
+ * This file is dual-licensed: you can use it either under the terms
+ * of the GPL or the X11 license, at your option. Note that this dual
+ * licensing only applies to this file, and not this project as a
+ * whole.
+ *
+ * updated at 2019-02-11 15:07:05
+ *
+ */
+
+
+#ifndef AP_CLK_CORE_H
+#define AP_CLK_CORE_H
+
+#define CTL_BASE_AP_CLK_CORE 0x21100000
+
+
+#define REG_AP_CLK_CORE_CGM_AXI_CFG            ( CTL_BASE_AP_CLK_CORE + 0x0020 )
+#define REG_AP_CLK_CORE_CGM_PERI_APB_CFG       ( CTL_BASE_AP_CLK_CORE + 0x0024 )
+#define REG_AP_CLK_CORE_CGM_NANDC_ECC_CFG      ( CTL_BASE_AP_CLK_CORE + 0x0028 )
+#define REG_AP_CLK_CORE_CGM_NANDC_26M_CFG      ( CTL_BASE_AP_CLK_CORE + 0x002C )
+#define REG_AP_CLK_CORE_CGM_EMMC_32K_CFG       ( CTL_BASE_AP_CLK_CORE + 0x0030 )
+#define REG_AP_CLK_CORE_CGM_SDIO_MST_32K_CFG   ( CTL_BASE_AP_CLK_CORE + 0x0034 )
+#define REG_AP_CLK_CORE_CGM_SDIO_SLV_FRUN_CFG  ( CTL_BASE_AP_CLK_CORE + 0x0038 )
+#define REG_AP_CLK_CORE_CGM_USB0_REF_CFG       ( CTL_BASE_AP_CLK_CORE + 0x003C )
+#define REG_AP_CLK_CORE_CGM_USB1_REF_CFG       ( CTL_BASE_AP_CLK_CORE + 0x0040 )
+#define REG_AP_CLK_CORE_CGM_PCIE_AUX_CFG       ( CTL_BASE_AP_CLK_CORE + 0x0044 )
+#define REG_AP_CLK_CORE_CGM_UART0_CFG          ( CTL_BASE_AP_CLK_CORE + 0x0048 )
+#define REG_AP_CLK_CORE_CGM_I2C0_CFG           ( CTL_BASE_AP_CLK_CORE + 0x004C )
+#define REG_AP_CLK_CORE_CGM_I2C1_CFG           ( CTL_BASE_AP_CLK_CORE + 0x0050 )
+#define REG_AP_CLK_CORE_CGM_I2C2_CFG           ( CTL_BASE_AP_CLK_CORE + 0x0054 )
+#define REG_AP_CLK_CORE_CGM_I2C3_CFG           ( CTL_BASE_AP_CLK_CORE + 0x0058 )
+#define REG_AP_CLK_CORE_CGM_I2C4_CFG           ( CTL_BASE_AP_CLK_CORE + 0x005C )
+#define REG_AP_CLK_CORE_CGM_SIM_32K_CFG        ( CTL_BASE_AP_CLK_CORE + 0x0060 )
+#define REG_AP_CLK_CORE_CGM_SIM_CFG            ( CTL_BASE_AP_CLK_CORE + 0x0064 )
+#define REG_AP_CLK_CORE_CGM_PWM0_CFG           ( CTL_BASE_AP_CLK_CORE + 0x0068 )
+#define REG_AP_CLK_CORE_CGM_PWM1_CFG           ( CTL_BASE_AP_CLK_CORE + 0x006C )
+#define REG_AP_CLK_CORE_CGM_PWM2_CFG           ( CTL_BASE_AP_CLK_CORE + 0x0070 )
+#define REG_AP_CLK_CORE_CGM_PWM3_CFG           ( CTL_BASE_AP_CLK_CORE + 0x0074 )
+#define REG_AP_CLK_CORE_CGM_USB0_PIPE_CFG      ( CTL_BASE_AP_CLK_CORE + 0x0078 )
+#define REG_AP_CLK_CORE_CGM_USB0_UTMI_CFG      ( CTL_BASE_AP_CLK_CORE + 0x007C )
+#define REG_AP_CLK_CORE_CGM_USB1_PIPE_CFG      ( CTL_BASE_AP_CLK_CORE + 0x0080 )
+#define REG_AP_CLK_CORE_CGM_USB1_UTMI_CFG      ( CTL_BASE_AP_CLK_CORE + 0x0084 )
+#define REG_AP_CLK_CORE_CGM_PCIE_PIPE_CFG      ( CTL_BASE_AP_CLK_CORE + 0x0088 )
+#define REG_AP_CLK_CORE_CGM_AXI_USB3_CFG       ( CTL_BASE_AP_CLK_CORE + 0x008C )
+#define REG_AP_CLK_CORE_CGM_IPA_TIMER_CFG      ( CTL_BASE_AP_CLK_CORE + 0x0090 )
+
+/* REG_AP_CLK_CORE_CGM_AXI_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_AXI_CFG_CGM_AXI_SEL(x)                   (((x) & 0x7))
+
+/* REG_AP_CLK_CORE_CGM_PERI_APB_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PERI_APB_CFG_CGM_PERI_APB_SEL(x)         (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_NANDC_ECC_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_NANDC_ECC_CFG_CGM_NANDC_ECC_DIV(x)       (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_NANDC_ECC_CFG_CGM_NANDC_ECC_SEL(x)       (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_NANDC_26M_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_NANDC_26M_CFG_CGM_NANDC_26M_SEL          BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_EMMC_32K_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_EMMC_32K_CFG_CGM_EMMC_32K_SEL            BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_SDIO_MST_32K_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_SDIO_MST_32K_CFG_CGM_SDIO_MST_32K_SEL    BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_SDIO_SLV_FRUN_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_SDIO_SLV_FRUN_CFG_CGM_SDIO_SLV_FRUN_SEL  BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_USB0_REF_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_USB0_REF_CFG_CGM_USB0_REF_SEL            BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_USB1_REF_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_USB1_REF_CFG_CGM_USB1_REF_SEL            BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_PCIE_AUX_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PCIE_AUX_CFG_CGM_PCIE_AUX_PAD_SEL        BIT(16)
+#define BIT_AP_CLK_CORE_CGM_PCIE_AUX_CFG_CGM_PCIE_AUX_SEL            BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_UART0_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_UART0_CFG_CGM_UART0_DIV(x)               (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_UART0_CFG_CGM_UART0_SEL(x)               (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_I2C0_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_I2C0_CFG_CGM_I2C0_DIV(x)                 (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_I2C0_CFG_CGM_I2C0_SEL(x)                 (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_I2C1_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_I2C1_CFG_CGM_I2C1_DIV(x)                 (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_I2C1_CFG_CGM_I2C1_SEL(x)                 (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_I2C2_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_I2C2_CFG_CGM_I2C2_DIV(x)                 (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_I2C2_CFG_CGM_I2C2_SEL(x)                 (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_I2C3_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_I2C3_CFG_CGM_I2C3_DIV(x)                 (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_I2C3_CFG_CGM_I2C3_SEL(x)                 (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_I2C4_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_I2C4_CFG_CGM_I2C4_DIV(x)                 (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_I2C4_CFG_CGM_I2C4_SEL(x)                 (((x) & 0x3))
+
+/* REG_AP_CLK_CORE_CGM_SIM_32K_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_SIM_32K_CFG_CGM_SIM_32K_SEL              BIT(0)
+
+/* REG_AP_CLK_CORE_CGM_SIM_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_SIM_CFG_CGM_SIM_DIV(x)                   (((x) & 0x7) << 8)
+#define BIT_AP_CLK_CORE_CGM_SIM_CFG_CGM_SIM_SEL(x)                   (((x) & 0x7))
+
+/* REG_AP_CLK_CORE_CGM_PWM0_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PWM0_CFG_CGM_PWM0_SEL(x)                 (((x) & 0x7))
+
+/* REG_AP_CLK_CORE_CGM_PWM1_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PWM1_CFG_CGM_PWM1_SEL(x)                 (((x) & 0x7))
+
+/* REG_AP_CLK_CORE_CGM_PWM2_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PWM2_CFG_CGM_PWM2_SEL(x)                 (((x) & 0x7))
+
+/* REG_AP_CLK_CORE_CGM_PWM3_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PWM3_CFG_CGM_PWM3_SEL(x)                 (((x) & 0x7))
+
+/* REG_AP_CLK_CORE_CGM_USB0_PIPE_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_USB0_PIPE_CFG_CGM_USB0_PIPE_PAD_SEL      BIT(16)
+
+/* REG_AP_CLK_CORE_CGM_USB0_UTMI_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_USB0_UTMI_CFG_CGM_USB0_UTMI_PAD_SEL      BIT(16)
+
+/* REG_AP_CLK_CORE_CGM_USB1_PIPE_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_USB1_PIPE_CFG_CGM_USB1_PIPE_PAD_SEL      BIT(16)
+
+/* REG_AP_CLK_CORE_CGM_USB1_UTMI_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_USB1_UTMI_CFG_CGM_USB1_UTMI_PAD_SEL      BIT(16)
+
+/* REG_AP_CLK_CORE_CGM_PCIE_PIPE_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_PCIE_PIPE_CFG_CGM_PCIE_PIPE_PAD_SEL      BIT(16)
+
+/* REG_AP_CLK_CORE_CGM_AXI_USB3_CFG */
+
+
+/* REG_AP_CLK_CORE_CGM_IPA_TIMER_CFG */
+
+#define BIT_AP_CLK_CORE_CGM_IPA_TIMER_CFG_CGM_IPA_TIMER_SEL          BIT(0)
+
+
+#endif /* AP_CLK_CORE_H */
+
+

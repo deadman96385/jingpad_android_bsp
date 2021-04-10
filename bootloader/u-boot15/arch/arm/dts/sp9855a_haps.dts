@@ -1,0 +1,42 @@
+/*
+ * Spreadtrum SP9860g board DTS file
+ *
+ * Copyright (C) 2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+/ {
+	model = "Spreadtrum 9855a_haps Board";
+
+	compatible = "sprd,sp9855a_haps";
+
+	sprd,sc-id = <9855 1 0x20000>;
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		/* 1080x1920x4Bytes x 4Buffers */
+		fb_reserved: framebuffer@be05c000{
+			reg = <0x0 0xbe05c000 0x0 0x01fa4000>;
+		};
+	};
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+	};
+
+};

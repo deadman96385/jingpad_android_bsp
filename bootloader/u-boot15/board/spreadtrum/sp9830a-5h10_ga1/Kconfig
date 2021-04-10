@@ -1,0 +1,18 @@
+if TARGET_SP9830A_5H10_GA1
+
+config SYS_BOARD
+	default "sp9830a-5h10_ga1"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sc9630"
+
+config SYS_CONFIG_NAME
+	default "sp9830a-5h10_ga1"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

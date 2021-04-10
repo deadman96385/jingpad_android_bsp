@@ -1,0 +1,485 @@
+/*
+ * Spreadtrum SP9850S SoC DTS file
+ *
+ * Copyright (C) 2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+#include "whale.dtsi"
+#include "sc9850s-clocks.dtsi"
+
+/ {
+	cpus {
+		#address-cells = <2>;
+		#size-cells = <0>;
+
+		cpu-map {
+			cluster0 {
+				core0 {
+					cpu = <&CPU0>;
+				};
+				core1 {
+					cpu = <&CPU1>;
+				};
+				core2 {
+					cpu = <&CPU2>;
+				};
+				core3 {
+					cpu = <&CPU3>;
+				};
+			};
+		};
+
+		CPU0: cpu@530000 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53", "arm,armv8";
+			reg = <0x0 0x530000>;
+			enable-method = "psci";
+			cpu-idle-states = <&CORE_PD &CLUSTER_PD &DEEP_SLEEP>;
+			operating-points = <
+				/* kHz	uV */
+				1200000	850000
+				900000	820000
+				768000	800000>;
+			clocks = <&clk_lit_mcu>,
+				<&clk_twpll_768m>,
+				<&clk_mpll0>;
+			clock-names = "core_clk",
+				"low_freq_clk_parent",
+				"high_freq_clk_parent";
+			cpu0-supply = <&vddarm0>;
+			clock-latency = <50000>;
+			voltage-tolerance = <0>;
+			dual-phase-supply;
+		};
+
+		CPU1: cpu@530001 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53", "arm,armv8";
+			reg = <0x0 0x530001>;
+			enable-method = "psci";
+			cpu-idle-states = <&CORE_PD &CLUSTER_PD &DEEP_SLEEP>;
+		};
+
+		CPU2: cpu@530002 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53", "arm,armv8";
+			reg = <0x0 0x530002>;
+			enable-method = "psci";
+			cpu-idle-states = <&CORE_PD &CLUSTER_PD &DEEP_SLEEP>;
+		};
+
+		CPU3: cpu@530003 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53", "arm,armv8";
+			reg = <0x0 0x530003>;
+			enable-method = "psci";
+			cpu-idle-states = <&CORE_PD &CLUSTER_PD &DEEP_SLEEP>;
+		};
+	};
+
+	idle-states{
+		entry-method = "arm,psci";
+		CORE_PD: core_pd {
+			compatible = "arm,idle-state";
+			entry-latency-us = <1000>;
+			exit-latency-us = <700>;
+			min-residency-us = <2500>;
+			local-timer-stop;
+			arm,psci-suspend-param = <0x00010002>;
+		};
+		CLUSTER_PD: cluster_pd {
+			compatible = "arm,idle-state";
+			entry-latency-us = <1000>;
+			exit-latency-us = <1000>;
+			min-residency-us = <3000>;
+			local-timer-stop;
+			arm,psci-suspend-param = <0x01010003>;
+		};
+		DEEP_SLEEP: deep_sleep {
+			compatible = "arm,idle-state";
+			entry-latency-us = <1500>;
+			exit-latency-us = <1500>;
+			min-residency-us = <0xffffffff>;
+			local-timer-stop;
+			arm,psci-suspend-param = <0x01010005>;
+		};
+	};
+	gic: interrupt-controller@12001000 {
+		compatible = "arm,gic-400";
+		reg = <0 0x12001000 0 0x1000>,
+		      <0 0x12002000 0 0x2000>,
+		      <0 0x12004000 0 0x2000>,
+		      <0 0x12006000 0 0x2000>;
+		#interrupt-cells = <3>;
+		interrupt-controller;
+		interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(8)
+					| IRQ_TYPE_LEVEL_HIGH)>;
+	};
+
+	psci {
+		compatible = "arm,psci-0.2";
+		method = "smc";
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(8)
+					 | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(8)
+					 | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(8)
+					 | IRQ_TYPE_LEVEL_LOW)>,
+			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8)
+					 | IRQ_TYPE_LEVEL_LOW)>;
+	};
+
+	mm {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		vsp: video-codec@61200000{
+			compatible = "sprd,whale2-vsp";
+			reg = <0 0x61200000 0 0xc000>;
+			interrupts = <GIC_SPI 67 IRQ_TYPE_LEVEL_HIGH>;
+			sprd,syscon-pmu-apb = <&pmu_apb_controller>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			sprd,syscon-mm-ahb = <&vsp_ahb_controller>;
+			clock-names = "clk_mm_eb",
+					"clk_axi_gate_vsp",
+					"clk_vsp_ckg",
+					"clk_ahb_gate_vsp_eb",
+					"clk_ahb_vsp",
+					"clk_vsp";
+			clocks = <&clk_aon_apb_gates1 28>,
+					<&clk_vsp_axi_gates 0>,
+					<&clk_ahb_vsp_gates 1>,
+					<&clk_ahb_vsp_gates 0>,
+					<&clk_ahb_vsp>,
+					<&clk_vsp>;
+			iommus = <&iommu_vsp>;
+			status = "disabled";
+		};
+
+		vsp_enc: video-codec@61400000{
+			compatible = "sprd,whale2-vsp-enc";
+			reg = <0 0x61400000 0 0xc000>;
+			interrupts = <GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			sprd,syscon-mm-ahb = <&vsp_ahb_controller>;
+			clock-names = "clk_mm_eb",
+					"clk_axi_gate_vsp",
+					"clk_vsp_ckg",
+					"clk_ahb_gate_vsp_eb",
+					"clk_ahb_vsp",
+					"clk_vsp";
+			clocks = <&clk_aon_apb_gates1 28>,
+					<&clk_vsp_axi_gates 1>,
+					<&clk_ahb_vsp_gates 1>,
+					<&clk_ahb_vsp_gates 3>,
+					<&clk_ahb_vsp>,
+					<&clk_vsp_enc>;
+			iommus = <&iommu_vsp>;
+			status = "disabled";
+		};
+
+		vpp: video-codec@61500000{
+			compatible = "sprd,whale2-vpp";
+			reg = <0 0x61500000 0 0xc000>;
+			interrupts = <GIC_SPI 167 IRQ_TYPE_LEVEL_HIGH>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			sprd,syscon-mm-ahb = <&vsp_ahb_controller>;
+			clock-names = "clk_mm_eb",
+					"clk_axi_gate_vsp",
+					"clk_vsp_ckg",
+					"clk_ahb_gate_vsp_eb",
+					"clk_ahb_vsp",
+					"clk_vsp";
+			clocks = <&clk_aon_apb_gates1 28>,
+					<&clk_vsp_axi_gates 2>,
+					<&clk_ahb_vsp_gates 1>,
+					<&clk_ahb_vsp_gates 4>,
+					<&clk_ahb_vsp>,
+					<&clk_vpp>;
+			iommus = <&iommu_vsp>;
+			status = "disabled";
+		};
+
+		dcam: dcam@62200000 {
+			compatible = "sprd,dcam-r5p0";
+			reg = <0 0x62200000 0 0x100000
+				0 0x62300000 0 0x100000>;
+			interrupts = <GIC_SPI 77 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "clk_cam_eb",
+				"cam_ckg_eb",
+				"clk_ahb_cam", "clk_ahb_cam_parent",
+				"clk_dcam0","clk_dcam0_parent",
+				"clk_dcam1","clk_dcam1_parent",
+				"clk_dcam0_if","clk_dcam0_if_parent",
+				"dcam0_eb",
+				"dcam0_axi_eb",
+				"dcam1_eb",
+				"dcam1_axi_eb",
+				"dcam0_if_eb",
+				"d0_if_axi_eb",
+				"clk26m_if_eb",
+				"spare_axi_eb",
+				"d0if_in_d_eb","d1if_in_d_eb",
+				"d0if_in_d2i_eb","d1if_in_d2i_eb",
+				"i0_in_d2i_eb","i1_in_d2i_eb",
+				"i2_in_d2i_eb","i0_in_isp_eb",
+				"i1_in_isp_eb","i2_in_isp_eb",
+				"isp_i2d_eb";
+			clocks = <&clk_aon_apb_gates1 29>,
+				<&clk_ahb_cam_gates 7>,
+				<&clk_ahb_cam>,<&clk_twpll_153m6>,
+				<&clk_dcam0>,<&clk_twpll_384m>,
+				<&clk_dcam1>,<&clk_twpll_384m>,
+				<&clk_dcam0_if>,<&clk_twpll_512m>,
+				<&clk_ahb_cam_gates 0>,
+				<&clk_cam_axi_gates 4>,
+				<&clk_ahb_cam_gates 1>,
+				<&clk_cam_axi_gates 5>,
+				<&clk_ahb_cam_gates 20>,
+				<&clk_cam_axi_gates 14>,
+				<&clk_ahb_cam_gates 21>,
+				<&clk_cam_axi_gates 17>,
+				<&clk_cam_module_gates 0>,
+				<&clk_cam_module_gates 1>,
+				<&clk_cam_module_gates 2>,
+				<&clk_cam_module_gates 3>,
+				<&clk_cam_module_gates 4>,
+				<&clk_cam_module_gates 5>,
+				<&clk_cam_module_gates 6>,
+				<&clk_cam_module_gates 7>,
+				<&clk_cam_module_gates 8>,
+				<&clk_cam_module_gates 9>,
+				<&clk_ahb_cam_gates 19>;
+			sprd,syscon-cam-ahb = <&cam_ahb_controller>;
+			sprd,syscon-pmu-apb = <&pmu_apb_controller>;
+			status = "disabled";
+		};
+
+		isp: isp@62400000 {
+			compatible = "sprd,isp-v3";
+			reg = <0 0x62400000 0 0x100000>;
+			interrupts = <GIC_SPI 69 IRQ_TYPE_EDGE_RISING>,
+				<GIC_SPI 68 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "clk_isp_mclk","clk_isp_mclk_parent",
+				"clk_isp_pclk","clk_isp_pclk_parent",
+				"clk_isp_iclk","clk_isp_iclk_parent",
+				"clk_isp_lclk","clk_isp_lclk_parent",
+				"clk_isp0","clk_isp0_parent",
+				"clk_isp1","clk_isp1_parent",
+				"clk_isp2","clk_isp2_parent",
+				"isp0_eb",
+				"isp0_axi_eb",
+				"isp1_eb",
+				"isp1_axi_eb",
+				"isp2_eb",
+				"isp2_axi_eb",
+				"isp_mclk_eb",
+				"isp_pclk_eb",
+				"isp_iclk_eb",
+				"isp_lclk_eb";
+			clocks = <&clk_isp_mclk>,<&clk_twpll_384m>,
+				<&clk_isp_pclk>,<&clk_twpll_76m8>,
+				<&clk_isp_iclk>,<&clk_twpll_512m>,
+				<&clk_isp_lclk>,<&clk_twpll_384m>,
+				<&clk_isp0>,<&clk_twpll_512m>,
+				<&clk_isp1>,<&clk_twpll_512m>,
+				<&clk_isp2>,<&clk_twpll_384m>,
+				<&clk_ahb_cam_gates 2>,
+				<&clk_cam_axi_gates 10>,
+				<&clk_ahb_cam_gates 9>,
+				<&clk_cam_axi_gates 11>,
+				<&clk_ahb_cam_gates 12>,
+				<&clk_cam_axi_gates 12>,
+				<&clk_ahb_cam_gates 17>,
+				<&clk_ahb_cam_gates 18>,
+				<&clk_ahb_cam_gates 16>,
+				<&clk_ahb_cam_gates 15>;
+			status = "disabled";
+		};
+
+		jpg0: jpeg-codec@62500000{
+			compatible = "sprd,whale2-jpg";
+			reg = <0 0x62500000 0 0x100000>;
+			interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			sprd,syscon-mm-ahb = <&cam_ahb_controller>;
+			clock-names = "clk_mm_eb",
+					"clk_axi_gate_jpg",
+					"clk_ahb_gate_jpg_eb",
+					"clk_ahb_cam",
+					"clk_jpg";
+			clocks = <&clk_aon_apb_gates1 29>,
+					<&clk_cam_axi_gates 8>,
+					<&clk_ahb_cam_gates 5>,
+					<&clk_ahb_cam>,
+					<&clk_jpg0>;
+			iommus = <&iommu_cpp_jpg>;
+			status = "disabled";
+		};
+
+		jpg1: jpeg-codec@62600000{
+			compatible = "sprd,whale2-jpg1";
+			reg = <0 0x62600000 0 0x100000>;
+			interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			sprd,syscon-mm-ahb = <&cam_ahb_controller>;
+			clock-names = "clk_mm_eb",
+					"clk_axi_gate_jpg",
+					"clk_ahb_gate_jpg_eb",
+					"clk_ahb_cam",
+					"clk_jpg";
+			clocks = <&clk_aon_apb_gates1 29>,
+					<&clk_cam_axi_gates 9>,
+					<&clk_ahb_cam_gates 6>,
+					<&clk_ahb_cam>,
+					<&clk_jpg1>;
+			iommus = <&iommu_cpp_jpg>;
+			status = "disabled";
+		};
+
+		csi0: csi0@62700000 {
+			compatible = "snps,csi-controller";
+			reg = <0 0x62700000 0 0x100000>;
+			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "clk_cphy_gate", "clk_mipi_gate",
+				"clk_csi_eb", "clk_mm_i",
+				"clk_mipi_csi_eb";
+			clocks = <&clk_cam_axi_gates 0>,<&clk_cam_axi_gates 1>,
+			       <&clk_ahb_cam_gates 3>,<&clk_aon_apb_gates1 29>,
+			       <&clk_mipi_csi0_gate 16>;
+			sprd,ip-version = <0x100>;
+			sprd,mm-ahb-syscon = <&cam_ahb_controller>;
+			sprd,aon-apb-syscon = <&aon_apb_controller>;
+			status = "disabled";
+		};
+
+		csi1: csi1@62800000 {
+			compatible = "snps,csi-controller";
+			reg = <0 0x62800000 0 0x100000>;
+			interrupts = <GIC_SPI 71 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 70 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "clk_cphy_gate", "clk_mipi_gate",
+				"clk_csi_eb", "clk_mm_i",
+				"clk_mipi_csi_eb";
+			clocks = <&clk_cam_axi_gates 2>,<&clk_cam_axi_gates 3>,
+			       <&clk_ahb_cam_gates 4>,<&clk_aon_apb_gates1 29>,
+			       <&clk_mipi_csi1_gate 16>;
+			sprd,ip-version = <0x100>;
+			sprd,mm-ahb-syscon = <&cam_ahb_controller>;
+			sprd,aon-apb-syscon = <&aon_apb_controller>;
+			status = "disabled";
+		};
+
+		mipi_csi_phy0: mipi-csi-phy0 {
+			compatible = "snps,mipi-csi-phy0";
+			sprd,phyid = <0>;
+			#phy-cells = <1>;
+			status = "disabled";
+		};
+
+		mipi_csi_phy1: mipi-csi-phy1 {
+			compatible = "snps,mipi-csi-phy1";
+			sprd,phyid = <1>;
+			#phy-cells = <1>;
+			status = "disabled";
+		};
+
+		mipi_csi_phy2: mipi-csi-phy2 {
+			compatible = "snps,mipi-csi-phy2";
+			sprd,phyid = <2>;
+			#phy-cells = <1>;
+			status = "disabled";
+		};
+
+		cpp: cpp@62b00000 {
+			compatible = "sprd,cpp";
+			reg = <0 0x62b00000 0 0x100000>;
+			interrupts = <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "clk_cpp","clk_cpp_parent",
+				"cpp_eb",
+				"cpp_axi_eb";
+			clocks = <&clk_cpp>,<&clk_twpll_384m>,
+				<&clk_ahb_cam_gates 10>,
+				<&clk_cam_axi_gates 13>;
+			sprd,syscon-cam-ahb = <&cam_ahb_controller>;
+			status = "disabled";
+		};
+
+		dcam2isp: dcam2isp@62d00000 {
+			compatible = "sprd,dcam2isp";
+			reg = <0 0x62d00000 0 0x100000>;
+			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "dcam2isp_if_eb",
+				"d2i_if_axi_gate";
+			clocks = <&clk_ahb_cam_gates 13>,
+				<&clk_cam_axi_gates 15>;
+			status = "disabled";
+		};
+
+		isp2dcam: isp2dcam@62e00000 {
+			compatible = "sprd,isp2dcam";
+			reg = <0 0x62e00000 0 0x100000>;
+			interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "clk_isp2dcam","clk_isp2dcam_parent",
+				"isp2dcam_if_eb",
+				"i2d_if_axi_gate";
+			clocks = <&clk_isp2dcam>,<&clk_twpll_384m>,
+				<&clk_ahb_cam_gates 14>,
+				<&clk_cam_axi_gates 16>;
+			status = "disabled";
+		};
+	};
+
+	soc {
+		mm {
+			gpu@60000000 {
+				compatible = "sprd,mali-midgard";
+				reg = <0 0x60000000 0 0x4000>;
+				sprd,syscon-aon-apb = <&aon_apb_controller>;
+				sprd,syscon-pmu-apb = <&pmu_apb_controller>;
+				interrupts = <GIC_SPI 66 IRQ_TYPE_LEVEL_HIGH>,
+					<GIC_SPI 66 IRQ_TYPE_LEVEL_HIGH>,
+					<GIC_SPI 66 IRQ_TYPE_LEVEL_HIGH>;
+				interrupt-names = "JOB",
+					"MMU",
+					"GPU";
+
+				clocks = <&clk_aon_apb_gates0 27>,<&clk_gpu>,
+					<&clk_twpll_512m>,<&clk_twpll_768m>,
+					<&clk_gpll>;
+
+				operating-points = <
+					/* kHz    uV */
+					850000    0
+					768000    0
+					512000    0
+					>;
+
+				sprd,dfs-lists = <
+					/* kHz idx div */
+					512000 2   1
+					768000 3   1
+					850000 4   1
+					>;
+
+				sprd,dfs-default = <1>;
+				prd,dfs-scene-extreme = <2>;
+				sprd,dfs-scene-high = <1>;
+				sprd,dfs-scene-medium = <1>;
+				sprd,dfs-scene-low = <0>;
+				sprd,dfs-range-max = <2>;
+				sprd,dfs-range-min = <0>;
+			};
+		};
+	};
+};

@@ -1,0 +1,83 @@
+/dts-v1/;
+
+/ {
+	model = "SpreadTrum iSharkL SoC (x86 based)";
+	compatible = "sprd,isharkl";
+
+	#address-cells = <1>;
+	#size-cells = <1>;
+	interrupt-parent = <&pic>;
+
+	chosen {
+		linux,stdout-path = "/soc/uart@e7000000";
+	};
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <0>;
+			intel,apic-id = <0>;
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <2>;
+			intel,apic-id = <2>;
+		};
+
+		cpu@2 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <4>;
+			intel,apic-id = <4>;
+		};
+
+		cpu@3 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <6>;
+			intel,apic-id = <6>;
+		};
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "simple-bus";
+		ranges;
+
+		pic: interrupt-controller@fec00000 {
+			#interrupt-cells = <2>;
+			compatible = "intel,x86-ioapic";
+			interrupt-controller;
+			reg = <0xfec00000 0x1000>;
+			/* actual nr_entries are read from IOAPIC register */
+			nr_entries = <152>;
+		};
+
+		lapic:interrupt-controller@fee00000{
+			compatible = "intel,x86-lapic";
+			reg = <0xfee00000 0x1000>;
+		};
+
+		timer@fed00000 {
+			compatible = "intel,x86-hpet";
+			reg = <0xfed00000 0x400>;
+		};
+
+		uart0: uart@e7000000 {
+			compatible  = "sprd,sc9836-uart";
+			interrupts = <27 2>; /* irq 27, active high */
+			reg = <0xe7000000 0x1000>;
+		};
+	};
+};

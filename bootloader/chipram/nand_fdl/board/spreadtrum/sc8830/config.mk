@@ -1,0 +1,5 @@
+
+#ifdef CONFIG_SP8830
+CFLAGS += -DFDL_CHG_SP8830
+#endif
+

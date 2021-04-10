@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<firewall_config>
+	<property ID="modem">
+		<addr type="ATTR_TYPE_UINT64">0x100000007FFFFFFF</addr>
+		<size type="ATTR_TYPE_UINT64">0x0000000000000004</size>
+	</property>
+</firewall_config>

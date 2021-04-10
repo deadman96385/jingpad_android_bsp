@@ -1,0 +1,18 @@
+if TARGET_UMS312_2H10_32B
+
+config SYS_BOARD
+	default "ums312_2h10_32b"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkl5"
+
+config SYS_CONFIG_NAME
+	default "ums312_2h10_32b"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

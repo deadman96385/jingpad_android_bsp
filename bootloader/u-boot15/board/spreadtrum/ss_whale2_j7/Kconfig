@@ -1,0 +1,18 @@
+if TARGET_SS_WHALE2_J7
+
+config SYS_BOARD
+	default "ss_whale2_j7"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "whale2"
+
+config SYS_CONFIG_NAME
+	default "ss_whale2_j7"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

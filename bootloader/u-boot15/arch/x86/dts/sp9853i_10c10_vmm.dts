@@ -1,0 +1,114 @@
+/*
+ * Spreadtrum sc9853i_10c10 vmm board DTS file
+ *
+ * Copyright (C) 2015, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+#include "sc9853i_vmm.dtsi"
+#include <dt-bindings/e820/e820.h>
+
+/ {
+
+	e820_map {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "intel,e820_map";
+
+		/* element array: addr(64), size(64), type*/
+		e820_map =  <0x00000000 0x00000000 0x00000000 0x00800000 E820_RESERVED>, /* vmm reserve */
+			<0x00000000 0xfe000000 0x00000000 0x01000000 E820_RESERVED>; /* reserve */
+	};
+	reserved-memory {
+		#address-cells = <2>;
+                #size-cells = <2>;
+                ranges;
+
+		fastboot_reserved: fastbootbuffer@00800000{
+			reg = <0x0 0x00800000 0x0 0x10000000>;
+		};
+
+		download_reserved: sparsebuffer@00800000{
+			reg = <0x0 0x00800000 0x0 0x10000000>;
+		};
+
+		dl_alt1_reserved: alterbuffer1@10800000{
+			reg = <0x0 0x10800000 0x0 0x00200000>;
+		};
+
+		dl_alt2_reserved: alterbuffer2@10a00000{
+			reg = <0x0 0x10a00000 0x0 0x00200000>;
+		};
+
+		log_reserved: logbuffer@10c00000{
+			reg = <0x0 0x10c00000 0x0 0x00050000>;
+		};
+
+		secboot_arg_reserved: secboot-arg-mem@57a58000{
+			reg = <0x0 0x57a58000 0x0 0xf00000>;
+		};
+
+		secboot_vbmeta_reserved: secboot-vbmeta-mem@58958000{
+			reg = <0x0 0x58958000 0x0 0x800000>;
+		};
+
+		secboot_verify_reserved: secboot-verify-mem@59158000{
+			reg = <0x0 0x59158000 0x0 0x3000000>;
+		};
+
+		/* fb */
+		fb_reserved: fb-mem@5c158000{
+			reg = <0 0x5c158000 0 0x02060000>;
+		};
+	};
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+                #size-cells = <0>;
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+
+		heap@4 {
+			reg = <4>;
+			label = "carveout_fastboot";
+			type = <2>;
+			memory-region = <&fastboot_reserved>;
+		};
+
+		heap@5 {
+			reg = <5>;
+			label = "carveout_download";
+			type = <2>;
+			memory-region = <&download_reserved>;
+		};
+
+		heap@6 {
+			reg = <6>;
+			label = "carveout_dl_alt1";
+			type = <2>;
+			memory-region = <&dl_alt1_reserved>;
+		};
+
+		heap@7 {
+			reg = <7>;
+			label = "carveout_dl_alt2";
+			type = <2>;
+			memory-region = <&dl_alt2_reserved>;
+		};
+
+		heap@8 {
+			reg = <8>;
+			label = "carveout_log";
+			type = <2>;
+			memory-region = <&log_reserved>;
+		};
+	};
+};

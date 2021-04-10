@@ -1,0 +1,14 @@
+CONFIG_ARM=y
+CONFIG_VENDOR_SPRD=y
+CONFIG_TARGET_SP9860G_1H10_5M=y
+CONFIG_OF_CONTROL=y
+# CONFIG_CMD_BDI is not set
+# CONFIG_CMD_ECHO is not set
+# CONFIG_CMD_FLASH is not set
+# CONFIG_CMD_IMI is not set
+# CONFIG_CMD_IMLS is not set
+# CONFIG_CMD_MEMORY is not set
+# CONFIG_CMD_NET is not set
+# CONFIG_CMD_RUN is not set
+# CONFIG_CMD_SAVEENV is not set
+# CONFIG_CMD_SOURCE is not set

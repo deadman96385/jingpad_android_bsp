@@ -1,0 +1,24 @@
+if TARGET_SP9850KH_1H10
+
+config SYS_BOARD
+	default "sp9850kh_1h10"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharklj1"
+
+config SYS_CONFIG_NAME
+	default "sp9850kh_1h10"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+config SMT_VALUE
+	hex
+	default 0x00
+	help
+	  The value to decide whether enable smt
+
+endif

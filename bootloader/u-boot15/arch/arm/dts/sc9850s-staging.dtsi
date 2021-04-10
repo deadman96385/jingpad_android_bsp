@@ -1,0 +1,489 @@
+/*
+ * Spreadtrum SC9830 staging board DTSI file
+ * These dt code has not been reviewed and temporarily used for
+ * working.
+ *
+ * Copyright (C) 2015, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/ {
+	aon_mailbox: mailbox@400a0000 {
+		compatible = "sprd,mailbox";
+		reg = <0 0x400a0000 0 0x8000>,
+		      <0 0x400a8000 0 0x8000>;
+		sprd,syscon-ap-apb = <&aon_apb_controller>;
+		interrupts = <GIC_SPI 28 0>,
+			     <GIC_SPI 29 0>;
+		sprd,core-cnt = <6>;
+		sprd,version = <2>;
+	};
+
+	spipe-pm {
+		compatible = "sprd,spipe";
+		sprd,name = "spipe_pm";
+		sprd,dst = <6>;
+		sprd,channel = <4>;
+		sprd,ringnr = <4>;
+		sprd,size-rxbuf = <0x100>; /* 256 */
+		sprd,size-txbuf = <0x400>; /* 1024 */
+		sprd,sipc-name = "sipc1";
+	};
+
+	slog-pm {
+		compatible = "sprd,spipe";
+		sprd,name = "slog_pm";
+		sprd,dst = <6>;
+		sprd,channel = <5>;
+		sprd,ringnr = <1>;
+		sprd,size-rxbuf = <0x800>; /* 2*1024*/
+		sprd,size-txbuf = <0x100>; /* 256 */
+		sprd,sipc-name = "sipc1";
+	};
+
+	spipe-lte {
+		compatible = "sprd,spipe";
+		sprd,name = "spipe_lte";
+		sprd,dst = <5>;
+		sprd,channel = <4>;
+		sprd,ringnr = <15>;
+		sprd,size-rxbuf = <0x1000>; /* 4*1024 */
+		sprd,size-txbuf = <0x1000>; /* 4*1024 */
+		sprd,sipc-name = "sipc0";
+	};
+
+	slog-lte {
+		compatible = "sprd,spipe";
+		sprd,name = "slog_lte";
+		sprd,dst = <5>;
+		sprd,channel = <5>;
+		sprd,ringnr = <1>;
+		sprd,size-rxbuf = <0x40000>; /* 256*1024*/
+		sprd,size-txbuf = <0x8000>; /* 32*1024 */
+		sprd,sipc-name = "sipc0";
+	};
+
+        sdiag-lte {
+		compatible = "sprd,spipe";
+		sprd,name = "sdiag_lte";
+		sprd,dst = <5>;
+		sprd,channel = <21>;
+		sprd,ringnr = <1>;
+		sprd,size-rxbuf = <0x40000>; /* 256*1024*/
+		sprd,size-txbuf = <0x8000>; /* 32*1024 */
+		sprd,sipc-name = "sipc0";
+	};
+
+	stty-lte {
+		compatible = "sprd,spipe";
+		sprd,name = "stty_lte";
+		sprd,dst = <5>;
+		sprd,channel = <6>;
+		sprd,ringnr = <32>;
+		sprd,size-rxbuf = <0x0800>; /* 2*1024*/
+		sprd,size-txbuf = <0x0800>; /* 2*1024 */
+		sprd,sipc-name = "sipc0";
+	};
+
+	sipx-lte {
+		compatible = "sprd,sipx";
+		sprd,name = "sipx_lte";
+		sprd,dst = <5>;
+		sprd,dl-pool = <1024>;
+		sprd,dl-ack-pool = <512>;
+		sprd,ul-pool = <1024>;
+		sprd,ul-ack-pool = <1024>;
+	};
+
+	dsim-plg-lte {
+		compatible = "sprd,dsim-plug";
+		sprd,name = "dsim-plg-lte";
+		sprd,dst = <5>;
+		sprd,channel = <23>;
+		sim1-gpios = <&ap_gpio 40 0>;
+		sim2-gpios = <&ap_gpio 41 0>;
+	};
+
+	seth0-lte {
+		compatible = "sprd,seth";
+		sprd,name = "seth_lte0";
+		sprd,dst = <5>;
+		sprd,channel = <7>;
+		sprd,blknum = <256>;
+		sprd,poolsize = <16>;
+	};
+
+	seth1-lte {
+		compatible = "sprd,seth";
+		sprd,name = "seth_lte1";
+		sprd,dst = <5>;
+		sprd,channel = <8>;
+		sprd,blknum = <256>;
+		sprd,poolsize = <16>;
+	};
+
+	seth2-lte {
+		compatible = "sprd,seth";
+		sprd,name = "seth_lte2";
+		sprd,dst = <5>;
+		sprd,channel = <9>;
+		sprd,blknum = <256>;
+		sprd,poolsize = <16>;
+	};
+
+	seth3-lte {
+		compatible = "sprd,seth";
+		sprd,name = "seth_lte3";
+		sprd,dst = <5>;
+		sprd,channel = <18>;
+		sprd,blknum = <256>;
+		sprd,poolsize = <16>;
+	};
+
+	seth4-lte {
+		compatible = "sprd,seth";
+		sprd,name = "seth_lte4";
+		sprd,dst = <5>;
+		sprd,channel = <19>;
+		sprd,blknum = <256>;
+		sprd,poolsize = <16>;
+	};
+
+	seth5-lte {
+		compatible = "sprd,seth";
+		sprd,name = "seth_lte5";
+		sprd,dst = <5>;
+		sprd,channel = <20>;
+		sprd,blknum = <256>;
+		sprd,poolsize = <16>;
+	};
+
+	scproc_pubpm: scproc@080000 {
+		compatible = "sprd,scproc_pubcp";
+		sprd,name = "pmic";
+		sprd,syscon-ap-apb = <&aon_apb_controller>;
+                sprd,syscon-ap-pmu = <&pmu_apb_controller>;
+		sprd,ctrl-reg = <0xff 0xff 0xc4 0xff>; /* <shut_down deep_sleep reset get_status> */
+		sprd,ctrl-mask = <0x400 0x800000 0x200002 0x1>; /* masks <> */
+		sprd,ctrl-type = <0x0 0x1 0x1 0x1>;
+		reg = <0 0x80000 0 0x40000>; /* <CP_start_addr total_size> = <+128M 83M> */
+		#address-cells = <1>;
+		#size-cells = <1>;
+		/* segnr=1 */
+		ranges = <0x0 0x0 0x80000 0x40000>;
+		pm_sys@0 {
+			cproc,name = "pm_sys";
+			reg = <0x0 0x40000>; /* <pmsys_addr size> */
+		};
+	};
+
+	scproc_pubcp: scproc@89600000 {
+		compatible = "sprd,scproc_pubcp";
+		sprd,name = "cptl";
+		sprd,syscon-ap-apb = <&aon_apb_controller>;
+                sprd,syscon-ap-pmu = <&pmu_apb_controller>;
+		sprd,ctrl-reg = <0x174 0xe8 0xc4 0xff>; /* <shut_down deep_sleep reset get_status> */
+                sprd,ctrl-mask = <0x400 0x180000 0x4 0x1>; /* masks <> */
+		sprd,ctrl-type = <0x0 0x1 0x1 0x1>;
+		reg = <0 0x89600000 0 0x6000000>, /* <CP_start_addr total_size> = <+128M 83M> */
+			<0 0xf0000 0 0x100>; /* <iram1_base size> */
+		interrupts = <0 162 0x0>; /* cp1_wdg_int */
+		#address-cells = <1>;
+		#size-cells = <1>;
+		/* segnr=7 */
+		ranges = <0x2200000 0 0x8b800000 0xd00000>,
+			<0x2f20000 0 0x8c520000 0x80000>,
+			<0x2fa0000 0 0x8c5a0000 0xa0000>,
+			<0x20000 0 0x89620000 0x2e0000>,
+			<0x700000 0 0x89d00000 0xc00000>,
+			<0x3040000 0 0x8c640000 0x800>;
+		modem@2200000 {
+			cproc,name = "modem";
+			reg = <0x2200000 0xd00000>; /* <modem_addr size> */
+		};
+		fixnv@2f20000 {
+			cproc,name = "fixnv";
+			reg = <0x2f20000 0x80000>; /* <fixnv_addr size> */
+		};
+		runtimenv@2fa0000 {
+			cproc,name = "runnv";
+			reg = <0x2fa0000 0xa0000>; /* <runtimenv_addr size> */
+		};
+		tgdsp@20000 {
+			cproc,name = "tgdsp";
+			reg = <0x20000 0x2e0000>; /* <tgdsp_addr size>*/
+		};
+		ldsp@700000 {
+			cproc,name = "ldsp";
+			reg = <0x700000 0xc00000>; /* <ldsp_addr size>*/
+		};
+		cpcmdline@3040000 {
+			cproc,name = "cpcmdline";
+			reg = <0x3040000 0x800>;
+		};
+	};
+
+	scproc_agcp: scproc@89300000 {
+		compatible = "sprd,scproc_pubcp";
+		sprd,name = "agdsp";
+		sprd,type = <0x1>;
+		sprd,syscon-ap-apb = <&aon_apb_controller>;
+                sprd,syscon-ap-pmu = <&pmu_apb_controller>;
+		sprd,ctrl-reg = <0x78 0xe8 0xc4 0xff>, /* <sys_shut_down deep_sleep reset get_status> */
+				<0xff 0x7c 0x148 0x78>, /* <iram_pw core_shut_down core_reset boot_prot> */
+				<0x140 0x144 0x14c 0xff>; /* <agdsp_ctrl0 agdsp_ctrl1 agdsp_ctrl> */
+		sprd,ctrl-mask = <0x2000000 0x280000 0x10000000 0x0>, /* masks <> */
+				<0x0 0x2000000 0x2 0x9620>,
+				<0x449d0040 0x1 0x1 0x0>;
+		sprd,ctrl-type = <0x1 0x1 0x1 0x1>,
+				<0x1 0x1 0x0 0x0>,
+				<0x0 0x0 0x0 0x0>;
+		reg = <0 0x89300000 0 0x300000>, /* <agdsp_start_addr total_size> = <+128M 83M> */
+			<0 0x10000 0 0x100>; /* <iram1_base size> */
+		#address-cells = <1>;
+		#size-cells = <1>;
+		/* segnr=1 */
+		ranges = <0xa0000 0 0x893a0000 0x260000>;
+		agdsp@a0000 {
+			cproc,name = "agdsp";
+			reg = <0xa0000 0x260000>; /* <agdsp_addr size> */
+		};
+	};
+
+	sipc0: sipc@87800000 {
+		compatible = "sprd,sipc";
+		reg = <0 0x87800000 0 0x5B0000>; /* <SMEM SIZE>*/
+		reg-names = "sipc0";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x09600000 0 0x89600000 0x6000000>,
+			<0x07800000 0 0x87800000 0x5b0000>,
+			<0x0f5ff000 0 0x8f5ff000 0x1000>,
+			<0x00002000 0 0x00002000 0x1000>;
+		sipc-lte{
+			sprd,name = "sipc-lte";
+			sprd,dst = <5>;
+			/* it's unnecessary to config IPI info upon mailbox arch */
+			mailbox,core = <2>;
+			reg = <0x09600000 0x4a80000> , /* <CP_start_addr size> */
+				<0x07800000 0x5b0000>, /* <SMEM_phy_addr total_size> */
+				<0x0f5ff000 0x1000>; /* smsg ring buffer <base size> */
+		};
+	};
+
+	sipc1: sipc@00016000 {
+		compatible = "sprd,sipc";
+		reg = <0 0x00016000 0 0x2000>; /* <SMEM SIZE>*/
+		reg-names = "sipc1";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0x00016000 0 0x00016000 0x2000>,
+			<0x00002000 0 0x00002000 0x1000>;
+		sipc-pmsys@5000c000 {
+			sprd,name = "sipc-pmsys";
+			sprd,dst = <6>;
+			/* it's unnecessary to config IPI info upon mailbox arch */
+			mailbox,core = <1>;
+			reg = <0x00016000 0x2000>, /* <SMEM_phy_addr total_size> */
+				<0x00002000 0x1000>; /* smsg ring buffer <base size> */
+		};
+	};
+
+	audio_pipe {
+		compatible  = "sprd,sprd_audio_pipe";
+		sprd,name = "audio_pipe";
+		sprd,dst        = /bits/ 8 <1>; /*AGDSP*/
+		sprd,devicesnr  = /bits/ 8  <1>;    /* AGDSP id */
+		mailbox,core    = <5>;  /* AGDSP id */
+	};
+
+	audio_sipc{
+		compatible  = "sprd,audio_sipc";
+		mailbox,core    = <5>;  /* AGDSP id */
+	};
+
+	audio_mem:audio_mem@87600000{
+		compatible = "sprd,audio_mem";
+		reg = <0 0x87500000 0 0x283000>;/*<1MSIZE>*/
+		sprd,iram_ap_base =  <0x00018000>;
+		sprd,iram_dsp_base = <0x30818000>;
+		sprd,cmdaddr = <0x00018000 0x1000>;/*for cmd para addr*/
+		sprd,smsg_addr = <0x00019000 0xa10>;  /*smsg  addr*/
+		sprd,shmaddr_aud_str = <0x19A10 0x340>;
+		sprd,shmaddr_dsp_vbc = <0x19D50 0x113c>;
+		sprd,shmaddr_nxp = <0x1AE8C 0x310>;
+		sprd,shmaddr_reg_dump = <0x1B19C 0x400>;
+		sprd,offload_addr = <0x1d400 0x8400>; /*offload*/
+		sprd,dsplog = <0x1d400 0x2800>; /*dsp log*/
+		sprd,dspmemdump = <0x87783000 0x7d000>;
+	};
+
+	audio_dsp_log {
+		compatible = "sprd,sprd_audio_dsp_dump";/*audio dsp log*/
+		sprd-name = "audio_dsp_log";
+		sprd-dump-content = "log";
+		sprd-usemem-type =<0x4>;
+		sprd-dst = /bits/ 8 <1>; /*AGDSP*/
+		sprd-channel =/bits/ 8 <4>;
+		sprd-rxblocknum=<0x4>;
+		sprd-rxblocksize=<0x0600>;
+	};
+
+	audio_dsp_pcm {
+		compatible = "sprd,sprd_audio_dsp_dump";/*audio dsp pcm*/
+		sprd-name = "audio_dsp_pcm";
+		sprd-dump-content = "pcm";
+		sprd-usemem-type =<0x4>;
+		sprd-dst = /bits/ 8 <1>; /*AGDSP*/
+		sprd-channel =/bits/ 8 <3>;
+		sprd-rxblocknum=<0x4>;
+		sprd-rxblocksize=<0x0600>;
+	};
+
+	audio_dsp_memory {
+		compatible = "sprd,sprd_audio_dsp_dump";/*audio dsp log*/
+		sprd-name = "audio_dsp_mem";
+		sprd-dump-content = "memory";
+		sprd-usemem-type =<0x8>;
+		sprd-usemem-bytes =<0x7d000>;
+		sprd-dst = /bits/ 8 <1>; /*AGDSP*/
+		sprd-channel =/bits/ 8 <5>;
+	};
+
+	null_codec: null-codec {
+		compatible = "sprd,null-codec";
+	};
+
+	sprd_pcm: sprd-pcm-audio {
+		compatible = "sprd,sprd-pcm";
+		/*agcp dma_ap*/
+		dmas = <&agcp_dma 1 &agcp_dma 2
+			&agcp_dma 3 &agcp_dma 4
+			&agcp_dma 5 &agcp_dma 6
+			&agcp_dma 7 &agcp_dma 8
+			&agcp_dma 9 &agcp_dma 10>;
+		dma-names = "normal_p_l", "normal_p_r",
+			"normal_c_l", "normal_c_r",
+			"voice_c","fast_p",
+			"loop_c", "loop_p",
+			"voip_c", "voip_p";
+	};
+
+	sprd_compr: sprd-compr-audio {
+		compatible = "sprd,sprd-compr-platform";
+		dmas = <&agcp_dma 11 &agcp_dma 12>;
+		dma-names = "compr_dma_stage0", "compr_dma_stage1";
+	};
+};
+
+&sprd_compr {
+	status = "okay";
+	iram_base = <0x30800000 0x2000>;	/* AGCP, AP*/
+	iram_paddr = <0xc800>;			/* Phisical address*/
+	iram_size_total = <0xD800>;		/* 54 * 1024 */
+	iram_size_dma = <0x8000>;		/* 32K, for DMA */
+};
+
+&soc {
+	agcp {
+		sprd_audio_codec_dig: audio-codec@41750000 {
+			status = "disable";
+			compatible = "sprd,sc9850s-audio-codec";
+			reg = <0 0x41750000 0 0x1000>;
+			sprd,def_da_fs = <48000>;
+			sprd,syscon-agcp-ahb = <&agcp_ahb_controller>;
+			analog-codec = <&sprd_audio_codec_ana>;
+		};
+
+		vbc_r3p0: vbc@41480000 {
+			compatible = "sprd,vbc-r3p0";
+			reg = <0 0x41480000 0 0x1000>;
+			mailbox,core = <5>;    /* AGDSP id */
+			sprd,syscon-agcp-ahb = <&agcp_ahb_controller>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			/*iis pin map*/
+			pinctrl-names =
+			/*iis 0*/
+			"vbc_iis0_0", "vbc_iis1_0", "vbc_iis2_0", "vbc_iis3_0",
+			/*iis 2*/
+			"vbc_iis0_2", "vbc_iis1_2", "vbc_iis2_2", "vbc_iis3_2",
+			/*iis 3*/
+			"vbc_iis0_3", "vbc_iis1_3", "vbc_iis2_3", "vbc_iis3_3";
+			/*sys iis 0*/
+			pinctrl-0 = <&vbc_iis0_0>;
+			pinctrl-1 = <&vbc_iis1_0>;
+			pinctrl-2 = <&vbc_iis2_0>;
+			pinctrl-3 = <&vbc_iis3_0>;
+			/*sys iis 2*/
+			pinctrl-4 = <&vbc_iis0_2>;
+			pinctrl-5 = <&vbc_iis1_2>;
+			pinctrl-6 = <&vbc_iis2_2>;
+			pinctrl-7 = <&vbc_iis3_2>;
+			/*sys iis 3*/
+			pinctrl-8 = <&vbc_iis0_3>;
+			pinctrl-9 = <&vbc_iis1_3>;
+			pinctrl-10 = <&vbc_iis2_3>;
+			pinctrl-11 = <&vbc_iis3_3>;
+
+		};
+
+		mcdt {
+			compatible = "sprd, mcdt_v1";
+			reg_base = <0x01490000 0x41490000>; /* AGCP, AP */
+			reg_size = <0x170>; /* 0x160 + 0x10 */
+			irq_no = <48>;
+		};
+
+		agdsp-access {
+			compatible = "sprd,agdsp-access";
+			sprd,syscon-agcp-ahb = <&aon_apb_controller>;
+			sprd,syscon-pmu-apb = <&pmu_apb_controller>;
+			sprd,dst = <5>;
+			sprd,channel = <25>;
+			sprd,sipc-name = "sipc0";
+			mailbox,core = <5>;    /* AGDSP id */
+		};
+	};
+};
+
+&adi_bus {
+	pmic@0 {
+		sprd_audio_codec_ana: audio_codec@700 {
+			compatible = "sprd,sc2731-audio-codec";
+			reg = <0x700>;
+			interrupts = <8 IRQ_TYPE_NONE>;
+			sprd,syscon-aon-apb = <&aon_apb_controller>;
+			io-channels = <&pmic_adc 55>;
+			io-channel-names = "headset";
+			fixed_sample_rate = <48000 48000 48000>; /* DA, AD, AD1 */
+
+			hdst_use_internal_pa = <1>;
+			hdst_jack_type = <0>;
+			gpios = <&pmic_eic 3 0>, <&pmic_eic 8 0>;
+			gpio-trigger-levels = <1 1>;
+			gpio-dbnc-intervals = <100 100>;
+			gpio-names = "button", "detect_l";
+			adc_threshold_3pole_detect = <2650>;
+			adc_threshold_4pole_detect = <2651>;
+			irq_threshold_buttont = <1>;
+			nbuttons = <3>;
+			headset_buttons_media {
+				adc_min = <0>;
+				adc_max = <430>;
+				code = <226>;
+			};
+			headset_buttons_up {
+				adc_min = <431>;
+				adc_max = <860>;
+				code = <115>;
+			};
+			headset_buttons_down {
+				adc_min = <861>;
+				adc_max =<1900>;
+				code = <114>;
+			};
+		};
+	};
+};
+

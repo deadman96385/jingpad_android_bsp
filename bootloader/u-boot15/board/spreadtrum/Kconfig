@@ -1,0 +1,658 @@
+#
+# Copyright (C) 2015
+#
+# SPDX-License-Identifier:      GPL-2.0+
+#
+if VENDOR_SPRD
+
+choice
+	prompt "Mainboard model"
+	optional
+
+config TARGET_ISHARKL
+	bool "Spreadtrum isharkl"
+	help
+	  This is the Spreadtrum iSharkL Board
+
+config TARGET_SP9861
+	bool "Spreadtrum sp9861"
+	help
+	  This is the Spreadtrum iWhaleL2 FPGA Board
+
+config TARGET_SP9861_VP
+	bool "Spreadtrum sp9861_vp"
+	help
+	  This is the Spreadtrum iWhaleL2 VP Board
+
+config TARGET_SP9861E_1H10
+	bool "Spreadtrum iwhale2"
+	help
+	  This is the Spreadtrum iWhaleL2 mobile phone Board
+
+config TARGET_SP9861E_1H11
+        bool "Spreadtrum iwhale2"
+        help
+          This is the Spreadtrum iWhaleL2 mobile phone Board
+
+config TARGET_SP9861E_2H10
+	bool "Spreadtrum iwhale2"
+	help
+	  This is the Spreadtrum iWhaleL2 mobile phone Board
+
+config TARGET_SP9861E_2H10_2705
+        bool "Spreadtrum iwhale2"
+        help
+          This is the Spreadtrum iWhaleL2 mobile phone Board
+
+config TARGET_SP9861E_3H10
+        bool "Spreadtrum iwhale2"
+        help
+          This is the Spreadtrum iWhaleL2 mobile phone Board
+
+config TARGET_SP9853I
+	bool "Spreadtrum sp9853i"
+	help
+	  This is the Spreadtrum isharkl2 Board
+
+config TARGET_SP9853I_1H10
+	bool "Spreadtrum sp9853i"
+	help
+	  This is the Spreadtrum isharkl2 mobile phone board
+
+config TARGET_SP9853I_9C10
+	bool "Spreadtrum sp9853i"
+	help
+	  This is the Spreadtrum isharkl2 mobile phone board
+
+config TARGET_SP9853I_10C10
+	bool "Spreadtrum sp9853i"
+	help
+	  This is the Spreadtrum isharkl2 mobile phone board
+
+config TARGET_SP9853I_2H10
+	bool "Spreadtrum sp9853i"
+	help
+	  This is the Spreadtrum isharkl2 mobile phone board
+
+config TARGET_SP9853I_3C10
+	bool "Spreadtrum sp9853i"
+	help
+	  This is the Spreadtrum isharkl2 mobile phone board
+
+config TARGET_SP9830A_5H10_GA1
+	bool "Spreadtrum sp9830a-5h10_ga1"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sp9830a-7h10_ga1 Board
+
+config TARGET_SP9830A_7H10_GA1
+	bool "Spreadtrum sp9830a-7h10_ga1"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sp9830a-5h10_ga1 Board
+
+config TARGET_SP9850S_1H10_5M
+	bool "Spreadtrum sp9850s_1h10_5m"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9850s_1h10_5m Board
+
+config TARGET_SP9850S_2H10_5M
+	bool "Spreadtrum sp9850s_2h10_5m"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9850s_2h10_5m Board
+
+config TARGET_SS_WHALE2_J7
+	bool "Spreadtrum ss_whale2_j7"
+	select ARM64
+	help
+	  This is the Spreadtrum ss_whale2_j7 Board
+
+config TARGET_SS_WHALE2_JIGBOARD
+	bool "Spreadtrum ss_whale2_jigboard"
+	select ARM64
+	help
+	  This is the Spreadtrum ss_whale2_jigboard Board
+
+config TARGET_SP9860G_1H10_5M
+	bool "Spreadtrum sp9860g_1h10_5m"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9860g_1h10_5m Board
+
+config TARGET_SP9860G_1H10_3G
+	bool "Spreadtrum sp9860g_1h10_3g"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9860g_1h10_3g Board
+config TARGET_SP9860G_1H10_AL
+	bool "Spreadtrum sp9860g_1h10_al"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9860g_1h10_al Board
+config TARGET_SP9860G_2H10_5M
+	bool "Spreadtrum sp9860g_2h10_5m"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9860g_2h10_5m Board
+config TARGET_SP9860G_3H10_5M
+	bool "Spreadtrum sp9860g_3h10_5m"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9860g_3h10_5m Board
+config TARGET_SP9860G_4H10_5M
+	bool "Spreadtrum sp9860g_4h10_5m"
+	select ARM64
+	help
+	  This is the Spreadtrum sp9860g_4h10_5m Board
+
+config TARGET_SP9850KA_1H10
+	bool "Spreadtrum sp9850ka_1h10"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sp9850ka_1h10 Board
+
+config TARGET_SP9833ZEBU
+	bool "Spreadtrum sp9833zebu"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sp9833zebu Board
+
+config TARGET_PIKE2
+	bool "Spreadtrum pike2"
+	select CPU_V7
+	help
+	  This is the Spreadtrum pike2 Board
+
+config TARGET_SP7731E_FPGA
+	bool "Spreadtrum sp7731e_fpga"
+	select CPU_V7
+	help
+	  This is the Spreadtrum pike2 FPGA Board
+
+config TARGET_SP7731E_1H10
+        bool "Spreadtrum sp7731e_1h10"
+        select CPU_V7
+        help
+          This is the Spreadtrum sp7731e_1h10 Board
+
+config TARGET_SP7731E_1H20
+        bool "Spreadtrum sp7731e_1h20"
+        select CPU_V7
+        help
+          This is the Spreadtrum sp7731e_1h20 Board
+
+config TARGET_SP7731E_16C10
+        bool "Spreadtrum sp7731e_16c10"
+        select CPU_V7
+        help
+          This is the Spreadtrum sp7731e_16c10 Board
+
+config TARGET_J1VDK
+	bool "Spreadtrum j1vdk"
+	select ARM64
+	help
+	  This is the Spreadtrum j1vdk Board
+
+config TARGET_J1FPGA
+	bool "Spreadtrum j1fpga"
+	select ARM64
+	help
+	  This is the Spreadtrum j1fpga Board
+
+config TARGET_J1ZEBU
+	bool "Spreadtrum j1zebu"
+	select ARM64
+	help
+	  This is the Spreadtrum j1zebu Board
+  
+config TARGET_SP9850KH_1H10
+	bool "Spreadtrum sp9850kh_1h10"
+	select ARM64
+	help
+	  This is the Spreadtrum j1 Board
+
+config TARGET_SP9850KH_2C20
+	bool "Spreadtrum sp9850kh_2c20"
+	select ARM64
+	help
+	  This is the Spreadtrum j12c Board
+
+config TARGET_SP9850KA_2C10
+	bool "Spreadtrum sp9850ka_2c10"
+	select CPU_V7
+
+config TARGET_SP9850KA_2C20
+	bool "Spreadtrum sp9850ka_2c20"
+	select CPU_V7
+
+config TARGET_SP9835_HAPS
+	bool "Spreadtrum sharkle"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9850E_1H10
+	bool "Spreadtrum sp9850e"
+	select ARM64
+	help
+	  This is the Spreadtrum sharklep Board
+
+config TARGET_SP9832E_1H10
+	bool "Spreadtrum sharkle"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SL8541E_1H10
+	bool "Spreadtrum sharkle"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9832E_10C20
+	bool "Spreadtrum sharkle"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9832E_1H10_32B
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9832E_2C10_32B
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9832E_10C10_32B
+        bool "Spreadtrum sharkle"
+        select CPU_V7
+        help
+          This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_64B
+	bool "Spreadtrum sharkle"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_1H10
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_13C10
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_5C10
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_2C10
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_2H10
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9820E_17C10
+	bool "Spreadtrum sharkle"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkle Board
+
+config TARGET_SP9832EP_HAPS
+	bool "Spreadtrum sharkler"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkler Board
+
+config TARGET_SP9855A_HAPS
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9850KA_2C30
+	bool "Spreadtrum sp9850ka_2c30"
+	select CPU_V7
+endchoice
+
+config TARGET_UD710_HAPS
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_2H10
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_3H10
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_ORCA_HAPS
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 + orca haps Board
+
+config TARGET_SP9863A_1H10
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_1C10
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_10C10
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	 This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_2H10
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_3H10
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_3C10
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_TSG
+	bool "Spreadtrum sharkl3"
+	select ARM64
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_UMS510_HAPS
+        bool "Spreadtrum sharkl5"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_UMS312_1H10
+        bool "Spreadtrum sharkl5"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_UMS312_1H10_32B
+        bool "Spreadtrum sharkl5"
+        select CPU_V7
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_UMS312_2H10
+        bool "Spreadtrum sharkl5"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_UMS312_2H10_32B
+        bool "Spreadtrum sharkl5"
+        select CPU_V7
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_ums312_20c10
+        bool "Spreadtrum sharkl5"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_UMS312_3H10_4PRO
+        bool "Spreadtrum sharkl5"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5 Board
+
+config TARGET_UMS518_ZEBU
+        bool "Spreadtrum sharkl5pro"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5pro Board
+
+config TARGET_SP9650_HAPS
+        bool "Spreadtrum orca"
+        select ARM64
+        help
+          This is the Spreadtrum orca Board
+
+config TARGET_UDX710_HAPS
+        bool "Spreadtrum orca"
+        select ARM64
+        help
+          This is the Spreadtrum orca haps Board
+
+config TARGET_UDX710_1H10
+        bool "Spreadtrum orca"
+        select ARM64
+        help
+          This is the Spreadtrum orca Board
+
+config TARGET_UDX710_2H10
+        bool "Spreadtrum orca"
+        select ARM64
+        help
+          This is the Spreadtrum orca Board
+
+config TARGET_UDX710_3H10
+        bool "Spreadtrum orca"
+        select ARM64
+        help
+          This is the Spreadtrum orca Board
+
+config TARGET_SP9863A_1H10_32B
+	bool "Spreadtrum sharkl3"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_3H10_32B
+	bool "Spreadtrum sharkl3"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_SP9863A_3C10_32B
+	bool "Spreadtrum sharkl3"
+	select CPU_V7
+	help
+	  This is the Spreadtrum sharkl3 Board
+
+config TARGET_UMS518_HAPS
+        bool "Spreadtrum sharkl5pro"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5pro Board
+
+config TARGET_UMS518_HAPS_BKD
+        bool "Spreadtrum sharkl5pro"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5pro Board
+
+config TARGET_UMS512_1H10
+        bool "Spreadtrum sharkl5pro"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5pro Board
+
+config TARGET_ums512_20c10
+        bool "Spreadtrum sharkl5pro"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5pro Board
+
+config TARGET_UDX710_3H10_32B
+        bool "Spreadtrum orca"
+        select CPU_V7
+        help
+          This is the Spreadtrum orca Board
+
+config TARGET_UMS7520_HAPS
+        bool "Spreadtrum qogirn6pro"
+        select ARM64
+        help
+          This is the Spreadtrum qogirn6pro Board
+
+config TARGET_UMS7520_ZEBU
+        bool "Spreadtrum qogirn6pro"
+        select ARM64
+        help
+          This is the Spreadtrum qogirn6pro Board
+
+config ZEBU
+	bool "zebu board"
+	default n
+	help
+	  This  option specifies some special control for zebu board.
+
+config FPGA
+	bool "fpga board"
+	default n
+	help
+	  This  option specifies some special control for fpga board.
+
+config SPRD_WCN
+	bool "sprd wcn board"
+	default n
+	help
+	  This  option specifies some special control for zebu/fpga wcn board.
+
+config NO_RELOCATION
+	bool "skip relocate"
+	default y
+	help
+	  This  option specifies control of relocate uboot code.
+
+source "board/spreadtrum/isharkl/Kconfig"
+source "board/spreadtrum/sp9861/Kconfig"
+source "board/spreadtrum/sp9861_vp/Kconfig"
+source "board/spreadtrum/sp9861e_1h10/Kconfig"
+source "board/spreadtrum/sp9861e_1h11/Kconfig"
+source "board/spreadtrum/sp9861e_2h10/Kconfig"
+source "board/spreadtrum/sp9861e_2h10_2705/Kconfig"
+source "board/spreadtrum/sp9861e_3h10/Kconfig"
+source "board/spreadtrum/sp9853i/Kconfig"
+source "board/spreadtrum/sp9853i_1h10/Kconfig"
+source "board/spreadtrum/sp9853i_9c10/Kconfig"
+source "board/spreadtrum/sp9853i_10c10/Kconfig"
+source "board/spreadtrum/sp9853i_2h10/Kconfig"
+source "board/spreadtrum/sp9853i_3c10/Kconfig"
+source "board/spreadtrum/sp9830a-5h10_ga1/Kconfig"
+source "board/spreadtrum/sp9830a-7h10_ga1/Kconfig"
+source "board/spreadtrum/sp9850s_1h10_5m/Kconfig"
+source "board/spreadtrum/sp9850s_2h10_5m/Kconfig"
+source "board/spreadtrum/ss_whale2_jigboard/Kconfig"
+source "board/spreadtrum/ss_whale2_j7/Kconfig"
+source "board/spreadtrum/sp9860g_1h10_5m/Kconfig"
+source "board/spreadtrum/sp9860g_1h10_3g/Kconfig"
+
+source "board/spreadtrum/sp9860g_1h10_al/Kconfig"
+source "board/spreadtrum/sp9860g_2h10_5m/Kconfig"
+source "board/spreadtrum/sp9860g_3h10_5m/Kconfig"
+source "board/spreadtrum/sp9860g_4h10_5m/Kconfig"
+source "board/spreadtrum/sp9850ka_1h10/Kconfig"
+source "board/spreadtrum/sp9833zebu/Kconfig"
+source "board/spreadtrum/pike2/Kconfig"
+source "board/spreadtrum/sp7731e_fpga/Kconfig"
+source "board/spreadtrum/sp7731e_1h10/Kconfig"
+source "board/spreadtrum/sp7731e_1h20/Kconfig"
+source "board/spreadtrum/sp7731e_16c10/Kconfig"
+source "board/spreadtrum/j1vdk/Kconfig"
+source "board/spreadtrum/j1fpga/Kconfig"
+source "board/spreadtrum/j1zebu/Kconfig"
+source "board/spreadtrum/sp9850kh_1h10/Kconfig"
+source "board/spreadtrum/sp9850kh_2c20/Kconfig"
+source "board/spreadtrum/sp9850ka_2c10/Kconfig"
+source "board/spreadtrum/sp9850ka_2c20/Kconfig"
+source "board/spreadtrum/sp9835_haps/Kconfig"
+source "board/spreadtrum/sp9850e_1h10/Kconfig"
+source "board/spreadtrum/sp9832e_1h10/Kconfig"
+source "board/spreadtrum/sl8541e_1h10/Kconfig"
+source "board/spreadtrum/sp9832e_10c20/Kconfig"
+source "board/spreadtrum/sp9832e_1h10_32b/Kconfig"
+source "board/spreadtrum/sp9832e_2c10_32b/Kconfig"
+source "board/spreadtrum/sp9832e_10c10_32b/Kconfig"
+source "board/spreadtrum/sp9820e_64b/Kconfig"
+source "board/spreadtrum/sp9820e_1h10/Kconfig"
+source "board/spreadtrum/sp9820e_13c10/Kconfig"
+source "board/spreadtrum/sp9820e_5c10/Kconfig"
+source "board/spreadtrum/sp9820e_2c10/Kconfig"
+source "board/spreadtrum/sp9820e_2h10/Kconfig"
+source "board/spreadtrum/sp9820e_17c10/Kconfig"
+source "board/spreadtrum/sp9832ep_haps/Kconfig"
+source "board/spreadtrum/sp9855a_haps/Kconfig"
+source "board/spreadtrum/sp9850ka_2c30/Kconfig"
+source "board/spreadtrum/ud710_haps/Kconfig"
+source "board/spreadtrum/ud710_2h10/Kconfig"
+source "board/spreadtrum/ud710_3h10/Kconfig"
+source "board/spreadtrum/ud710_orca_haps/Kconfig"
+source "board/spreadtrum/sp9863a_1h10/Kconfig"
+source "board/spreadtrum/sp9863a_1c10/Kconfig"
+source "board/spreadtrum/sp9863a_10c10/Kconfig"
+source "board/spreadtrum/sp9863a_2h10/Kconfig"
+source "board/spreadtrum/sp9863a_3h10/Kconfig"
+source "board/spreadtrum/sp9863a_3c10/Kconfig"
+source "board/spreadtrum/sp9863a_tsg/Kconfig"
+source "board/spreadtrum/ums510_haps/Kconfig"
+source "board/spreadtrum/ums312_1h10/Kconfig"
+source "board/spreadtrum/ums312_1h10_32b/Kconfig"
+source "board/spreadtrum/ums312_2h10/Kconfig"
+source "board/spreadtrum/ums312_2h10_32b/Kconfig"
+source "board/spreadtrum/ums312_20c10/Kconfig"
+source "board/spreadtrum/ums312_3h10_4pro/Kconfig"
+source "board/spreadtrum/sp9650_haps/Kconfig"
+source "board/spreadtrum/udx710_haps/Kconfig"
+source "board/spreadtrum/udx710_1h10/Kconfig"
+source "board/spreadtrum/udx710_2h10/Kconfig"
+source "board/spreadtrum/udx710_3h10/Kconfig"
+source "board/spreadtrum/udx710_3h10_32b/Kconfig"
+source "board/spreadtrum/sp9863a_1h10_32b/Kconfig"
+source "board/spreadtrum/sp9863a_3h10_32b/Kconfig"
+source "board/spreadtrum/sp9863a_3c10_32b/Kconfig"
+source "board/spreadtrum/ums518_haps/Kconfig"
+source "board/spreadtrum/ums518_haps_bkd/Kconfig"
+source "board/spreadtrum/ums518_zebu/Kconfig"
+source "board/spreadtrum/ums512_1h10/Kconfig"
+source "board/spreadtrum/ums512_20c10/Kconfig"
+source "board/spreadtrum/ums7520_haps/Kconfig"
+source "board/spreadtrum/ums7520_zebu/Kconfig"
+endif

@@ -1,0 +1,18 @@
+if TARGET_ums512_20c10
+
+config SYS_BOARD
+	default "ums512_20c10"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkl5pro"
+
+config SYS_CONFIG_NAME
+	default "ums512_20c10"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

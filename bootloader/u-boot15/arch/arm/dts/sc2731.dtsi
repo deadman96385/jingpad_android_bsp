@@ -1,0 +1,526 @@
+/*
+ * Spreadtrum Analog Die SC2731 DTS file
+ *
+ * Copyright (C) 2015, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+&adi_bus {
+	pmic: pmic@0 {
+		compatible = "sprd,sc2731";
+		reg = <0>; /* chip select 0 */
+		spi-max-frequency = <26000000>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
+		sprd,pmic_intc_base = <0x140>;
+		sprd,pmic_intc_irqmax = <16>;
+
+		pmic_charger: charger@0{
+			compatible = "sprd,sc2731-charger";
+			reg = <0x0>;
+			status = "disabled";
+		};
+
+		pmic_timer: timer@40{
+			compatible = "sprd,sc2731-chg-timer";
+			reg = <0x40>;
+			interrupt-parent = <&pmic>;
+			interrupts = <9 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		pmic_fchg: fast-charger@60{
+			compatible = "sprd,sc2731-fchg";
+			reg = <0x60>;
+			interrupt-parent = <&pmic>;
+			interrupts = <6 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
+		};
+
+		pmic_wdt: watchdog@80 {
+			compatible = "sprd,sc2731-wdt";
+			reg = <0x80>;
+		};
+
+		pmic_chg_wdt: watchdog@c0 {
+			compatible = "sprd,sc2731-chg-wdt";
+			reg = <0xc0>;
+		};
+
+		pmic_typec: typec@100 {
+			compatible = "sprd,typec";
+			interrupt-parent = <&pmic>;
+			interrupts = <13 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x100>;
+			mode = <2>;
+			tsleep = <1500>;
+			status = "disabled";
+		};
+
+		pmic_bltc_rgb: bltc-rgb@200 {
+			compatible = "sprd,sc2731-bltc-rgb";
+			reg = <0x200>;
+		};
+
+		pmic_flash: flash@240 {
+			compatible = "sprd,sc2731-flash";
+			interrupt-parent = <&pmic>;
+			interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x240>;
+		};
+
+		pmic_kpled: kpled@2c4 {
+			compatible = "sprd,sc2731-kpled";
+			brightness_max = <255>;
+			brightness_min = <0>;
+			run_mode = <1>;
+		};
+
+		pmic_rtc: rtc@280 {
+			compatible = "sprd,sc2731-rtc";
+			interrupt-parent = <&pmic>;
+			interrupts = <2 IRQ_TYPE_LEVEL_HIGH>;
+			reg = <0x280>;
+		};
+
+		pmic_eic: gpio-controller@300 {
+			compatible = "sprd,sc2731-eic";
+			reg = <0x300>;
+			interrupts = <5 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&pmic>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			/* need to be replaced by gpio-ranges */
+			sprd,gpiobase = <304>;
+			sprd,ngpios = <16>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		pmic_efuse: efuse@380 {
+			compatible = "sprd,sc2731-efuse";
+			reg = <0x380>;
+			sprd,block-num = <32>;
+			sprd,block-width = <16>;
+		};
+
+		pmic_adc: adc@480{
+			compatible = "sprd,sc2731-adc";
+			reg = <0x480>;
+			#io-channel-cells = <1>;
+		 };
+
+		power-controller@810 {
+			compatible = "sprd,sc2731-regulator";
+			reg = <0xc28>,<0xcd4>,<0xd00>,<0xd1c>,<0xd20>,<0xd3c>;
+
+			regulators {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				vddarm0: dcdc@0 {
+					reg = <0>;
+					regulator-name = "vddarm0";
+					sprd,default-microvolt = <900000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <400000>;
+					regulator-max-microvolt = <1996000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddarm1: dcdc@1 {
+					reg = <1>;
+					regulator-name = "vddarm1";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <900000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <400000>;
+					regulator-max-microvolt = <1996000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddcore: dcdc@2 {
+					reg = <2>;
+					regulator-name = "vddcore";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <900000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <400000>;
+					regulator-max-microvolt = <1996000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddgpu: dcdc@3 {
+					reg = <3>;
+					regulator-name = "vddgpu";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <900000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <400000>;
+					regulator-max-microvolt = <1996000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddmem: dcdc@4 {
+					reg = <4>;
+					regulator-name = "vddmem";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1000000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <600000>;
+					regulator-max-microvolt = <3596000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddgen: dcdc@5 {
+					reg = <5>;
+					regulator-name = "vddgen";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1850000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <600000>;
+					regulator-max-microvolt = <3796000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				dcdcrf: dcdc@6 {
+					reg = <6>;
+					regulator-name = "dcdcrf";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1500000>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <600000>;
+					regulator-max-microvolt = <3796000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddwpa: dcdc@7 {
+					reg = <7>;
+					regulator-name = "vddwpa";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,step-microvolt = <3125>;
+					regulator-min-microvolt = <3125000>;
+					regulator-max-microvolt = <3400000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddcama0: ldo@8 {
+					reg = <8>;
+					regulator-name = "vddcama0";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <2800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddcama1: ldo@9 {
+					reg = <9>;
+					regulator-name = "vddcama1";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <2800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddcammot: ldo@10 {
+					reg = <10>;
+					regulator-name = "vddcammot";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <2800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddsim0: ldo@11 {
+					reg = <11>;
+					regulator-name = "vddsim0";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					status = "disabled";
+				};
+
+				vddsim1: ldo@12 {
+					reg = <12>;
+					regulator-name = "vddsim1";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					status = "disabled";
+				};
+
+				vddvldo: ldo@13 {
+					reg = <13>;
+					regulator-name = "vddvldo";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddemmccore: ldo@14 {
+					reg = <14>;
+					regulator-name = "vddemmccore";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3000000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddsdcore: ldo@15 {
+					reg = <15>;
+					regulator-name = "vddsdcore";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3000000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,default-on;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddsdio: ldo@16 {
+					reg = <16>;
+					regulator-name = "vddsdio";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3000000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,default-on;
+					sprd,hide-offset = <1000>;
+				};
+
+				vdd28: ldo@17 {
+					reg = <17>;
+					regulator-name = "vdd28";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <2800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddwifipa: ldo@18 {
+					reg = <18>;
+					regulator-name = "vddwifipa";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3300000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vdddcxo: ldo@19 {
+					reg = <19>;
+					regulator-name = "vdddcxo";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddusb33: ldo@20 {
+					reg = <20>;
+					regulator-name = "vddusb33";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3300000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddcamd0: ldo@21 {
+					reg = <21>;
+					regulator-name = "vddcamd0";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1200000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddcamd1: ldo@22 {
+					reg = <22>;
+					regulator-name = "vddcamd1";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1200000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddcon: ldo@23 {
+					reg = <23>;
+					regulator-name = "vddcon";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1550000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddcamio: ldo@24 {
+					reg = <24>;
+					regulator-name = "vddcamio";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+				};
+
+				vdd18: ldo@25 {
+					reg = <25>;
+					regulator-name = "vdd18";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+
+				vddrf: ldo@26 {
+					reg = <26>;
+					regulator-name = "vddrf";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1800000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,default-on;
+					sprd,hide-offset = <1000>;
+				};
+
+				vddsram: ldo@27 {
+					reg = <27>;
+					regulator-name = "vddsram";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <1200000>;
+					sprd,step-microvolt = <6250>;
+					regulator-min-microvolt = <1006250>;
+					regulator-max-microvolt = <1800000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					sprd,default-on;
+				};
+				vddkpled: ldo@28 {
+					reg = <28>;
+					regulator-name = "vddkpled";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3300000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					status = "disabled";
+				};
+				vddvibr: ldo@29 {
+					reg = <29>;
+					regulator-name = "vddvibr";
+					regulator-cal-channel = <0x0 0x0 0x0>;
+					sprd,default-microvolt = <3000000>;
+					sprd,step-microvolt = <10000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <3750000>;
+					regulator-microvolt-offset = <0>;
+					sprd,hide-offset = <1000>;
+					status = "disabled";
+				};
+
+			};
+		};
+
+		pmic_fgu: fgu@a00{
+			compatible = "sprd,sc2731-fgu";
+			reg = <0xa00>;
+			interrupt-parent = <&pmic>;
+			interrupts = <4 IRQ_TYPE_LEVEL_HIGH>;
+			ocv-type = <0>;
+		};
+
+		pmic_gr: global@c00 {
+			compatible = "sprd,pmic-glb";
+			reg = <0xc00>;
+		};
+
+		pmic_vibrator: vibrator@ec8 {
+			compatible = "sprd,sc2731-vibrator";
+			reg = <0xec8>;
+		};
+
+		pmic_7sreset: reset@f30 {
+			compatible = "sprd,sc2731-7sreset";
+			reg = <0xf30>,<0xef8>;
+		};
+        };
+};

@@ -1,0 +1,22 @@
+if TARGET_SP9850KA_1H10
+
+config SYS_BOARD
+	default "sp9850ka_1h10"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sc9833"
+
+config SYS_CONFIG_NAME
+	string "Board Config Header file"
+	default "sp9850ka_1h10"
+	help
+	  This option selects the board config file in
+	  include/configs/ directory to be used to build U-Boot.
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

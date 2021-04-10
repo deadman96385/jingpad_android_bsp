@@ -1,0 +1,45 @@
+if TARGET_SP9861E_2H10_2705
+
+config SYS_BOARD
+	default "sp9861e_2h10_2705"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "iwhale"
+
+config SYS_CONFIG_NAME
+	string "Board Config Header file"
+	default "sp9861e_2h10_2705"
+	help
+	  This option selects the board config file in
+	  include/configs/ directory to be used to build U-Boot.
+
+config SYS_TEXT_BASE
+	default 0x7f000000
+
+config BOARD_SPECIFIC_OPTIONS # dummy
+	def_bool y
+	select BULLHILL
+
+config DEFAULT_DEVICE_TREE
+	string "Board Device Tree Source (dts) file"
+	default "iwhale2"
+	help
+	  This option selects the board Device Tree Source (dts) file in
+	  arch/x86/dts/ directory to be used to build U-Boot.
+
+config SYS_CAR_ADDR
+	hex "Board specific Cache-As-RAM (CAR) address"
+	default 0x19200000
+	help
+	  This option specifies the board specific Cache-As-RAM (CAR) address.
+
+config SYS_CAR_SIZE
+	hex "Board specific Cache-As-RAM (CAR) size"
+	default 0x4000
+	help
+	  This option specifies the board specific Cache-As-RAM (CAR) size.
+
+endif

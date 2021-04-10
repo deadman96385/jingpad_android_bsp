@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is /bsp/tools/teecfg/user_guide.
+-->
+<test_xml_overlay_board_product_overlay>
+	<property ID="two_level_overlay">
+		<value type="ATTR_TYPE_UINT32">0xaa1166ff</value>
+	</property>
+</test_xml_overlay_board_product_overlay>
+
+
+

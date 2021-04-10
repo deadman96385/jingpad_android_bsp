@@ -1,0 +1,18 @@
+if TARGET_SL8541E_1H10
+
+config SYS_BOARD
+	default "sl8541e_1h10"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkle"
+
+config SYS_CONFIG_NAME
+	default "sl8541e_1h10"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

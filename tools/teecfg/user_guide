@@ -1,0 +1,49 @@
+1、修改xml文件
+1.1、支持的元素嵌套层级
+目前仅支持在xml文件中进行2级元素的嵌套。
+e.g.
+<root_name>
+    <property ID="xxx">   ---第一级
+        <name1 type="xxx">xxxxxx</name1>   ---第二级
+        <name2 type="xxx">xxxxxx</name2>   ---第二级
+	<name3 type="xxx" tag="xxx">xxxxxx</name3>   ---第二级
+        ......
+    </property>
+
+    <property ID="xxx">   ---第一级
+        <name4 type="xxx">xxxxxx</name4>   ---第二级
+        <name5 type="xxx">xxxxxx</name5>   ---第二级
+	<name6 type="xxx">xxxxxx</name6>   ---第二级
+        ......
+    </property>
+
+    ......
+</root_name>
+1.2、保留字
+对于xml文件中的"property"、"ID"、"type"、"tag"保留字不能进行修改，其它名字，比如"root_name"、"name1"
+等，可以根据需要进行命名。
+1.3、type取值
+type只能设置为如下值之一：
+ATTR_TYPE_UINT8
+ATTR_TYPE_UINT16
+ATTR_TYPE_UINT32
+ATTR_TYPE_UINT64
+ATTR_TYPE_BOOL
+ATTR_TYPE_STRING
+其中ATTR_TYPE_UINT8类型对于的数据格式为0x**，"**"的长度不能超过2;
+    ATTR_TYPE_UINT16类型对于的数据格式为0x**，"**"的长度不能超过4;
+    ATTR_TYPE_UINT32类型对于的数据格式为0x**，"**"的长度不能超过8;
+    ATTR_TYPE_UINT64类型对于的数据格式为0x**，"**"的长度不能超过16;
+    ATTR_TYPE_BOOL类型对于的数据为"true"或"false";
+    ATTR_TYPE_STRING类型对于的数据长度不能超过255。
+1.4、tag取值
+tag只能设置为ATTR_TAG_IN_TEECFG_HEADER，表示这个值需要被写入到teecfg.bin文件的tee_config_header中。
+注：目前只有tos.xml中使用了此tag，其它xml文件中不能使用。
+
+2、xml文件的使用范围
+2.1、soc级别配置
+当需要对某个soc的功能进行配置时（比如增加firewall功能），可以在该soc的common/teecfg文件夹下新建一个xml文件
+（比如teecfg_firewall.xml)，在此文件中根据需要进行配置。这些配置即是soc的默认配置。
+
+
+

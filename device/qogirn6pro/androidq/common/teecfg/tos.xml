@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is bsp/tools/teecfg/user_guide.
+TOS configuration:
+1.The type value must be set to "ATTR_TYPE_UINT32".
+2.The value 0x400000 means the tos memory size is 4M, which can be set for your requirement,
+  but the minimal size of tos is 4M.
+-->
+<tos_config>
+	<property ID="tos">
+		<size type="ATTR_TYPE_UINT32" tag="ATTR_TAG_IN_TEECFG_HEADER">0x3fc0000</size>
+	</property>
+</tos_config>
+
+
+

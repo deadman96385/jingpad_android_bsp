@@ -1,0 +1,26 @@
+/*
+ * Spreadtrum sp9861 fpga board DTS file
+ *
+ * Copyright (C) 2015, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+#include "sc9861.dtsi"
+#include <dt-bindings/e820/e820.h>
+
+/ {
+
+	e820_map {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		compatible = "intel,e820_map";
+
+		/* element array: addr(64), size(64), type*/
+		e820_map = <0x00000000 0xfe000000 0x00000000 0x01000000 E820_RESERVED>, /* reserve */
+			   <0x00000000 0x00000000 0x00000000 0x40000000 E820_RAM>; /* ram */
+	};
+
+};

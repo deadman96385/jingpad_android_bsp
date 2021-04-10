@@ -1,0 +1,5 @@
+测试步骤：
+1、将teecfg_test.sh和teecfg_test_xml文件夹拷贝到待验证分支的bsp目录下
+   eg. ~/sprdroidq_trunk/bsp
+2、在bsp目录下运行teecfg_test.sh脚本（注意，一定要加上-p,-n参数）
+   eg. bash teecfg_test.sh -p ~/sprdroidq_trunk/bsp -n s9863a1h10_Natv-userdebug-androidq

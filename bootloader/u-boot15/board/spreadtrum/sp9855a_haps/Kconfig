@@ -1,0 +1,18 @@
+if TARGET_SP9855A_HAPS
+
+config SYS_BOARD
+	default "sp9855a_haps"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkl3"
+
+config SYS_CONFIG_NAME
+	default "sp9855a_haps"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

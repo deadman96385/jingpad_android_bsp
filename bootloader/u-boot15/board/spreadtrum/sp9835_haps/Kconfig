@@ -1,0 +1,18 @@
+if TARGET_SP9835_HAPS
+
+config SYS_BOARD
+	default "sp9835_haps"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkle"
+
+config SYS_CONFIG_NAME
+	default "sp9835_haps"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

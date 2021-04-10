@@ -1,0 +1,18 @@
+if TARGET_SP9820E_2C10
+
+config SYS_BOARD
+	default "sp9820e_2c10"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkle"
+
+config SYS_CONFIG_NAME
+	default "sp9820e_2c10"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

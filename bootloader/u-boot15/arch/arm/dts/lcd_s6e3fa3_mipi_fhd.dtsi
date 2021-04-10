@@ -1,0 +1,96 @@
+/ { lcds {
+/*
+	 * IC       :s6e3fa3
+	 * module   :AMS549KU01
+	 * source   :copy from AMS549KU01 datesheet
+	 * Copyright:20160304  bring up whale2 board
+	 ------------------
+	 * filename :lcd_s6e3fa3_mipi_fhd.dtsi
+	 * FHD / OLED
+	 * Read-id :  DA-0X40
+	              DB-0X00
+	              DC-0X01
+*/
+	lcd_s6e3fa3_mipi_fhd: lcd400001@400001 {
+
+		work-mode = <0>;    /*command mode(0) or video mode(1)*/
+		bpp = <24>;
+		lane-number = <4>;
+		hsync-pol = <0>;
+		vsync-pol = <0>;
+		de-pol = <0>;
+		te-pol = <0>;
+		color_mode_pol = <1>;
+		shut_down_pol = <1>;
+		fps = <60>;
+		direction = <0>;
+		simu_width = <480>;
+		simu_height = <854>;
+		panel_name = "lcd_s6e3fa3_mipi_fhd";
+
+		power-on-sequence = <
+					121  1  10
+					98  1  20
+					126  1  20
+					126  0  20
+					126  1  120
+					>;
+		power-off-sequence = <
+					126  0  10
+					98  0  10
+					121  0  20
+					>;
+
+		init-data = [
+                        39 00 00 03 F0 5A 5A
+                        39 00 00 03 FC 5A 5A
+                        23 00 00 02 35 00
+                        23 00 00 02 B0 1E
+                        23 00 00 02 FD 94
+                        23 00 00 02 CC 4C
+                        23 00 00 02 ED 44
+                        39 00 00 24 CA 01 00 01 00 01 00 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 80 00 00 00 00 00
+                        23 00 00 02 F7 03
+                        23 00 00 02 B5 50
+                        23 00 00 02 53 C0
+                        23 00 00 02 B5 50
+                        23 00 00 02 55 02
+                        39 00 00 03 FC A5 A5
+                        39 00 00 03 F0 A5 A5
+                        13 78 00 01 11
+                        13 64 00 01 29
+			];
+
+		sleep-in =  [
+			13 0A 00 01 28
+			13 78 00 01 10
+			];
+		sleep-out = [
+			13 78 00 01 11
+			13 64 00 01 29
+			];
+		esd-check = [
+			37 00 00 02 01 00
+			];
+		read-id = [
+			37 00 00 02 02 00
+			];
+
+		display-timings {
+			clock-frequency = <1000000>;
+			hactive = <1080>;
+			vactive = <1920>;
+			hback-porch = <20>;
+			hfront-porch = <20>;
+			vback-porch = <9>;
+			vfront-porch = <7>;
+			hsync-len = <20>;
+			vsync-len = <2>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <0>;
+			pixelclk-active = <1>;
+		};
+	};
+};};
+

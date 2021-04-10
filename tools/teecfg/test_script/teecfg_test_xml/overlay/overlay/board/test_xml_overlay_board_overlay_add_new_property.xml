@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is /bsp/tools/teecfg/user_guide.
+-->
+<test_xml_overlay_board_add_new_property>
+	<property ID="old_property">
+		<name type="ATTR_TYPE_STRING">overlay_test</name>
+		<enable type="ATTR_TYPE_BOOL">true</enable>
+		<addr type="ATTR_TYPE_UINT64">0x1020304050607080</addr>
+	</property>
+	<property ID="add_new_property">
+		<name type="ATTR_TYPE_STRING">test_overlay</name>
+		<corenum type="ATTR_TYPE_UINT8">0x00</corenum>
+		<mem type="ATTR_TYPE_UINT64">0x1122334455667788</mem>
+	</property>
+</test_xml_overlay_board_add_new_property>
+
+
+

@@ -1,0 +1,146 @@
+
+#ifndef ROC1_DFS_H
+#define ROC1_DFS_H
+
+#include "roc1_common.h"
+
+//macros
+#define DFS_CHANEL 2
+#define DFS_SEL 8
+#define DFS_SEL_CP 4
+
+enum DFS_SOFT_STATUS_E
+{
+	DFS_SUCCESS=0,
+	DFS_CLK_ERROR=1,
+	DFS_RUNNING=2,
+	DFS_SAME_FREQ=3,
+	DFS_FAIL=4
+};
+
+//registers
+#define REG_CUR_FREQ	0x3100012C
+#define REG_DMC_CLK_INIT_CFG	0x3105400c
+#define REG_ADJS_WB			0x30400000
+
+#define REG_DFS_STATUS			0x310532f4
+#define REG_DFS_SW_CTRL		0x31054104
+#define REG_DFS_PURE_SW_CTRL	0x31054100
+#define REG_DFS_SW_CTRL1		0x31054108
+#define REG_DFS_SW_CTRL2		0x3105410c
+#define REG_DFS_SW_CTRL3		0x31054110
+
+#define REG_DFS_HW_CTRL		0x31054114
+#define REG_DFS_HW_CTRL1		0x31054118
+#define REG_DFS_HW_CTRL2		0x3105411c
+
+#define REG_DFS_HW_RATIO_SET0	0x31054120
+#define REG_DFS_HW_RATIO_SET1	0x31054124
+#define REG_DFS_HW_RATIO_SET2	0x31054128
+#define REG_DFS_HW_RATIO_SET3	0x3105412c
+#define REG_DFS_HW_RATIO_SET4	0x31054130
+#define REG_DFS_HW_RATIO_SET5	0x31054134
+#define REG_DFS_HW_RATIO_SET6	0x31054138
+#define REG_DFS_HW_RATIO_SET7	0x3105413c
+
+
+#define REG_DFS_TIMER_EB			0x320901b0
+#define REG_DFS_TIMER_EB1			0x324b0000
+#define REG_DFS_TIMER_EB2			0x324c0000
+#define REG_DFS_TIMER_SEL1			0x324b001c
+#define REG_DFS_TIMER_SEL2			0x324c001c
+
+#define REG_DFS_TIMER_BW_HIGH		0x324b0004
+#define REG_DFS_TIMER_BW_LOW		0x324b0008
+#define REG_DFS_TIMER_DFI_HIGH	0x324b0010
+#define REG_DFS_TIMER_DFI_LOW		0x324b0014
+#define REG_DFS_TIMER_LAT_HIGH	0x324c0004
+#define REG_DFS_TIMER_LAT_LOW		0x324c0008
+#define REG_DFS_TIMER_PTM_HIGH	0x324c0010
+#define REG_DFS_TIMER_PTM_LOW	0x324c0014
+
+
+
+
+#define REG_DFI_CFG						0x31010000
+#define REG_DFI_INT_EN					0x31010004
+#define REG_DFI_INT_CLR					0x31010008
+#define REG_DFI_INT_STATUS				0x3101000C
+#define REG_DFI_OVERFLOW0				0x31010020
+#define REG_DFI_UNDERFLOW0			0x31010024
+#define REG_DFI_OVERFLOW1				0x31010028
+#define REG_DFI_UNDERFLOW1			0x3101002C
+#define REG_DFI_OVERFLOW2				0x31010030
+#define REG_DFI_UNDERFLOW2			0x31010034
+#define REG_DFI_OVERFLOW3				0x31010038
+#define REG_DFI_UNDERFLOW3			0x3101003C
+#define REG_DFI_OVERFLOW4				0x31010040
+#define REG_DFI_UNDERFLOW4			0x31010044
+#define REG_DFI_OVERFLOW5				0x31010048
+#define REG_DFI_UNDERFLOW5			0x3101004C
+#define REG_DFI_OVERFLOW6				0x31010050
+#define REG_DFI_UNDERFLOW6			0x31010054
+#define REG_DFI_OVERFLOW7				0x31010058
+#define REG_DFI_UNDERFLOW7			0x3101005C
+
+#define REG_VOTE_DPU				0x31056400
+#define REG_VOTE_DCAM				0x31056404
+
+
+
+#define REG_LATMON_EB					0x30210800
+#define REG_TAR_LAT_OFFSET_LM0		0x30210808
+#define REG_URGENT_RATIO_LM0			0x3021080C
+#define REG_LATMON_SUB_CFG_LM0		0x30210810
+#define REG_TAR_LAT_OFFSET_LM1		0x30210820
+#define REG_URGENT_RATIO_LM1			0x30210824
+#define REG_LATMON_SUB_CFG_LM1		0x30210828
+#define REG_TAR_LAT_OFFSET_LM2		0x30210830
+#define REG_URGENT_RATIO_LM2			0x30210834
+#define REG_LATMON_SUB_CFG_LM2		0x30210838
+#define REG_LATMON_HW_DFS_CFG		0x30210814
+
+#define REG_LATMON_AHB_EB			0x402e0004
+
+#define REG_BWMON_EB					0x30210A00
+#define REG_BWMON0_UP_WBW_SET		0x30210A04
+#define REG_BWMON0_UP_RBW_SET		0x30210A08
+#define REG_BWMON1_UP_WBW_SET		0x30210A0C
+#define REG_BWMON1_UP_RBW_SET		0x30210A10
+
+#define DDR_SLEEP_DISABLE				0x322800d0
+#define REG_PMU_ACC_READY				0x32280250
+
+
+//structs
+
+typedef struct dfs_para
+{
+	uint32 freq;
+	uint32 ratio;
+	uint32 clk_mode;
+	uint32 ratio_d2;
+}DFS_PARA;
+
+//functions
+//void sysmon_tmr_init();
+//void dfi_init();
+//void latmon_init();
+//void bwmon_init();
+
+void sw_dfs_mode();
+uint32 sw_dfs_go(uint32 dfs_point);
+//void hw_dfs_mode();
+//uint32 hw_dfs_go();
+//uint32 hw_dfs_stop();
+
+uint32 dfs_init();
+//uint32 dfi_set_overflow(uint32 sel, uint32 val);
+//uint32 dfi_set_underflow(uint32 sel, uint32 val);
+uint32 dfs_get_freq();
+
+//uint32 sysmon_tmr_set(uint32 sel, uint32 val);
+
+//uint32 dfs_sleep();
+//void dfs_resume(uint32 freq);
+#endif

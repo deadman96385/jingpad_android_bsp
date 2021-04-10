@@ -1,0 +1,245 @@
+####################################################################
+# list of board.
+# if define new board, please add new item to here,
+# and add xxxx.h(board config header) to include/configs/
+#                       ARCH CPU BOARD          VENDOR    SOC
+####################################################################
+sp9850ka_1h10_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp9630 spreadtrum sc9630
+
+sp9850ka_2c10_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp9630 spreadtrum sc9630
+
+sp9850ka_2c20_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp9630 spreadtrum sc9630
+
+sp9850ka_2c30_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp9630 spreadtrum sc9630
+
+sp7731e_1h10_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp7731e_1h10 spreadtrum pike2
+
+sp7731e_1h20_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp7731e_1h20 spreadtrum pike2
+
+sp7731e_16c10_config        : preconfig
+	@$(MKCONFIG) $@ arm armv7 sp7731e_16c10 spreadtrum pike2
+
+sp9850kh_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9850kh_1h10 spreadtrum sharklj1
+
+sp9850kh_2c20_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9850kh_2c20 spreadtrum sharklj1
+
+j1fpga_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 j1fpga spreadtrum sharklj1
+
+ud710_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_haps spreadtrum roc1
+
+ud710_orca_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_orca_haps spreadtrum roc1
+
+ud710_2h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_2h10 spreadtrum roc1
+
+ud710_3h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_3h10 spreadtrum roc1
+
+ud710_3h10u_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_3h10u spreadtrum roc1
+
+sp9835_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9835_haps spreadtrum sharkle
+
+sp9820e_17c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_17c10 spreadtrum sharkle
+
+sp9820e_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_1h10 spreadtrum sharkle
+
+sp9820e_13c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_13c10 spreadtrum sharkle
+
+sp9820e_5c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_5c10 spreadtrum sharkle
+
+sp9820e_2h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_2h10 spreadtrum sharkle
+
+sp9820e_2c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_2c10 spreadtrum sharkle
+
+sl8541e_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sl8541e_1h10 spreadtrum sharkle
+
+sp9832e_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9832e_1h10 spreadtrum sharkle
+
+sp9832e_10c20_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9832e_10c20 spreadtrum sharkle
+
+sp9832e_1h10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9832e_1h10_32b spreadtrum sharkle
+
+sp9832e_2c10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9832e_2c10_32b spreadtrum sharkle
+
+sp9832e_10c10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9832e_10c10_32b spreadtrum sharkle
+
+sp9850e_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9850e_1h10 spreadtrum sharkle
+
+sp9820e_64b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9820e_64b spreadtrum sharkle
+
+sp9832ep_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9832ep_haps spreadtrum sharkler
+
+sp9853i_1h10_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_1h10 spreadtrum isharkl2
+
+sp9853i_9c10_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_9c10 spreadtrum isharkl2
+
+sp9853i_10c10_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_10c10 spreadtrum isharkl2
+
+sp9853i_2h10_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_2h10 spreadtrum isharkl2
+
+sp9853i_3c10_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_3c10 spreadtrum isharkl2
+
+sp9853i_1h10_vmm_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_1h10 spreadtrum isharkl2
+
+sp9853i_9c10_vmm_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_9c10 spreadtrum isharkl2
+
+sp9853i_10c10_vmm_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_10c10 spreadtrum isharkl2
+
+sp9853i_2h10_vmm_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_2h10 spreadtrum isharkl2
+
+sp9853i_3c10_vmm_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9853i_3c10 spreadtrum isharkl2
+
+sp9861e_1h10_config	: preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_1h10 spreadtrum iwhale2
+
+sp9861e_1h10_vmm_config	: preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_1h10_vmm spreadtrum iwhale2
+
+sp9861e_1h11_vmm_config	: preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_1h11_vmm spreadtrum iwhale2
+
+sp9861e_3h10_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_3h10 spreadtrum iwhale2
+
+sp9861e_3h10_vmm_config : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_3h10_vmm spreadtrum iwhale2
+
+sp9861g_1h10emmc_config	: preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861g_1h10emmc spreadtrum iwhale2
+
+sp9861e_2h10_config	: preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_2h10 spreadtrum iwhale2
+
+sp9861e_2h10_2705_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_2h10_2705 spreadtrum iwhale2
+
+sp9861e_1h11_config     : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_1h11 spreadtrum iwhale2
+
+sp9861e_2h10_vmm_config	: preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_2h10_vmm spreadtrum iwhale2
+
+sp9861e_2h10_2705_vmm_config : preconfig
+	@$(MKCONFIG) $@ x86 bullhill sp9861e_2h10_2705_vmm spreadtrum iwhale2
+
+sp9855a_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sharkl3_haps spreadtrum sharkl3
+
+sp9863a_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_1h10 spreadtrum sharkl3
+
+sp9863a_1c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_1c10 spreadtrum sharkl3
+
+sp9863a_10c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_10c10 spreadtrum sharkl3
+
+sp9863a_2h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_2h10 spreadtrum sharkl3
+
+sp9863a_3h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_3h10 spreadtrum sharkl3
+
+sp9863a_3c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_3c10 spreadtrum sharkl3
+
+ums510_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums510_haps spreadtrum sharkl5
+
+sp9650_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9650_haps spreadtrum orca
+
+udx710_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 udx710_haps spreadtrum orca
+
+udx710_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 udx710_1h10 spreadtrum orca
+
+udx710_2h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 udx710_2h10 spreadtrum orca
+
+udx710_3h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 udx710_3h10 spreadtrum orca
+
+udx710_3h10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 udx710_3h10_32b spreadtrum orca
+
+sp9863a_1h10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_1h10_32b spreadtrum sharkl3
+
+sp9863a_3h10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_3h10_32b spreadtrum sharkl3
+
+sp9863a_3c10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 sp9863a_3c10_32b spreadtrum sharkl3
+
+ums312_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums312_1h10 spreadtrum sharkl5
+
+ums312_1h10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums312_1h10_32b spreadtrum sharkl5
+
+ums312_2h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums312_2h10 spreadtrum sharkl5
+
+ums312_2h10_32b_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums312_2h10_32b spreadtrum sharkl5
+
+ums312_3h10_4pro_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums312_3h10_4pro spreadtrum sharkl5
+
+ums518_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums518_haps spreadtrum sharkl5pro
+
+ums512_1h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums512_1h10 spreadtrum sharkl5pro
+
+ums512_20c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums512_20c10 spreadtrum sharkl5pro
+
+ums312_20c10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums312_20c10 spreadtrum sharkl5
+
+ums7520_haps_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums7520_haps spreadtrum qogirn6pro
+
+ums7520_zebu_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums7520_zebu spreadtrum qogirn6pro

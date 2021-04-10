@@ -1,0 +1,18 @@
+if TARGET_PIKE2
+
+config SYS_BOARD
+	default "pike2"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "pike2"
+
+config SYS_CONFIG_NAME
+	default "pike2"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

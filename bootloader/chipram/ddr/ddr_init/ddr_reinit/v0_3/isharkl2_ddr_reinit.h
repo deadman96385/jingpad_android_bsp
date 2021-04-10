@@ -1,0 +1,45 @@
+#ifndef _ISHARKL2_REINIT_H
+
+#define _ISHARKL2_REINIT_H
+
+#include "isharkl2_base_common.h"
+
+//#define DMA_CONFIG
+#define FORCE_MODE
+#define FORCE_DEEP_SLEEP
+#define RPULL
+//#define DO_TRAINING
+#define DDR_TEST
+//#define MINICODE
+
+
+//hosan iwhale2
+#define PD_PUB0_SYS_PWR_CFG     			(AON_PMU_APB_BASE + 0x0044)
+#define PD_PUB0_FORCE_SLEEP				(AON_PMU_APB_BASE + 0x012c)
+#define SYS_SLP_STATUS						(AON_PMU_APB_BASE + 0x015c)
+#define DDR0_ACC_RDY 						(AON_PMU_APB_BASE + 0x02cc)
+#define PD_PUB0_SYS_SHUTDOWN_MARK		(AON_PMU_APB_BASE + 0x028c)
+#define CGM_PMU_SEL						(AON_PMU_APB_BASE + 0x0234)
+
+#define DDR_SLEEP_CTRL 						(AON_COM_PMU_APB_BASE+0x8)
+#define SYS_SOFT_RESET						(AON_COM_PMU_APB_BASE)
+#define PAD_OUT_CHIP_SLEEP_CTRL			(AON_COM_PMU_APB_BASE+0x1c)		//iwhale2
+#define DDR_PHY_DATA_RET					(AON_COM_PMU_APB_BASE+0x48)
+#define PUB_MEM_RESET_RET					(AON_COM_PMU_APB_BASE+0x98)
+
+#define  PREDIV_CLK_REG_BASE  				(AON_PRE_DIV_CLK_GEN_BASE)
+#define  GATE_EN_SEL0_CFG 					(AON_PRE_DIV_CLK_GEN_BASE +0x003c)
+
+#define PUB0_APB_PUB_CHN0_LP_CTRL		(PUB0_APB_RF_PUB0_BASE+0x4030)
+#define PUB0_TOP_PUB0_DUMMY_REG			(PUB0_APB_RF_PUB0_BASE+0x80bc)
+
+typedef enum
+{
+	PUB_POWERON,
+	PUB_POWEROFF
+}PUB_STATUS;
+
+
+extern void DMC_Reinit(void);
+
+#endif

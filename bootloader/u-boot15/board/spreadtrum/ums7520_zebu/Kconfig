@@ -1,0 +1,18 @@
+if TARGET_UMS7520_ZEBU
+
+config SYS_BOARD
+	default "ums7520_zebu"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "qogirn6pro"
+
+config SYS_CONFIG_NAME
+	default "ums7520_zebu"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

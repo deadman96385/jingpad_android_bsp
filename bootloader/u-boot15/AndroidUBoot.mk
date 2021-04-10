@@ -1,0 +1,138 @@
+ifeq ($(TARGET_KERNEL_ARCH) , arm64)
+UBOOT_TOOLCHAIN := $(shell pwd)/prebuilts/gcc/linaro-x86/aarch64/gcc-linaro-4.8/gcc-linaro-4.8-2015.06-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-
+SRCARCH := arm
+else ifeq ($(TARGET_KERNEL_ARCH), arm)
+UBOOT_TOOLCHAIN := $(shell pwd)/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/bin/arm-eabi-
+SRCARCH := arm
+else ifeq ($(TARGET_KERNEL_ARCH), x86)
+UBOOT_TOOLCHAIN := $(shell pwd)/prebuilts/gcc/linux-x86/x86/x86_64-linux-android-4.9/bin/x86_64-linux-android-
+SRCARCH := x86
+endif
+
+UBOOT_OUT := $(TARGET_OUT_INTERMEDIATES)/u-boot15
+UBOOT_CONFIG := $(UBOOT_OUT)/include/config.h
+UBOOT_DTB_BUILT_BIN := $(UBOOT_OUT)/u-boot-dtb.bin
+UBOOT_BUILT_BIN := $(UBOOT_OUT)/u-boot.bin
+FDL2_BUILT_BIN := $(UBOOT_OUT)/fdl2.bin
+
+ifneq ($(strip $(CONFIG_HWFEATURE)),)
+UBOOT_HWFEATURE_FLAG += -DCONFIG_UBOOT_HWFEATURE='$(strip $(CONFIG_HWFEATURE))'
+export UBOOT_HWFEATURE_FLAG
+endif
+
+ifeq ($(TARGET_BUILD_VARIANT),userdebug)
+UBOOT_DEBUG_FLAG := -DDEBUG
+endif
+
+ifeq ($(strip $(PRODUCT_SECURE_BOOT)),SPRD)
+UBOOT_SECURE_BOOT_FLAG := -DCONFIG_SECBOOT
+UBOOT_SECURE_BOOT_FLAG += -DCONFIG_SPRD_SECBOOT
+ifeq ($(strip $(PKCS1_PSS_FLAG)),true)
+UBOOT_SECURE_BOOT_FLAG += -DPKCS1_PSS_FLAG
+endif
+ifeq ($(strip $(SHARKL5_CDSP_FLAG)),true)
+UBOOT_SECURE_BOOT_FLAG += -DSHARKL5_CDSP
+endif
+ifeq ($(strip $(PROJECT_SEC_CM4_FLAG)),true)
+UBOOT_SECURE_BOOT_FLAG += -DPROJECT_SEC_CM4
+endif
+
+ifeq ($(strip $(PRODUCT_VBOOT)),V2)
+UBOOT_SECURE_BOOT_FLAG += -DCONFIG_VBOOT_V2
+ifeq (9,$(filter 9,$(PLATFORM_VERSION)))
+UBOOT_SECURE_BOOT_FLAG += -DCONFIG_VBOOT_SYSTEMASROOT
+endif
+endif
+endif
+
+ifeq ($(strip $(PRODUCT_DMVERITY_DISABLE)),true)
+UBOOT_SECURE_BOOT_FLAG += -DCONFIG_DMVERITY_DISABLE
+endif
+
+ifneq ($(strip $(BOARD_PRODUCTIMAGE_PARTITION_SIZE)),)
+UBOOT_SECURE_BOOT_FLAG += -DBOARD_PRODUCTIMAGE_PARTITION_SIZE
+endif
+
+ifeq ($(strip $(ROC1_CACHE_WORKAROUND)), true)
+UBOOT_ROC1_CACHE_WA_FLAG := -DROC1_CACHE_MODIFICATION
+endif
+
+ifeq ($(strip $(BOARD_TEE_CONFIG)),trusty)
+UBOOT_TOS_TRUSTY_FLAG := -DTOS_TRUSTY
+endif
+
+ifeq ($(strip $(BOARD_TEECFG_CUSTOM)),true)
+UBOOT_TEECFG_CUSTOM_FLAG := -DCONFIG_TEECFG_CUSTOM
+endif
+
+
+ifeq ($(strip $(CONFIG_CHIP_UID)),true)
+UBOOT_CHIP_UID_FLAG += -DCONFIG_CHIP_UID
+endif
+
+ifeq ($(strip $(CONFIG_TEE_FIREWALL)),true)
+UBOOT_FIREWALL_FLAG := -DCONFIG_TEE_FIREWALL
+endif
+
+ifeq ($(TARGET_ARCH), arm)
+ifeq ($(strip $(BOARD_ATF_CONFIG)),true)
+UBOOT_ARMV7_LPAE_FLAG := -DCONFIG_ARMV7_LPAE
+endif
+endif
+
+ifeq ($(strip $(CONFIG_BOARD_KERNEL_CMDLINE)),true)
+UBOOT_KERNEL_CMDLINE_FLAG := -DCONFIG_BOARD_KERNEL_CMDLINE
+endif
+
+ifeq ($(strip $(CONFIG_PCTOOL_CHECK_MULTI_FIXNV)),true)
+UBOOT_PCTOOL_CHECK_MULTI_FIXNV_FLAG := -DCONFIG_PCTOOL_CHECK_MULTI_FIXNV
+endif
+
+ifeq ($(strip $(CONFIG_PCTOOL_CHECK_WRITE_PROTECT)),true)
+UBOOT_PCTOOL_CHECK_WRITE_PROTECT_FLAG := -DCONFIG_PCTOOL_CHECK_WRITE_PROTECT
+endif
+
+uboot-envsh := $(UBOOT_OUT)/uboot-env.sh
+$(uboot-envsh):
+	@mkdir -p $(UBOOT_OUT)
+	@rm -rf $@
+	@echo 'export UBOOT_CONFIG_PRODUCT="$(UBOOT_CONFIG_PRODUCT)"' >$@
+	@echo 'export UBOOT_DEBUG_FLAG="$(UBOOT_DEBUG_FLAG)"' >$@
+	@echo 'export UBOOT_SECURE_BOOT_FLAG="$(UBOOT_SECURE_BOOT_FLAG)"' >>$@
+	@echo 'export UBOOT_ROC1_CACHE_WA_FLAG="$(UBOOT_ROC1_CACHE_WA_FLAG)"' >>$@
+	@echo 'export UBOOT_TOS_TRUSTY_FLAG="$(UBOOT_TOS_TRUSTY_FLAG)"' >>$@
+	@echo 'export UBOOT_TEECFG_CUSTOM_FLAG="$(UBOOT_TEECFG_CUSTOM_FLAG)"' >>$@
+	@echo 'export UBOOT_CHIP_UID_FLAG="$(UBOOT_CHIP_UID_FLAG)"' >>$@
+	@echo 'export UBOOT_FIREWALL_FLAG="$(UBOOT_FIREWALL_FLAG)"' >>$@
+	@echo 'export UBOOT_ARMV7_LPAE_FLAG="$(UBOOT_ARMV7_LPAE_FLAG)"' >>$@
+	@echo 'export UBOOT_KERNEL_CMDLINE_FLAG="$(UBOOT_KERNEL_CMDLINE_FLAG)"' >>$@
+	@echo 'export UBOOT_PCTOOL_CHECK_MULTI_FIXNV_FLAG="$(UBOOT_PCTOOL_CHECK_MULTI_FIXNV_FLAG)"' >>$@
+	@echo 'export UBOOT_PCTOOL_CHECK_WRITE_PROTECT_FLAG="$(UBOOT_PCTOOL_CHECK_WRITE_PROTECT_FLAG)"' >>$@
+.PHONY: UBOOT_MODULE
+UBOOT_MODULE:$(UBOOT_OUT)
+
+$(UBOOT_OUT):
+	@echo "Start U-Boot build board $(UBOOT_DEFCONFIG)"
+
+$(UBOOT_CONFIG): UBOOT_ENV := $(uboot-envsh)
+$(UBOOT_CONFIG): u-boot15/configs/$(addsuffix _defconfig,$(UBOOT_DEFCONFIG)) $(UBOOT_OUT) $(uboot-envsh)
+	@mkdir -p $(UBOOT_OUT)
+	@source $(UBOOT_ENV);$(MAKE) -C u-boot15 ARCH=$(SRCARCH) CROSS_COMPILE=$(UBOOT_TOOLCHAIN) O=../$(UBOOT_OUT) distclean
+	@source $(UBOOT_ENV);$(MAKE) -C u-boot15 ARCH=$(SRCARCH) CROSS_COMPILE=$(UBOOT_TOOLCHAIN) O=../$(UBOOT_OUT) $(UBOOT_DEFCONFIG)_defconfig
+
+ifeq ($(strip $(NORMAL_UART_MODE)),true)
+	@echo "#define NORMAL_UART_MODE" >> $(UBOOT_CONFIG)
+endif
+
+$(INSTALLED_UBOOT_TARGET) : UBOOT_ENV := $(uboot-envsh)
+$(INSTALLED_UBOOT_TARGET) : $(UBOOT_CONFIG) $(uboot-envsh)
+	@source $(UBOOT_ENV);$(MAKE) -C u-boot15 ARCH=$(SRCARCH) DEVICE_TREE=$(UBOOT_TARGET_DTB) CROSS_COMPILE=$(UBOOT_TOOLCHAIN) AUTOBOOT_FLAG=true O=../$(UBOOT_OUT)
+	-cp $(UBOOT_DTB_BUILT_BIN) $(UBOOT_BUILT_BIN)
+	@cp $(UBOOT_BUILT_BIN) $(PRODUCT_OUT)/u-boot_autopoweron.bin
+	@source $(UBOOT_ENV);$(MAKE) -C u-boot15 ARCH=$(SRCARCH) DEVICE_TREE=$(UBOOT_TARGET_DTB) CROSS_COMPILE=$(UBOOT_TOOLCHAIN) O=../$(UBOOT_OUT) clean
+	@source $(UBOOT_ENV);$(MAKE) -C u-boot15 ARCH=$(SRCARCH) DEVICE_TREE=$(UBOOT_TARGET_DTB) CROSS_COMPILE=$(UBOOT_TOOLCHAIN) O=../$(UBOOT_OUT)
+	-cp $(UBOOT_DTB_BUILT_BIN) $(UBOOT_BUILT_BIN)
+	@cp $(UBOOT_BUILT_BIN) $(PRODUCT_OUT)
+	@cp $(UBOOT_BUILT_BIN) $(FDL2_BUILT_BIN)
+	@cp $(FDL2_BUILT_BIN) $(PRODUCT_OUT)
+	@echo "Install U-Boot target done"

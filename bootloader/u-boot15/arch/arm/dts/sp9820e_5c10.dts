@@ -1,0 +1,105 @@
+/*
+ * Spreadtrum SP9860g board DTS file
+ *
+ * Copyright (C) 2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+/ {
+	model = "Spreadtrum 9820e_5c10 Board";
+
+	compatible = "sprd,sp9820e_5c10";
+
+	sprd,sc-id = <9820 1 0x20000>;
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		fastboot_reserved: fastbootbuffer@82000000{
+			reg = <0x82000000 0x6400000>;
+		};
+
+		download_reserved: sparsebuffer@82000000{
+			reg = <0x82000000 0x6400000>;
+		};
+
+		dl_alt1_reserved: alterbuffer1@88400000{
+			reg = <0x88400000 0x00200000>;
+		};
+
+		dl_alt2_reserved: alterbuffer2@88600000{
+			reg = <0x88600000 0x00200000>;
+		};
+
+		log_reserved: logbuffer@88800000{
+			reg = <0x88800000 0x00050000>;
+		};
+
+		/* must be 4K aligned */
+		sml_reserved: sml-mem@8e000000{
+                        reg = <0x8e000000 0x00020000>;
+                };
+
+                tos_reserved: tos-mem@8e020000{
+                        reg = <0x8e020000 0x001e0000>;
+                };
+
+		fb_reserved: framebuffer@8fb89000{
+			reg = <0x8fb89000 0x000e1000>;
+		};
+	};
+
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+
+		heap@4 {
+			reg = <4>;
+			label = "carveout_fastboot";
+			type = <2>;
+			memory-region = <&fastboot_reserved>;
+		};
+
+		heap@5 {
+			reg = <5>;
+			label = "carveout_download";
+			type = <2>;
+			memory-region = <&download_reserved>;
+		};
+
+		heap@6 {
+			reg = <6>;
+			label = "carveout_dl_alt1";
+			type = <2>;
+			memory-region = <&dl_alt1_reserved>;
+		};
+
+		heap@7 {
+			reg = <7>;
+			label = "carveout_dl_alt2";
+			type = <2>;
+			memory-region = <&dl_alt2_reserved>;
+		};
+
+		heap@8 {
+			reg = <8>;
+			label = "carveout_log";
+			type = <2>;
+			memory-region = <&log_reserved>;
+		};
+	};
+};

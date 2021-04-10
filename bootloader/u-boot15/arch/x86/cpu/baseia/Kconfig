@@ -1,0 +1,38 @@
+# Copyright (C) 2015, Intel Corporation
+#
+# SPDX-License-Identifier:      GPL-2.0+
+#
+
+config BASEIA
+	bool
+
+config BULLHILL
+	bool "x86 BullHill Architecture"
+	select BASEIA
+	depends on X86
+
+if BASEIA
+
+config AP_IN_SIPI_WAIT
+	bool
+	default n
+
+config BASEIA_S3
+	bool "Enable Suspend to RAM (S3)"
+	select AP_IN_SIPI_WAIT
+	default y
+
+config BASEIA_SRAM
+	hex "SRAM address"
+	default 0xE6000000
+
+config RESERVED_RAM_START
+	hex "Start of reserved RAM area for S3 resume"
+	default 0x000A0000
+	help
+	  Start address of the DRAM area reserved for microcode data
+	  used on S3 resume for updating CPU microcode.
+	  Last 4KB of this area is used for AP startup during S3 resume
+	  and switching to real mode for jumping to kernel resume entry.
+
+endif

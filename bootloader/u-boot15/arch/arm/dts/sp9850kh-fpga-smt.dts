@@ -1,0 +1,83 @@
+/*
+ * Spreadtrum SP9852 fpga board DTS file
+ *
+ * Copyright (C) 2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+
+/ {
+	model = "Spreadtrum SP9850khsmt fpga Board";
+
+	compatible = "sprd,sc9850khsmt-fpga";
+
+	sprd,sc-id = <9850 1 20000>;
+
+	memory{
+		device_type = "memory";
+		reg = <0x0 0x80000000 0 0x40000000>;
+	};
+
+		chosen {
+		bootargs = "earlycon=sprd_serial,0x70100000,115200n8 console=ttyS1,115200n8 loglevel=8 androidboot.hardware=j1fpga memblock=debug bootmem_debug=1";
+		linux,initrd-start = <0x0 0x85500000>; /* this val will be changed by uboot  */
+		linux,initrd-end = <0x0 0x855a3212>; /* this val will be changed by uboot  */
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		mm_reserved: multimediabuffer@96ae8000{
+			reg = <0x0 0x96ae8000 0x0 0x8000000>;
+		};
+
+		overlay_reserved: overlaybuffer@9eae8000{
+			reg = <0x0 0x9eae8000 0x0 0xa8c000>;
+		};
+
+		fb_reserved: framebuffer@9f574000{
+			reg = <0x0 0xa0000000 0x0 0xa8c000>;
+		};
+	};
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		heap@0 {
+			reg = <0>;
+			label = "system";
+			type = <0>;
+		};
+
+		heap@1 {
+			reg = <1>;
+			label = "carveout_mm";
+			type = <2>;
+			memory-region = <&mm_reserved>;
+		};
+
+		heap@2 {
+			reg = <2>;
+			label = "carveout_overlay";
+			type = <2>;
+			memory-region = <&overlay_reserved>;
+		};
+
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+	};
+
+};
+
+

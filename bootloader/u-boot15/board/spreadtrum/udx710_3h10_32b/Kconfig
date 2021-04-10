@@ -1,0 +1,18 @@
+if TARGET_UDX710_3H10_32B
+
+config SYS_BOARD
+	default "udx710_3h10_32b"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "orca"
+
+config SYS_CONFIG_NAME
+	default "udx710_3h10_32b"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

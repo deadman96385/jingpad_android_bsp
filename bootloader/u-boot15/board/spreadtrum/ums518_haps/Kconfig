@@ -1,0 +1,18 @@
+if TARGET_UMS518_HAPS
+
+config SYS_BOARD
+	default "ums518_haps"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharkl5pro"
+
+config SYS_CONFIG_NAME
+	default "ums518_haps"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

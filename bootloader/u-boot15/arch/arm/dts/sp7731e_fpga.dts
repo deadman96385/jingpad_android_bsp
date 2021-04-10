@@ -1,0 +1,95 @@
+/*
+ * Spreadtrum SC9833 FPGA board DTS file
+ *
+ * Copyright (C) 2015-2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+
+/ {
+	model = "Spreadtrum SP7731e_FPGA Board";
+
+	compatible = "sprd,sp7731e_fpga", "sprd,pike2";
+
+	sprd,sc-id = <7731 1 0x20000>;
+
+	memory: memory@80000000 {
+		device_type = "memory";
+		reg = <0x80000000 0x40000000>;
+	};
+
+	chosen {
+		bootargs = "loglevel=8 console=ttyS1,115200n8 init=/init root=/dev/ram0 rw androidboot.hardware=sp7731efpga";
+		linux,initrd-start = <0x85500000>;
+		linux,initrd-end = <0x855a3212>;
+	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		smem_reserved: sipc_mem@87800000 {
+			reg = <0x87800000 0x400000>;
+		};
+
+		cp_reserved: cp_modem@89600000 {
+			reg = <0x89600000 0x4000000>;
+		};
+
+		wifi_reserved: wifi_tx_buffer@8f000000 {
+			reg = <0x8f000000 0x80000>;
+		};
+
+		mm_reserved: multimediabuffer@96e74000{
+			reg = <0x96e74000 0x7100000>;
+		};
+
+		overlay_reserved: overlaybuffer@9df74000{
+			reg = <0x9df74000 0xa8c000>;
+		};
+
+		fb_reserved: framebuffer@9ea00000{
+			reg = <0xa0000000 0xa8c000>;
+			/* the original framebuffer addr  <0x9ea00000 0x1600000> confilct with
+			* uboot<9f000000 ffffff>, change range only for FPGA debug */
+		};
+	};
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		heap@0 {
+			reg = <0>;
+			label = "system";
+			type = <0>;
+		};
+
+		heap@1 {
+			reg = <1>;
+			label = "carveout_mm";
+			type = <2>;
+			memory-region = <&mm_reserved>;
+		};
+
+		heap@2 {
+			reg = <2>;
+			label = "carveout_overlay";
+			type = <2>;
+			memory-region = <&overlay_reserved>;
+		};
+
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+	};
+};
+

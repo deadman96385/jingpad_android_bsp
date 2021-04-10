@@ -1,0 +1,3 @@
+ifdef CONFIG_FPGA
+CPPFLAGS += -D_FDL_ROC1_HAPS_
+endif

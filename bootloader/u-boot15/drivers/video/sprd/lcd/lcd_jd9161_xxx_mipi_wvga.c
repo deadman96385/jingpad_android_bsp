@@ -1,0 +1,149 @@
+/*
+ * Copyright (C) 2017 Spreadtrum Communications Inc.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "sprd_panel.h"
+#include "sprd_dsi.h"
+#include "dsi/mipi_dsi_api.h"
+#include "sprd_dphy.h"
+
+static uint8_t init_data[] = {
+	0x39, 0x00, 0x00, 0x04, 0xBF, 0x91, 0x61, 0xF2,
+	0x39, 0x00, 0x00, 0x03, 0xB3, 0x00, 0xB5,
+	0x39, 0x00, 0x00, 0x03, 0xB4, 0x00, 0x9A,
+	0x39, 0x00, 0x00, 0x07, 0xB8, 0x00, 0xBF, 0x01, 0x00, 0xBF, 0x01,
+	0x39, 0x00, 0x00, 0x04, 0xBA, 0x34, 0x23, 0x00,
+	0x23, 0x00, 0x00, 0x02, 0xC3, 0x02,
+	0x39, 0x00, 0x00, 0x03, 0xC4, 0x00, 0x64,
+	0x39, 0x00, 0x00, 0x0A, 0xC7, 0x00, 0x01, 0x32, 0x05, 0x65, 0x2A, 0x12, 0xA5, 0xA5,
+	0x39, 0x00, 0x00, 0x27, 0xC8, 0x7C, 0x6D, 0x62, 0x58, 0x56, 0x32, 0x30, 0x18, 0x33, 0x36, 0x3A, 0x5E, 0x54, 0x66, 0x5F, 0x67, 0x62, 0x5C, 0x50, 0x7C, 0x6D, 0x62, 0x58, 0x56, 0x32, 0x30, 0x18, 0x33, 0x36, 0x3A, 0x5E, 0x54, 0x66, 0x5F, 0x67, 0x62, 0x5C, 0x50,
+	0x39, 0x00, 0x00, 0x15, 0xD8, 0x30, 0x00, 0x00, 0x10, 0x03, 0x10, 0x01, 0x02, 0x00, 0x01, 0x02, 0x06, 0x68, 0x00, 0x00, 0x71, 0x05, 0x06, 0x68, 0x0C,
+	0x39, 0x00, 0x00, 0x14, 0xD9, 0x00, 0x0A, 0x0A, 0x88, 0x00, 0x00, 0x06, 0x80, 0x00, 0x80, 0x01, 0x5B, 0x35, 0x00, 0x00, 0x00, 0x00, 0x03, 0x80,
+	0x23, 0x00, 0x00, 0x02, 0xBE, 0x01,
+	0x23, 0x00, 0x00, 0x02, 0xD7, 0x40,
+	0x23, 0x00, 0x00, 0x02, 0xC1, 0x10,
+	0x39, 0x00, 0x00, 0x0B, 0xCC, 0x34, 0x20, 0x38, 0x60, 0x11, 0x91, 0x00, 0x40, 0x00, 0x00,
+	0x23, 0x00, 0x00, 0x02, 0xBE, 0x00,
+	0x23, 0x00, 0x00, 0x02, 0x35, 0x00,
+	0x23, 0x78, 0x00, 0x02, 0x11, 0x00,
+	0x23, 0x0A, 0x00, 0x02, 0x29, 0x00,
+	CMD_END
+};
+
+static int mipi_dsi_send_cmds(struct sprd_dsi *dsi, void *data)
+{
+	uint16_t len;
+	struct dsi_cmd_desc *cmds = data;
+
+	if ((cmds == NULL) || (dsi == NULL))
+		return -1;
+
+	for (; cmds->data_type != CMD_END;) {
+		len = (cmds->wc_h << 8) | cmds->wc_l;
+		mipi_dsi_gen_write(dsi, cmds->payload, len);
+		if (cmds->wait)
+			msleep(cmds->wait);
+		cmds = (struct dsi_cmd_desc *)(cmds->payload + len);
+	}
+	return 0;
+}
+
+static int jd9161_init(void)
+{
+	struct sprd_dsi *dsi = &dsi_device;
+	struct sprd_dphy *dphy = &dphy_device;
+
+	mipi_dsi_lp_cmd_enable(dsi, true);
+	mipi_dsi_send_cmds(dsi, init_data);
+	mipi_dsi_set_work_mode(dsi, SPRD_MIPI_MODE_VIDEO);
+	mipi_dsi_state_reset(dsi);
+	mipi_dphy_hs_clk_en(dphy, true);
+
+	return 0;
+}
+
+static int jd9161_readid(void)
+{
+	struct sprd_dsi *dsi = &dsi_device;
+	uint8_t cmd[] = {0xBF,0x91,0x61,0xF2};
+	uint8_t read_buf[4] = {0};
+
+	mipi_dsi_lp_cmd_enable(dsi, true);
+	mipi_dsi_gen_write(dsi, cmd, ARRAY_SIZE(cmd));
+	mipi_dsi_set_max_return_size(dsi, 1);
+	mipi_dsi_dcs_read(dsi, 0x04, &read_buf, 1);
+
+	if (read_buf[0] == 0x91) {
+		pr_info("jd9161 read id success!\n");
+		return 0;
+	}
+
+	pr_err("jd9161 read id failed!\n");
+	return -1;
+}
+
+static int jd9161_power(int on)
+{
+	if (on) {
+		sprd_gpio_request(NULL, CONFIG_LCM_GPIO_RSTN);
+		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 1);
+		mdelay(5);
+		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 0);
+		mdelay(5);
+		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 1);
+		mdelay(20);
+	} else {
+		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 0);
+		mdelay(5);
+	}
+
+	return 0;
+}
+
+static struct panel_ops jd9161_ops = {
+	.init = jd9161_init,
+	.read_id = jd9161_readid,
+	.power = jd9161_power,
+};
+
+static struct panel_info jd9161_info = {
+	/* common parameters */
+	.lcd_name = "lcd_jd9161_xxx_mipi_fhd",
+	.type = SPRD_PANEL_TYPE_MIPI,
+	.bpp = 24,
+//	.fps = 3,
+	.width = 480,
+	.height = 800,
+
+	/* DPI specific parameters */
+	.pixel_clk = 32000000,
+	.rgb_timing = {
+		.hfp = 110,
+		.hbp = 30,
+		.hsync = 28,
+		.vfp = 12,
+		.vbp = 6,
+		.vsync = 4,
+	},
+
+	/* MIPI DSI specific parameters */
+	.phy_freq = 500000,
+	.lane_num = 2,
+	.work_mode = SPRD_MIPI_MODE_VIDEO,
+	.burst_mode = PANEL_VIDEO_BURST_MODE,
+	.nc_clk_en = false,
+};
+
+struct panel_driver jd9161_xxx_driver = {
+	.info = &jd9161_info,
+	.ops = &jd9161_ops,
+};

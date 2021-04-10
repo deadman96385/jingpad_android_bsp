@@ -1,0 +1,29 @@
+#ifndef _SPRD_REG_EIC_H_
+#define _SPRD_REG_EIC_H_
+
+#define SPRD_ADIE_EIC_START 	160
+#define SPRD_ADIE_EIC_END   	175
+
+#define EIC_CHG_INT         	160
+#define EIC_PBINT 		161
+#define EIC_PBINT2 		162
+#define EIC_AUDIO_HEAD_BTN  	163
+#define EIC_CHGR_CV_STATUS  	164
+#define EIC_AUDIO_HEAD_INS  	165
+#define EIC_VCHG_OVI        	166
+#define EIC_VBAT_OVI        	167
+#define EIC_AUDIO_HEAD_INS2 	168
+#define EIC_BATDET		169
+#define EIC_KEY2_7S_RST_EXT_RSTN_ACTIVE		170
+#define EIC_EXT_XTL_EN0		171
+#define EIC_AUDIO_HEAD_INS3	172
+#define EIC_AUDIO_HEAD_INS_ALL	173
+
+#define SPRD_DDIE_EIC_START 	0
+#define SPRD_DDIE_EIC_KEYIN0 	2
+#define SPRD_DDIE_EIC_END   	7
+#define SPRD_DDIE_EIC1_START 	8
+#define SPRD_DDIE_EIC1_END   	15
+#define SPRD_DDIE_EIC_EXTINT2 	2
+#define SPRD_DDIE_EIC_EXTINT3 	3
+#endif

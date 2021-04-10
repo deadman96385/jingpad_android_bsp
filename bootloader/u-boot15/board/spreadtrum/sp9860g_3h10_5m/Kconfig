@@ -1,0 +1,18 @@
+if TARGET_SP9860G_3H10_5M
+
+config SYS_BOARD
+	default "sp9860g_3h10_5m"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "whale2"
+
+config SYS_CONFIG_NAME
+	default "sp9860g_3h10_5m"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Notes:
+You can read the user guide for more information,
+the path is /bsp/tools/teecfg/user_guide.
+-->
+<test_xml_overlay_board_overlay_more_items>
+	<property ID="more_items">
+		<enable type="ATTR_TYPE_BOOL">false</enable>
+		<addr type="ATTR_TYPE_UINT64">0xaabbccddeeff0066</addr>
+	</property>
+</test_xml_overlay_board_overlay_more_items>
+
+
+

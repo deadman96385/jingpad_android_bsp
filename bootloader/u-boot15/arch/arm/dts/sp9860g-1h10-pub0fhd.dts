@@ -1,0 +1,107 @@
+/*
+ * Spreadtrum SP9860g board DTS file
+ *
+ * Copyright (C) 2016, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+/dts-v1/;
+
+/ {
+	model = "Spreadtrum SP9860g Board";
+
+	compatible = "sprd,sc9860g-1h10-3g";
+
+	sprd,sc-id = <9860 1 0x20000>;
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		pub0_mpu_reserved: mpu0-dump@874ff000 {
+			reg = <0x0 0x874ff000 0x0 0x1000>;
+		};
+
+		audio_reserved: audio-mem@87500000 {
+			reg = <0x0 0x87500000 0x0 0x300000>;
+		};
+
+		smem_reserved: sipc-mem@87800000 {
+			reg = <0x0 0x87800000 0x0 0x500000>;
+		};
+
+		cp_reserved: cp-modem@87d00000 {
+			reg = <0x0 0x87d00000 0x0 0x7900000>;
+		};
+
+		tos_reserved: tos-mem@8f600000 {
+			reg = <0x0 0x8f600000 0x0 0x6000000>;
+		};
+
+		camera_reserved: camera-mem@c2d50000{
+			reg = <0x0 0xc2d50000 0x0 0x3800000>;
+		};
+
+		fb_reserved: framebuffer@c6550000{
+			reg = <0x0 0xc6550000 0x0 0x17bb000>;
+		};
+
+		overlay_reserved: overlaybuffer@c8f80000{
+			reg = <0x0 0xc8f80000 0x0 0x3f48000>;
+		};
+
+		mm_reserved: multimediabuffer@d0000000{
+			reg = <0x0 0xd0000000 0x0 0x10000000>;
+		};
+
+		iq_reserved: iq-mem{
+			compatible = "sprd,iq-mem";
+			alignment = <0x0 0x1000>;
+			alloc-ranges = <0x0 0x80000000 0 0x45400000>;
+			size = <0x0 0x8000000>;
+		};
+	};
+
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		heap@0 {
+			reg = <0>;
+			label = "system";
+			type = <0>;
+		};
+
+		heap@1 {
+			reg = <1>;
+			label = "carveout_mm";
+			type = <2>;
+			memory-region = <&mm_reserved>;
+		};
+
+		heap@2 {
+			reg = <2>;
+			label = "carveout_overlay";
+			type = <2>;
+			memory-region = <&overlay_reserved>;
+		};
+
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+
+		heap@4 {
+			reg = <4>;
+			label = "carveout_camera";
+			type = <2>;
+			memory-region = <&camera_reserved>;
+		};
+	};
+};

@@ -1,0 +1,158 @@
+/*
+ * Spreadtrum isharkl2 vdk board DTS file
+ *
+ * Copyright (C) 2015, Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+
+#include <dt-bindings/e820/e820.h>
+
+/ {
+	model = "SpreadTrum isharkl2 SoC (x86 based)";
+	compatible = "sprd,isharkl2";
+
+	#address-cells = <1>;
+	#size-cells = <1>;
+	interrupt-parent = <&pic>;
+
+	#include "irq-hirq.dtsi"
+
+	chosen {
+		linux,stdout-path = "/soc/uart@e7000000";
+		bootargs = "earlycon mobilevisor mce=off no_timer_check";
+	};
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+                #size-cells = <2>;
+                ranges;
+		/* fb */
+		fb_reserved: fb-mem@5c158000{
+			reg = <0 0x5c158000 0 0x02060000>;
+		};
+	};
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+                #size-cells = <0>;
+		heap@3 {
+			reg = <3>;
+			label = "carveout_fb";
+			type = <2>;
+			memory-region = <&fb_reserved>;
+		};
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <0>;
+			intel,apic-id = <0>;
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <2>;
+			intel,apic-id = <2>;
+		};
+
+		cpu@2 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <4>;
+			intel,apic-id = <4>;
+		};
+
+		cpu@3 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <6>;
+			intel,apic-id = <6>;
+		};
+
+		cpu@4 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <8>;
+			intel,apic-id = <8>;
+		};
+
+		cpu@5 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <10>;
+			intel,apic-id = <10>;
+		};
+
+		cpu@6 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <12>;
+			intel,apic-id = <12>;
+		};
+
+		cpu@7 {
+			device_type = "cpu";
+			compatible = "intel,bullhill";
+			reg = <14>;
+			intel,apic-id = <14>;
+		};
+	};
+
+	soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "simple-bus";
+		ranges;
+
+		pic: interrupt-controller {
+			compatible = "intel,mv-vpic";
+			#interrupt-cells = <2>;
+			interrupt-controller;
+			reg = <0xfec00000 0x2000>,
+				<0xfec01000 0x1000>;
+			intel,vpic-irqs = < 256 >;
+		};
+
+		lapic:interrupt-controller@fee00000{
+			compatible = "intel,x86-lapic";
+			reg = <0xfee00000 0x1000>;
+			no_pic_mode;
+			no_apic_setup;
+		};
+
+		timer@fed00000 {
+			compatible = "intel,x86-hpet";
+			reg = <0xfed00000 0x400>;
+		};
+
+		uart0: uart@e7000000 {
+			compatible  = "sprd,sc9836-uart";
+			interrupt-parent = <&pic>;
+			interrupts = <40 2>; /* irq 27, active high */
+			reg = <0xe7000000 0x1000>;
+		};
+	};
+
+	mobilevisor {
+		compatible = "intel,mobilevisor";
+		interrupt-parent = <&hirq>;
+	};
+
+        microcode {
+                update@0 {
+			#include "microcode/M017065AA0C.SIGNED.dtsi"
+                };
+        };
+};

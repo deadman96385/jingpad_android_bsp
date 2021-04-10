@@ -1,0 +1,24 @@
+if TARGET_J1ZEBU
+
+config SYS_BOARD
+	default "j1zebu"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sharklj1"
+
+config SYS_CONFIG_NAME
+	default "j1zebu"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+config SMT_VALUE
+	hex
+	default 0x00
+	help
+	  The value to decide whether enable smt
+
+endif

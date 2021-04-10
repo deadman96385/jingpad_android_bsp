@@ -1,0 +1,18 @@
+if TARGET_SP9833ZEBU
+
+config SYS_BOARD
+	default "sp9833zebu"
+
+config SYS_VENDOR
+	default "spreadtrum"
+
+config SYS_SOC
+	default "sc9833"
+
+config SYS_CONFIG_NAME
+	default "sp9833zebu"
+
+config SYS_TEXT_BASE
+	default 0x9f000000
+
+endif
