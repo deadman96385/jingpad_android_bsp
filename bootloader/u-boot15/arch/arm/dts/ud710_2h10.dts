@@ -20,12 +20,12 @@
 		#size-cells = <2>;
 		ranges;
 
-		fastboot_reserved: fastbootbuffer@82000000{
-			reg = <0x0 0x82000000 0x0 0x10000000>;
+		fastboot_reserved: fastbootbuffer@b0000000{
+			reg = <0x0 0xb0000000 0x0 0x40000000>;
 		};
 
-		download_reserved: sparsebuffer@82000000{
-			reg = <0x0 0x82000000 0x0 0x10000000>;
+		download_reserved: sparsebuffer@b0000000{
+			reg = <0x0 0xb0000000 0x0 0x40000000>;
 		};
 
 		dl_alt1_reserved: alterbuffer1@92000000{
@@ -65,8 +65,8 @@
 			reg = <0x0 0x99800000 0x0 0x3000000>;
 		};
 
-		bmp_reserved: bmp-mem@fdbc0000 {
-			reg = <0x0 0xfdbc0000 0x0 0x01b00000>;
+		bmp_reserved: bmp-mem@9d000000 {
+			reg = <0x0 0x9d000000 0x0 0x9e4000>;
 		};
 
 		wb_reserved: writeback-mem@ff6c0000 {

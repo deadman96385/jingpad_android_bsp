@@ -105,6 +105,10 @@ int sprd_get_crystal(void)
 {
 	int value = get_id();
 
+	#ifdef CONFIG_CRYSTAL_SUPPORT
+		return clock_table[0].crystal_data;
+	#endif
+
 	return clock_table[value].crystal_data;
 }
 
@@ -115,6 +119,10 @@ int sprd_get_32k(void)
 
 	int value = get_id();
 
+	#ifdef CONFIG_CRYSTAL_SUPPORT
+		return clock_table[0].k32_less_data;
+	#endif
+
 	return clock_table[value].k32_less_data;
 }
 
@@ -123,6 +131,10 @@ int sprd_get_boardid(void)
 {
 	#ifdef CONFIG_SOC_ORCA
 		return sprd_get_versionid();
+	#endif
+
+	#ifdef CONFIG_NO_RETURN_BOARDID
+		return -1;
 	#endif
 
 	return get_clockid();

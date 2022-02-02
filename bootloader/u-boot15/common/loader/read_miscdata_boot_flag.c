@@ -45,6 +45,8 @@ static first_boot_mode_t first_boot_mode[CMD_SET_FIRST_MAX_MODE] = {
 	{CMD_SET_FIRST_NBIOT_FINAL_TEST_MODE, CMD_CALIBRATION_MODE, 0x21},
 
 	{CMD_SET_FIRST_UPT_MODE, CMD_UPT_MODE, 0x0},
+
+	{CMD_SET_FIRST_AUTOPON_MODE, CMD_NORMAL_MODE, 0x0},
 };
 
 static int get_miscdata_boot_flag(char *out)
@@ -74,27 +76,33 @@ int read_boot_flag(void)
 	u32 first_mode = 0;
 	u32 clear_first_mode = 0;
 	int err;
+	u32 first_mode_aon_flag = 0;
 
 	err = get_miscdata_boot_flag((char *)(&get_first_mode));
 	if (err < 0) {
-		errorf("Reading mode from miscdata failed!\n");
-		return CMD_UNDEFINED_MODE;
-	}
-
-	err = set_miscdata_boot_flag((char *)(&clear_first_mode));
-	if (err < 0) {
-		errorf("Clearing the miscdata set first mode flag failed!\n");
+		debugf("Reading first mode flag from miscdata partition failed!\n");
 		return CMD_UNDEFINED_MODE;
 	}
 
 	if ((get_first_mode & 0xFFFFFF00) != SET_FIRST_MODE_MAGIC) {
-		errorf("The data obtained from miscdata is not a magic number!\n");
+		debugf("The data obtained from miscdata is not a first_mode magic number!\n");
 		return CMD_UNDEFINED_MODE;
 	}
 
-	first_mode = get_first_mode & 0x000000FF;
+	/*BIT(7) is an first_mode alway_on flag*/
+	first_mode_aon_flag = get_first_mode & 0x00000080;
+	first_mode = get_first_mode & 0x0000007F;
 	first_cali_mode = first_boot_mode[first_mode].cail_parameter;
-	debugf("The mode obtained from miscdata: 0x%x.\n", first_mode);
+	debugf("The mode obtained from miscdata: 0x%x, alway_on flag is %s.\n", first_mode,
+					first_mode_aon_flag?"open":"close");
+
+	if (!first_mode_aon_flag) {
+		err = set_miscdata_boot_flag((char *)(&clear_first_mode));
+		if (err < 0) {
+			errorf("Clearing the miscdata set first mode flag failed!\n");
+			return CMD_UNDEFINED_MODE;
+		}
+	}
 
 	if ((first_mode > CMD_SET_FIRST_NORMAL_BOOT_MODE) &&
 			(first_mode < CMD_SET_FIRST_MAX_MODE)) {

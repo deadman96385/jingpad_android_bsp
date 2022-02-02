@@ -67,6 +67,8 @@
 
 #define CONFIG_DTS_MEM_LAYOUT
 
+#define CONFIG_EMMC_DDR_CHECK_TYPE
+
 /* SPRD Serial Configuration */
 #define CONFIG_SPRD_UART		1
 #define CONFIG_SYS_SC8800X_UART1	1

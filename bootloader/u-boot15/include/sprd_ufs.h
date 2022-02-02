@@ -23,8 +23,10 @@
 #define UIC_LINK_STARTUP_CMD   0x16
 #define UIC_EXIT_HIBERNATE     0x18
 #define MAX_PRDT_ENTRIES       128
+#define MAX_READ_PRDT_ENTRIES  2
 #define PRDT_BUFFER_SIZE       SZ_256K
-#define TOTAL_PRDT_CAP		((MAX_PRDT_ENTRIES) * (PRDT_BUFFER_SIZE))
+#define TOTAL_PRDT_CAP	       ((MAX_PRDT_ENTRIES) * (PRDT_BUFFER_SIZE))
+#define TOTAL_READ_PRDT_CAP    ((MAX_READ_PRDT_ENTRIES) * (PRDT_BUFFER_SIZE))
 #define LOGICAL_BLK_SIZE       4096
 #define NUM_OF_DESC            1
 #define ALIGN_SIZE             1024
@@ -221,6 +223,7 @@ struct ufs_driver_info {
 	uint32_t		   alloc_unit_sz;  /*in unit of 512 bytes*/
 	uint32_t		prdt_entry_size;   /*Physical Region Description Table entry size, unit of bytes*/
 	uint64_t		max_prdt_cap;   /*Physical Region Description Table total capability, unit of bytes*/
+	uint64_t		max_read_prdt_cap;   /*Physical Region Description Table total capability for read, unit of bytes*/
 	uint64_t		dev_total_cap;   /*total capacity, in unit of 512 bytes*/
 	block_dev_desc_t  block_dev[UFS_MAX_DEV_NUM];
 	struct lu_info_tbl       lu_info[UFS_MAX_LU_NUM];
@@ -286,10 +289,12 @@ extern struct   ufs_driver_info ufs_info;
 #define DEVICE_DESC        0x00
 #define CONFIGURATION_DESC 0x01
 #define UNIT_DESC          0x02
+#define RPMB_UNIT_DESC     0x02
 #define GEOMETRY_DESC      0x07
 
 #define DEVICE_DESC_LENGTH 0x1f
 #define UNIT_DESC_LENGTH   0x23
+#define RPMB_UNIT_DESC_LENGTH 0x23
 #define GEOMETRY_DESC_LENGTH 0x44
 #define CONFIGURATION_DESC_LENGTH 0x90
 
@@ -750,6 +755,25 @@ struct ufs_unit_desc_tbl {
 	uint8_t	bLargeUnitGranularity_M1;
 } __attribute__ ((packed));
 
+struct ufs_rpmb_unit_desc_tbl {
+	uint8_t	bLength;
+	uint8_t	bDescriptorType;
+	uint8_t	bUnitIndex;
+	uint8_t	bLUEnable;
+	uint8_t	bBootLunID;
+	uint8_t	bLUWriteProtect;
+	uint8_t	bLUQueueDepth;
+	uint8_t	reserved;
+	uint8_t	bMemoryType;
+	uint8_t	reserved1;
+	uint8_t	bLogicalBlockSize;
+	uint64_t	qLogicalBlockCount;
+	uint32_t	dEraseBlockSize;
+	uint8_t	bProvisioningType;
+	uint64_t	qPhyMemResourceCount;
+	uint8_t	reserved2[3];
+} __attribute__ ((packed));
+
 struct ufs_unit_cfg_tbl {
 	uint8_t	bLUEnable;
 	uint8_t	bBootLunID;
@@ -760,7 +784,6 @@ struct ufs_unit_cfg_tbl {
 	uint8_t	bLogicalBlockSize;
 	uint8_t	bProvisioningType;
 	uint16_t	wContextCapabilities;
-	uint8_t	reserved[3];
 }  __attribute__ ((packed));
 
 struct ufs_cfg_desc_tbl {
@@ -774,8 +797,6 @@ struct ufs_cfg_desc_tbl {
 	uint8_t	bSecureRemovalType;
 	uint8_t	bInitActiveICCLevel;
 	uint16_t	wPeriodicRTCUpdate;
-	uint8_t	reserved_2[5];
-	struct ufs_unit_cfg_tbl	unit_cfg[UFS_MAX_LU_NUM];
 } __attribute__ ((packed));
 
 struct um_block_descriptor {

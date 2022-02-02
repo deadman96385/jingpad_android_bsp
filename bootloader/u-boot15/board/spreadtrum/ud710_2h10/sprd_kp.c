@@ -13,6 +13,10 @@ void board_keypad_init(void)
 
 	sprd_gpio_request(NULL, SPRD_VOLUMEDOWN_GPIO);
 	sprd_gpio_direction_input(NULL, SPRD_VOLUMEDOWN_GPIO);
+// TP 3.3V LDO ENABLE
+	sprd_gpio_request(NULL, 62);
+	sprd_gpio_direction_output(NULL, 62, 1);
+
 /*
 	sprd_gpio_request(NULL, 125);
 	sprd_gpio_direction_input(NULL, 125);

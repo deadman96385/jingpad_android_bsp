@@ -149,8 +149,11 @@ int mipi_dsi_init(struct sprd_dsi *dsi)
 
 	max_rd_time = ((ctx->max_rd_time * (ctx->freq / 8)) + 999999) / 1000000;
 	dsi_hal_max_read_time(dsi, max_rd_time);
-
+#ifdef CONFIG_S813_P7106_G1
+	div = ((ctx->freq >> 3) + 9999) / 10000;
+#else
 	div = ((ctx->freq >> 4) + 9999) / 10000;
+#endif
 	dsi_hal_tx_escape_division(dsi, div);
 	pr_info("escape clk div = %d\n", div);
 

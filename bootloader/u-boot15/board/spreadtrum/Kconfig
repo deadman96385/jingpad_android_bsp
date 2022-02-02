@@ -346,6 +346,48 @@ config TARGET_UD710_2H10
         help
           This is the Spreadtrum roc1 Board
 
+config TARGET_UD710_10H10
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_2C11
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_7H10
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_2H10U
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_3H10U
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_9H10U
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
+config TARGET_UD710_20C11
+        bool "Spreadtrum roc1"
+        select ARM64
+        help
+          This is the Spreadtrum roc1 Board
+
 config TARGET_UD710_3H10
         bool "Spreadtrum roc1"
         select ARM64
@@ -514,6 +556,12 @@ config TARGET_UMS512_1H10
         help
           This is the Spreadtrum sharkl5pro Board
 
+config TARGET_UMS512_2H10
+        bool "Spreadtrum sharkl5pro"
+        select ARM64
+        help
+          This is the Spreadtrum sharkl5pro Board
+
 config TARGET_ums512_20c10
         bool "Spreadtrum sharkl5pro"
         select ARM64
@@ -623,6 +671,13 @@ source "board/spreadtrum/sp9855a_haps/Kconfig"
 source "board/spreadtrum/sp9850ka_2c30/Kconfig"
 source "board/spreadtrum/ud710_haps/Kconfig"
 source "board/spreadtrum/ud710_2h10/Kconfig"
+source "board/spreadtrum/ud710_10h10/Kconfig"
+source "board/spreadtrum/ud710_2c11/Kconfig"
+source "board/spreadtrum/ud710_7h10/Kconfig"
+source "board/spreadtrum/ud710_2h10u/Kconfig"
+source "board/spreadtrum/ud710_3h10u/Kconfig"
+source "board/spreadtrum/ud710_9h10u/Kconfig"
+source "board/spreadtrum/ud710_20c11/Kconfig"
 source "board/spreadtrum/ud710_3h10/Kconfig"
 source "board/spreadtrum/ud710_orca_haps/Kconfig"
 source "board/spreadtrum/sp9863a_1h10/Kconfig"
@@ -652,6 +707,7 @@ source "board/spreadtrum/ums518_haps/Kconfig"
 source "board/spreadtrum/ums518_haps_bkd/Kconfig"
 source "board/spreadtrum/ums518_zebu/Kconfig"
 source "board/spreadtrum/ums512_1h10/Kconfig"
+source "board/spreadtrum/ums512_2h10/Kconfig"
 source "board/spreadtrum/ums512_20c10/Kconfig"
 source "board/spreadtrum/ums7520_haps/Kconfig"
 source "board/spreadtrum/ums7520_zebu/Kconfig"

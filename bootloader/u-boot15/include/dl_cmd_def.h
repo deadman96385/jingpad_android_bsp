@@ -55,6 +55,7 @@ typedef enum dl_cmd_type {
     BSL_CMD_CHECK_NV_TYPE=0x24,                /* 0xC, just sharkl2 */
     BSL_CMD_SET_DEBUGINFO = 0x25,
     BSL_CMD_SET_FIRST_MODE = 0x2A,
+    BSL_CMD_CHECK_PARTITION = 0x2D,
     /* raw data download cmd */
     BSL_CMD_WRITE_RAW_DATA_ENABLE = 0x28,				/* 0x28 */
     BSL_CMD_DLOAD_RAW_START = 0x31,				/* 0x31 */
@@ -118,6 +119,7 @@ typedef enum dl_cmd_type {
     BSL_REP_NOT_ENABLE_WRITE_FLASH = 0xAC,
     BSL_REP_READ_REFINFO=0xB1,
     BSL_CHECK_NV_TYPE=0xB5,
+    BSL_REP_READ_PARTITION=0xBA,
     BSL_UNSUPPORTED_CMD = 0xFE,
     BSL_PKT_TYPE_MAX
 }dl_cmd_type_t ;

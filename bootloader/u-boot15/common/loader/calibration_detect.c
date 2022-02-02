@@ -574,6 +574,9 @@ int pctool_mode_detect(void)
 				reply_to_pctool(pctool_cnf_buf, ret);
 				break;
 		}
+	} else if (CALIBERATE_COMMAND_AUTODOWNLOAD == command) {
+		usb_driver_exit();
+		return CMD_AUTODLOADER_REBOOT;
 	}
 
 	memset(calibration_cmd_buf, 0, MAX_CALIBRATION_LEN);

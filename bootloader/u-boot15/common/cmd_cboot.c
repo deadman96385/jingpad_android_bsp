@@ -9,6 +9,11 @@
 //#include <asm/arch/gpio.h>
 #include <asm/arch/check_reboot.h>
 #include <sprd_battery.h>
+#ifdef BAT_LOW_LCD_SHOW
+#include <lcd.h>
+#include <exports.h>
+#include <splash.h>
+#endif
 
 extern CBOOT_FUNC s_boot_func_array[CHECK_BOOTMODE_FUN_NUM] ;
 
@@ -16,6 +21,53 @@ extern unsigned int check_key_boot(unsigned char key);
 extern void write_sysdump_before_boot(int rst_mode);
 extern unsigned char board_key_scan(void);
 extern void board_boot_mode_regist(CBOOT_MODE_ENTRY *array);
+
+#define USBPHY_VDDUSB33_NORMAL		3300
+#define USBPHY_VDDUSB33_FULLSPEED_TUNE	2700
+
+static const char *g_mode_str[CMD_MAX_MODE] = {
+	"UNDEFINED_MODE",
+	"POWER_DOWN_DEVICE",
+	"NORMAL_MODE",
+	"RECOVERY_MODE",
+	"FASTBOOT_MODE",
+	"ALARM_MODE",
+	"CHARGE_MODE",
+	"ENGTEST_MODE",
+	"WATCHDOG_REBOOT",
+	"AP_WATCHDOG_REBOOT",
+	"SPECIAL_MODE",
+	"UNKNOW_REBOOT_MODE",
+	"PANIC_REBOOT",
+	"VMM_PANIC_MODE",
+	"TOS_PANIC_MODE",
+	"EXT_RSTN_REBOOT_MODE",
+	"CALIBRATION_MODE",
+	"FACTORYTEST_MODE",
+	"AUTODLOADER_REBOOT",
+	"AUTOTEST_MODE",
+	"IQ_REBOOT_MODE",
+	"SLEEP_MODE",
+	"SPRDISK_MODE",
+	"APKMMI_MODE",
+	"UPT_MODE",
+
+	"MAX_MODE",
+};
+#ifdef BAT_LOW_LCD_SHOW
+ /* Uses fastboot logo image for showing battery low, for
+  * fastboot logo is not used by others
+  * TODO: find another better way to store bat low image */
+void bat_low_screen_show(void)
+{
+	debugf("bat_low_screen_show start\n");
+	drv_lcd_init();
+	lcd_splash("lowbattery");
+	lcd_enable();
+	debugf("bat_low_screen_show end\n");
+	return;
+}
+#endif
 
 int boot_pwr_check(void)
 {
@@ -73,7 +125,11 @@ unsigned reboot_mode_check(void)
   // 0 get mode from pc tool
 boot_mode_enum_type get_mode_from_pctool(void)
 {
-	int ret = pctool_mode_detect();
+	int ret;
+
+	regulator_set_voltage("vddusb33", USBPHY_VDDUSB33_FULLSPEED_TUNE);
+	ret = pctool_mode_detect();
+	regulator_set_voltage("vddusb33", USBPHY_VDDUSB33_NORMAL);
 	if (ret < 0)
 		return CMD_UNDEFINED_MODE;
 	else
@@ -95,7 +151,14 @@ boot_mode_enum_type get_mode_from_bat_low(void)
 		  mdelay(SPRDBAT_CHG_POLLING_T);
 	  }else{
 		  debugf("cboot:low battery and shutdown\n");
-		  return CMD_POWER_DOWN_DEVICE;
+		   #ifdef BAT_LOW_LCD_SHOW
+           bat_low_screen_show();
+           mdelay(250);
+           set_backlight(BACKLIGHT_ON);
+           mdelay(5000);
+           set_backlight(BACKLIGHT_OFF);
+		   #endif
+		   return CMD_POWER_DOWN_DEVICE;
 	  }
 	}
 #endif
@@ -118,28 +181,12 @@ boot_mode_enum_type write_sysdump_before_boot_extend(void)
 /* get mode from miscdata */
 boot_mode_enum_type get_mode_from_miscdata_boot_flag(void)
 {
-	switch (read_boot_flag()) {
-		case CMD_CALIBRATION_MODE:
-			debugf("get mode from firstmode field: calibration\n");
-			return CMD_CALIBRATION_MODE;
-		case CMD_FACTORYTEST_MODE:
-			debugf("get mode from firstmode field: factorytest\n");
-			return CMD_FACTORYTEST_MODE;
-		case CMD_AUTOTEST_MODE:
-			debugf("get mode from firstmode field: autotest\n");
-			return CMD_AUTOTEST_MODE;
-		case CMD_APKMMI_MODE:
-			debugf("get mode from firstmode field: apkmmi\n");
-			return CMD_APKMMI_MODE;
-		case CMD_UPT_MODE:
-			debugf("get mode from firstmode field: upt\n");
-			return CMD_UPT_MODE;
-		default:
-			debugf("get mode from firstmode field: no set first mode\n");
-			return CMD_UNDEFINED_MODE;
-	}
-
-	return CMD_UNDEFINED_MODE;
+	boot_mode_enum_type first_mode = read_boot_flag();
+	if (first_mode != CMD_UNDEFINED_MODE) {
+		printf("get mode from firstmode field: %s\n", g_mode_str[first_mode]);
+		return first_mode;
+	} else
+		return CMD_UNDEFINED_MODE;
 }
 
 /*1 get mode from file, just for recovery mode now*/
@@ -224,6 +271,9 @@ boot_mode_enum_type  get_mode_from_keypad(void)
 {
 	uint32_t key_mode = 0;
 	uint32_t key_code = 0;
+#ifdef BAT_LOW_LCD_SHOW
+	int32_t vbat_vol;
+#endif
 	volatile int i;
 	if (boot_pwr_check() >= PWR_KEY_DETECT_CNT) {
 		mdelay(50);
@@ -242,7 +292,22 @@ boot_mode_enum_type  get_mode_from_keypad(void)
 		  case CMD_FACTORYTEST_MODE:
 			  return CMD_FACTORYTEST_MODE;
 		  default:
-			  return CMD_NORMAL_MODE;
+		   #ifdef BAT_LOW_LCD_SHOW
+		   vbat_vol = sprdfgu_read_vbat_vol();
+		   debugf(" vbat_vol = %d",vbat_vol);
+		   if(vbat_vol < BOOT_BAT_VOL){//5%
+           	bat_low_screen_show();
+           	mdelay(250);
+           	set_backlight(BACKLIGHT_ON);
+           	mdelay(5000);
+           	set_backlight(BACKLIGHT_OFF);
+            return CMD_POWER_DOWN_DEVICE;
+		   }else{
+			return CMD_NORMAL_MODE;
+		   }
+		   #else
+			return CMD_NORMAL_MODE;
+		   #endif
 		}
 	}else {
 		return CMD_UNDEFINED_MODE;

@@ -1,6 +1,7 @@
 subdir-ccflags-y += -I$(src)
 
 obj-y += sprd_main.o sprd_dispc.o sprd_dsi.o sprd_dphy.o sprd_panel.o
+obj-$(CONFIG_SPRD_SPI_MD6000) += sprd_spi_md6000.o
 obj-$(CONFIG_ROUND_CORNER_SUPPORT) += sprd_round_corner.o
 
 obj-y += dispc/

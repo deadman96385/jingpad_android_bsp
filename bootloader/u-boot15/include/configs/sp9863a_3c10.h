@@ -384,6 +384,10 @@
 /* coresight dump ETB data */
 #define CONFIG_ETB_DUMP
 
+#ifndef CONFIG_CHIP_UID
+#define CONFIG_CHIP_UID
+#endif
+
 #define CONFIG_RTC_START_YEAR		1970
 
 #endif /* __CONFIG_H */

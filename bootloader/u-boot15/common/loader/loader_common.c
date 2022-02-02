@@ -28,7 +28,9 @@
 
 unsigned char raw_header[8192];
 unsigned int g_charger_mode = 0;
+unsigned int g_recovery_mode = 0;
 char serial_number_to_transfer[SP15_MAX_SN_LEN];
+char smt_serial_number_to_transfer[SP15_MAX_SN_LEN];
 
 extern int charger_connected(void);
 extern void modem_entry(void);
@@ -81,20 +83,57 @@ char *get_product_sn(void)
 			debugf("sp09 read miscdata error.\n");
 			return serial_number_to_transfer;
 		}
-		if(strlen(phase_check_sp09.SN1)){
-			memcpy(serial_number_to_transfer, phase_check_sp09.SN1, SP09_MAX_SN_LEN);
+		if(strlen(phase_check_sp09.SN2)){
+			memcpy(serial_number_to_transfer, phase_check_sp09.SN2, SP09_MAX_SN_LEN);
 		}
 	}else if(magic == SP15_SPPH_MAGIC_NUMBER){
 		if(common_raw_read(PRODUCTINFO_FILE_PATITION, sizeof(phase_check_sp15), (uint64_t)0 ,(char *)&phase_check_sp15)){
 			debugf("sp15 read miscdata error.\n");
 			return serial_number_to_transfer;
 		}
-		if(strlen(phase_check_sp15.SN1)){
-			memcpy(serial_number_to_transfer, phase_check_sp15.SN1, SP15_MAX_SN_LEN);
+		if(strlen(phase_check_sp15.SN2)){
+			memcpy(serial_number_to_transfer, phase_check_sp15.SN2, SP15_MAX_SN_LEN);
 		}
 	}
 	return serial_number_to_transfer;
 }
+
+
+/*modif to support the sp15 64 bit sn NO */
+char *get_sn1(void)
+{
+	SP09_PHASE_CHECK_T phase_check_sp09;
+	SP15_PHASE_CHECK_T phase_check_sp15;
+	uint32_t magic;
+
+	memset(smt_serial_number_to_transfer, 0x0, SP15_MAX_SN_LEN);
+
+	strcpy(smt_serial_number_to_transfer, "0123456789ABCDEF");
+	if (0 != common_raw_read(PRODUCTINFO_FILE_PATITION, sizeof(magic), (uint64_t)0, (char *)&magic)) {
+		errorf("read miscdata error.\n");
+		return smt_serial_number_to_transfer;
+	}
+	if(magic == SP09_SPPH_MAGIC_NUMBER){
+		if(common_raw_read(PRODUCTINFO_FILE_PATITION,sizeof(phase_check_sp09), (uint64_t)0, (char *)&phase_check_sp09)){
+			debugf("sp09 read miscdata error.\n");
+			return smt_serial_number_to_transfer;
+		}
+		if(strlen(phase_check_sp09.SN1)){
+			memcpy(smt_serial_number_to_transfer, phase_check_sp09.SN1, SP09_MAX_SN_LEN);
+		}
+	}else if(magic == SP15_SPPH_MAGIC_NUMBER){
+		if(common_raw_read(PRODUCTINFO_FILE_PATITION, sizeof(phase_check_sp15), (uint64_t)0 ,(char *)&phase_check_sp15)){
+			debugf("sp15 read miscdata error.\n");
+			return smt_serial_number_to_transfer;
+		}
+		if(strlen(phase_check_sp15.SN1)){
+			memcpy(smt_serial_number_to_transfer, phase_check_sp15.SN1, SP15_MAX_SN_LEN);
+		}
+	}
+	return smt_serial_number_to_transfer;
+}
+
+
 
 void fdt_fixup_all(u8 *fdt_blob)
 {
@@ -129,6 +168,7 @@ void fdt_fixup_all(u8 *fdt_blob)
 #ifdef CONFIG_SECURE_BOOT
 	fdt_fixup_secureboot_param(fdt_blob);
 #endif
+	fdt_fixup_wdten(fdt_blob);
 #ifdef CONFIG_NAND_BOOT
 	fdt_fixup_mtd(fdt_blob);
 #ifdef CONFIG_UBI_ATTACH_MTD
@@ -198,6 +238,10 @@ void fdt_fixup_all(u8 *fdt_blob)
 #ifdef CONFIG_TEECFG_CUSTOM
 	if(reboot_mode_check() != CMD_TOS_PANIC_MODE)
 		fdt_fixup_tee_reserved_mem(fdt_blob);
+#endif
+
+#if defined(CONFIG_UFS) && defined(CONFIG_MMC) && defined(CONFIG_SEND_STORAGE_TYPE)
+	fdt_fixup_boot_device(fdt_blob);
 #endif
 	return;
 }

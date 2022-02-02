@@ -217,4 +217,7 @@ int sprd_spi_transfer(struct spi_transfer *transfer);
 int sprd_spi_write_data(unsigned int *pbuf, unsigned int data_len, unsigned int dummy_bit_len);
 int sprd_spi_read_data(unsigned int *pbuf, unsigned int data_len, unsigned int dummy_bit_len);
 
+int sprd_spi_write_data_bytes(unsigned char *pbuf, unsigned int data_len, unsigned int dummy_bit_len);
+int sprd_spi_read_data_bytes(unsigned char *pbuf, unsigned int data_len, unsigned int dummy_bit_len);
+
 #endif /*_SPRD_SPI_H*/

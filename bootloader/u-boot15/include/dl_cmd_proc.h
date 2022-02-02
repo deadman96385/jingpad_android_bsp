@@ -45,6 +45,10 @@ typedef struct _REPARTITION_TABLE_INFO
 	unsigned short     table_size;
 } REPARTITION_TABLE_INFO;
 
+typedef struct tool_partition {
+	char name[72];
+	u32 size;//unit: KB
+} tool_partition_t;
 
 int dl_cmd_write_start(dl_packet_t * packet, void *arg);
 int dl_cmd_write_midst(dl_packet_t * packet, void *arg);
@@ -77,6 +81,9 @@ void dl_enable_write_flash(void);
 #endif
 #ifdef CONFIG_DTS_MEM_LAYOUT
 int dl_set_buf_base_size();
+#endif
+#if !defined(CONFIG_NAND_BOOT) && !defined(CONFIG_DDR_BOOT)
+int dl_cmd_check_partition(dl_packet_t *packet, void *arg);
 #endif
 int dl_set_first_mode(dl_packet_t *packet, void *arg);
 int dl_cmd_write_raw_data_enable(dl_packet_t *packet, void *arg);

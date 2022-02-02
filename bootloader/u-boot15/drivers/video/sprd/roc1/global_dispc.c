@@ -21,7 +21,6 @@ static uint32_t dpu_core_clk[] = {
 	256000000,
 	307200000,
 	384000000,
-	468000000,
 };
 
 static uint32_t dpi_clk_src[] = {
@@ -33,19 +32,9 @@ static uint32_t dpi_clk_src[] = {
 
 static uint32_t dpi_src_val;
 
-static uint8_t calc_dpu_core_clk(uint32_t pclk)
+static uint8_t calc_dpu_core_clk(void)
 {
-	int i;
-
-	pclk *= 2;
-
-	for (i = 0; i < ARRAY_SIZE(dpu_core_clk); i++) {
-		if (pclk <= dpu_core_clk[i])
-			return i;
-	}
-
-	pr_err("calc DPU_CORE_CLK failed, use default\n");
-	return 2;
+	return ARRAY_SIZE(dpu_core_clk) - 1;
 }
 
 static uint8_t calc_dpi_clk_src(uint32_t pclk)
@@ -63,7 +52,7 @@ static uint8_t calc_dpi_clk_src(uint32_t pclk)
 
 static int dispc_clk_init(struct dispc_context *ctx)
 {
-	uint8_t core_sel = calc_dpu_core_clk(ctx->panel->pixel_clk);
+	uint8_t core_sel = calc_dpu_core_clk();
 	uint8_t dpi_sel = calc_dpi_clk_src(ctx->panel->pixel_clk);
 
 	pr_info("DPU_CORE_CLK = %u\n", dpu_core_clk[core_sel]);

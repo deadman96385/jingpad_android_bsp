@@ -55,6 +55,8 @@ DECLARE_GLOBAL_DATA_PTR;
 
 extern int lcd_line_length;
 extern enVerifiedState g_verifiedbootstate;
+extern unsigned int g_charger_mode;
+extern unsigned int g_recovery_mode;
 
 extern int fdt_fixup_memory_region(void *fdt, int *auto_mem_num_p);
 extern int get_dt_end_addr(void *fdt, uchar **addr);
@@ -1530,6 +1532,18 @@ void pass_chip_uid_to_tos()
 #endif
 // add for SOTER end
 
+#ifdef CONFIG_POWERON_EXTERN_MODEM
+static void modem_power_on(void)
+{
+	debugf("power on orca.\n");
+	sprd_gpio_request(NULL,EXT_MODEM_PBINT);
+	sprd_gpio_direction_output(NULL, EXT_MODEM_PBINT, 1);
+	/* remove this delay, will pull down it in kernel. */
+	//msleep(2000);
+	//sprd_gpio_direction_output(NULL, EXT_MODEM_PBINT, 0);
+}
+#endif
+
 uint32_t uboot_start_time;
 void vlx_nand_boot(char *kernel_pname, int backlight_set, int lcd_enable)
 {
@@ -1543,6 +1557,14 @@ void vlx_nand_boot(char *kernel_pname, int backlight_set, int lcd_enable)
 	uint32_t lcd_init_time;
 	uint32_t backlight_on_time;
 	uint32_t uboot_consume_time;
+
+#ifdef CONFIG_POWERON_EXTERN_MODEM
+#ifndef CONFIG_REMOVE_MODEM
+	/* charger modem don't power on orca */
+	if (!g_charger_mode && !g_recovery_mode)
+		modem_power_on();
+#endif
+#endif
 
 #ifdef CONFIG_SOC_IWHALE2
 	aon_lpc_config();
@@ -1715,11 +1737,9 @@ extern unsigned int g_charger_mode;
 //#if defined(TOS_TRUSTY) && defined(CONFIG_EMMC_BOOT) && defined(CONFIG_SPRD_RPMB)
 
 #if defined(CONFIG_SPRD_RPMB)
-	if(gd->boot_device == BOOT_DEVICE_EMMC) {
-		uboot_set_rpmb_size();
-		uboot_is_wr_rpmb_key();
-		uboot_check_rpmb_key();
-	}
+	uboot_set_rpmb_size();
+	uboot_is_wr_rpmb_key();
+	uboot_check_rpmb_key();
 #endif
 
 #ifdef CONFIG_TEE_FIREWALL

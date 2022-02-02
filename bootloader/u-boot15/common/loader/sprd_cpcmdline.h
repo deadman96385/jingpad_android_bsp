@@ -22,6 +22,10 @@
 #define RF_HW_ID       "rfhw.id"
 #define MODEM_BOOT_METHOD         "modemboot.method"
 #define WCN_CLK_ID      "marlin.clktype"
+#define BAT_ID		"bat.id"
+#define LCM_ID		"lcm.id"
+#define HW_VERSION		"hw.version"
+#define WCN_SEL		"wcn.sel"
 
 #ifdef CONFIG_PMIC_CHIP_ID
 #define PMIC_CHIP_ID        "androidboot.pmic.chipid"

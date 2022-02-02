@@ -73,7 +73,7 @@ static uint8_t init_data[] = {
 	0x39, 0x00, 0x00, 0x04, 0xF1, 0x00, 0x00, 0x00,
 	0x15, 0x00, 0x00, 0x02, 0x35, 0x00,
 	0x05, 0x14, 0x00, 0x01, 0x29,
-	0x05, 0x64, 0x00, 0x01, 0x11,
+	0x05, 0x96, 0x00, 0x01, 0x11,
 	CMD_END
 };
 
@@ -140,13 +140,28 @@ static int td4310_power(int on)
                 sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_AVEEEN, 1);
                 mdelay(20);
 #endif
+
+#ifdef CONFIG_NT50358_LCD_POWERON
+		pr_info("panel: set lcd avdd/avee +5.5/-5.5 ...\n");
+		i2c_set_bus_num(LCD_I2C_BUS_NUM);
+		i2c_init(LCD_I2C_SPEED, LCD_POWER_I2C_ADDRESS);
+		i2c_reg_write(LCD_POWER_I2C_ADDRESS, LCD_POWER_AVDD_ADDRESS, 0xf);
+		i2c_reg_read(LCD_POWER_I2C_ADDRESS, LCD_POWER_AVDD_ADDRESS);
+		i2c_reg_write(LCD_POWER_I2C_ADDRESS, LCD_POWER_AVEE_ADDRESS, 0xf);
+		i2c_reg_read(LCD_POWER_I2C_ADDRESS, LCD_POWER_AVEE_ADDRESS);
+		i2c_reg_write(LCD_POWER_I2C_ADDRESS, LCD_POWER_DISCHARGE_ADDRESS, 0x03);
+		i2c_reg_read(LCD_POWER_I2C_ADDRESS, LCD_POWER_DISCHARGE_ADDRESS);
+		i2c_reg_write(LCD_POWER_I2C_ADDRESS, LCD_POWER_CONTROL_ADDRESS, 0x80);
+		i2c_reg_read(LCD_POWER_I2C_ADDRESS, LCD_POWER_CONTROL_ADDRESS);
+#endif
+
 		sprd_gpio_request(NULL, CONFIG_LCM_GPIO_RSTN);
 		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 1);
 		mdelay(5);
 		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 0);
 		mdelay(5);
 		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 1);
-		mdelay(20);
+		mdelay(120);
 	} else {
 		sprd_gpio_direction_output(NULL, CONFIG_LCM_GPIO_RSTN, 0);
 		mdelay(5);

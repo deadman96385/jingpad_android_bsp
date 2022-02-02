@@ -120,6 +120,9 @@ extern int get_socid(uint64_t start_addr, uint64_t lenth);
 extern int set_rma(void);
 extern unsigned int get_lock_status(void);
 extern int set_lock_status(unsigned int flag);
+#ifdef CONFIG_GET_CPU_SERIAL_NUMBER
+extern char *cpu_serial_hash(void);
+#endif
 extern char *get_product_sn();
 #endif
 
@@ -428,42 +431,27 @@ int _fb_download_image(char *partition_name,ulong offset)
 	if ((sparse_header->magic == SPARSE_HEADER_MAGIC) && (sparse_header->major_version == SPARSE_HEADER_MAJOR_VER)) {
 		img_format = IMG_WITH_SPARSE;
 		debugf("img_format =FB_IMG_WITH_SPARSE\n");
+	} else {
+		img_format = IMG_RAW;
+		debugf("img_format = IMG_RAW\n");
+	}
+
+	if (!strcmp(partition_name, "userdata")) {
+		debugf("userdata image format is %d\n", img_format);
+		get_img_partition_size(partition_name, &total_size);
+		common_raw_erase(partition_name, total_size/100, (uint64_t)0LL);
 	}
 
 	if (IMG_WITH_SPARSE == img_format) {
 		debugf("Handle the saving of image with sparse,name=%s,buf start at 0x%p,size=0x%llx\n",
 		       partition_name, buf, write_size);
 
-		if (!strcmp(partition_name, "userdata")) {
-			get_img_partition_size(partition_name, &total_size);
-			common_raw_erase(partition_name, total_size/100, (uint64_t)0LL);
-		}
 		retval = write_sparse_img(partition_name, buf, (ulong)write_size);
 		if (-1 == retval) {
 			errorf("Write sparse img fail\n");
 			return 0;
 		}
 		debugf("Write packed img success,return value=%d\n", retval);
-		if (is_f2fs_filesystem(partition_name)) {
-			total_size = 0;
-			get_img_partition_size(partition_name, &total_size);
-			if (ImageInfo.max_size < (total_size/128)) {
-				errorf("resize skip! small buffer, config dts!\n");
-			} else {
-				retval = f2fs_resize_main(total_size,
-						512,
-						f2fs_write_callback,
-						f2fs_read_callback,
-						(void*)partition_name,
-						ImageInfo.base_address,
-						ImageInfo.max_size);
-				if (retval==0) {
-					debugf("resize usedata ok\n");
-				} else {
-					debugf("resize usedata error\n");
-				}
-			}
-		}
 	} else if (PARTITION_PURPOSE_NV == partition_purpose) {
 		if (!_fb_write_nv_img(partition_name, FIXNV_SIZE)) {
 			errorf("Write nv img fail\n");
@@ -473,6 +461,27 @@ int _fb_download_image(char *partition_name,ulong offset)
 		if (0 != common_raw_write(partition_name, write_size, (uint64_t)0, (uint64_t)0, buf)) {
 			errorf("write %s size 0x%llx fail\n", partition_name, write_size);
 			return 0;
+		}
+	}
+	if (is_f2fs_filesystem(partition_name)) {
+		total_size = 0;
+		debugf("write %s size 0x%x ok\n", partition_name, write_size);
+		get_img_partition_size(partition_name, &total_size);
+		if (ImageInfo.max_size < (total_size/128)) {
+			errorf("resize skip! small buffer, config dts!\n");
+		} else {
+			retval = f2fs_resize_main(total_size,
+					512,
+					f2fs_write_callback,
+					f2fs_read_callback,
+					(void*)partition_name,
+					ImageInfo.base_address,
+					ImageInfo.max_size);
+			if (retval==0) {
+				debugf("resize userdata ok\n");
+			} else {
+				debugf("resize usedata error\n");
+			}
 		}
 	}
 
@@ -813,7 +822,11 @@ void fb_cmd_oem(const char *arg, void *data, uint64_t sz)
 	}
 
 	if (!strcmp(subcmd, "get_identifier_token")) {
+#ifdef CONFIG_GET_CPU_SERIAL_NUMBER
+		strcpy(product_sn_token, cpu_serial_hash());
+#else
 		strcpy(product_sn_token, get_product_sn());
+#endif
 		debugf("Identifier token: %s.\n", product_sn_token);
 		fastboot_response_sn("Identifier token:\n");
 
@@ -1038,7 +1051,11 @@ static void fastboot_token_init(void)
     char tokenname[16] = {0};
     int p = 0, i = 0;
 
+#ifdef CONFIG_GET_CPU_SERIAL_NUMBER
+    strcpy(product_sn_token, cpu_serial_hash());
+#else
     strcpy(product_sn_token, get_product_sn());
+#endif
     for(p=0;p<4;p++){
         if('\0' == product_sn_token[p*16])
             break;

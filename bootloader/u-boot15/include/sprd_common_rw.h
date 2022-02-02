@@ -25,6 +25,7 @@ void fdt_fixup_pmic_wa(void *fdt);
  int fdt_fixup_verified_boot(void *fdt);
  int fdt_fixup_flash_lock_state(void *fdt);
  int fdt_fixup_serialno(void *fdt);
+int fdt_fixup_wdten(void *fdt);
  int fdt_fixup_chosen_bootargs_board_private(void *fdt);
  void fdt_fixup_all(u8 *fdt_blob);
  int fdt_initrd_norsvmem(void *fdt, ulong initrd_start, ulong initrd_end, int force);

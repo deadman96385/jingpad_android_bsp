@@ -62,7 +62,7 @@ void sprd_spi_enable(unsigned int spi_id)
 
 	spi_use_id = spi_id;
 	reg_val = readl(sprd_spi[spi_id].apb_base_eb);
-	reg_val |= sprd_spi[spi_id].spi_eb;
+	reg_val |= (unsigned int)sprd_spi[spi_id].spi_eb;
 	writel(reg_val, sprd_spi[spi_id].apb_base_eb);
 }
 
@@ -74,7 +74,7 @@ void sprd_spi_disable(unsigned int spi_id)
 		return;
 
 	reg_val = readl(sprd_spi[spi_id].apb_base_eb);
-	reg_val &= ~(sprd_spi[spi_id].spi_eb);
+	reg_val &= ~(unsigned int)(sprd_spi[spi_id].spi_eb);
 	writel(reg_val, sprd_spi[spi_id].apb_base_eb);
 }
 
@@ -501,6 +501,88 @@ int sprd_spi_read_data(unsigned int *pbuf, unsigned int data_len, unsigned int d
 			return spi_trans_timeout;
 
 		read_num += sprd_spi_read_bufs(pbuf, trans_num);
+		pbuf += trans_num;
+		block_num -= trans_num;
+		first_read = 0;
+	}
+
+	return data_len;
+}
+
+static unsigned int sprd_spi_write_bytes(unsigned char *tx_buf, unsigned int num)
+{
+	unsigned int i;
+	unsigned long spi_base = sprd_get_spi_base();
+
+	for (i = 0; i < num; i++, tx_buf++)
+		writeb(*tx_buf, (spi_base + SPI_TXD));
+
+	return num;
+}
+
+int sprd_spi_write_data_bytes(unsigned char *pbuf, unsigned int data_len, unsigned int dummy_bit_len)
+{
+	unsigned int block_num = data_len;
+	unsigned int trans_num = 0;
+	unsigned int write_num = 0;
+	unsigned int first_write = 1;
+
+	sprd_spi_fifo_rst();
+	while (block_num) {
+		trans_num = block_num > SPRD_SPI_FIFO_SIZE ? SPRD_SPI_FIFO_SIZE : block_num;
+		if (first_write)
+			sprd_spi_set_tx_length(trans_num, dummy_bit_len);
+		else
+			sprd_spi_set_tx_length(trans_num, 0);
+
+		write_num += sprd_spi_write_bytes(pbuf, trans_num);
+		sprd_spi_tx_req();
+
+		if (spi_trans_timeout == sprd_spi_wait_tx_finish())
+			return spi_trans_timeout;
+
+		pbuf += trans_num;
+		block_num -= trans_num;
+		first_write = 0;
+	}
+
+	return data_len;
+}
+
+static unsigned int sprd_spi_read_bytes(unsigned char *rx_buf, unsigned int num)
+{
+	unsigned int i;
+	unsigned long spi_base = sprd_get_spi_base();
+	unsigned int data_mask = sprd_get_spi_data_mask();
+
+	for (i = 0; i < num; i++, rx_buf++) {
+		while ((readb(spi_base + SPI_STS2) & SPI_RX_FIFO_REALLY_EMPTY));
+		*rx_buf = data_mask & readb(spi_base + SPI_TXD);
+	}
+
+	return num;
+}
+
+int sprd_spi_read_data_bytes(unsigned char *pbuf, unsigned int data_len, unsigned int dummy_bit_len)
+{
+	unsigned int block_num = data_len;
+	unsigned int trans_num = 0;
+	unsigned int read_num = 0;
+	unsigned int first_read = 1;
+
+	sprd_spi_fifo_rst();
+	while (block_num) {
+		trans_num = block_num > SPRD_SPI_FIFO_SIZE ? SPRD_SPI_FIFO_SIZE : block_num;
+		if (first_read)
+			sprd_spi_set_rx_length(trans_num, dummy_bit_len);
+		else
+			sprd_spi_set_rx_length(trans_num, 0);
+
+		sprd_spi_rx_req();
+		if (spi_trans_timeout == sprd_spi_wait_rx_finish())
+			return spi_trans_timeout;
+
+		read_num += sprd_spi_read_bytes(pbuf, trans_num);
 		pbuf += trans_num;
 		block_num -= trans_num;
 		first_read = 0;

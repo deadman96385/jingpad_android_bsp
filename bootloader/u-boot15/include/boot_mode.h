@@ -76,6 +76,8 @@ typedef enum {
 
 	CMD_SET_FIRST_UPT_MODE,
 
+	CMD_SET_FIRST_AUTOPON_MODE,/* auto power on */
+
 	CMD_SET_FIRST_MAX_MODE
 }set_first_mode_enum_type;
 

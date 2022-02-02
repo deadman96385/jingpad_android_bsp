@@ -20,12 +20,12 @@
 		#size-cells = <2>;
 		ranges;
 
-		fastboot_reserved: fastbootbuffer@82000000{
-			reg = <0x0 0x82000000 0x0 0x10000000>;
+		fastboot_reserved: fastbootbuffer@b0000000{
+			reg = <0x0 0xb0000000 0x0 0x28000000>;
 		};
 
-		download_reserved: sparsebuffer@82000000{
-			reg = <0x0 0x82000000 0x0 0x10000000>;
+		download_reserved: sparsebuffer@b0000000{
+			reg = <0x0 0xb0000000 0x0 0x28000000>;
 		};
 
 		dl_alt1_reserved: alterbuffer1@92000000{

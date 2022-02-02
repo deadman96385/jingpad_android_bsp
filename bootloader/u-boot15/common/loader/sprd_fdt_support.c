@@ -31,6 +31,7 @@ extern uint32_t load_lcd_hight_to_kernel();
 extern int get_dram_cs_number(void);
 extern int get_dram_cs0_size(void);
 extern char *get_product_sn(void);
+extern char *get_sn1(void);
 extern void tee_call_request(unsigned int **mem_ptr);
 extern int fdtdec_decode_region_private(const void *blob, int node, const char *prop_name,
 			 fdt_addr_t *basep, fdt_size_t *sizep);
@@ -85,6 +86,8 @@ extern AvbSlotVerifyData* avb_slot_data[2];
 
 #define LOGLEVEL_DATA_OFFSET	(9 * 1024)
 #define LOGLEVEL_DATA_LEN		32
+
+#define WDTEN_MAGIC			0xe551
 
 int fdt_fixup_verified_boot(void *fdt)
 {
@@ -972,11 +975,26 @@ int fdt_fixup_serialno(void *fdt)
 	int ret;
 	memset(buf, 0, 255);
 
-	sprintf(buf, " androidboot.serialno=%s", get_product_sn());
+	sprintf(buf, " androidboot.serialno=%s ro.smt.serialno=%s", get_product_sn(), get_sn1());
 	str_len = strlen(buf);
 	buf[str_len] = '\0';
 	ret = fdt_chosen_bootargs_append(fdt, buf, 1);
 	return ret;
+}
+
+int fdt_fixup_wdten(void *fdt)
+{
+	unsigned int val_en;
+	char buf[32];
+
+#ifndef DEBUG
+	val_en = WDTEN_MAGIC;
+#else
+	val_en = 0;
+#endif
+	sprintf(buf, " androidboot.wdten=%x", val_en);
+
+	return fdt_chosen_bootargs_append(fdt, buf, 1);
 }
 
 int fdt_fixup_memleakon(void *fdt)
@@ -1361,7 +1379,7 @@ int fdt_fixup_ro_boot_ramsize(void *fdt)
 }
 
 int fdt_fixup_ddrsize_range(void *fdt) {
-    char buf[64], *range = NULL;
+    char buf[64], buf2[32], *range = NULL;
     int ret, str_len;
     memset(buf, 0, sizeof(buf));
 #ifdef CONFIG_DDR_AUTO_DETECT
@@ -1376,10 +1394,13 @@ int fdt_fixup_ddrsize_range(void *fdt) {
         range = "[0,512)";
     } else if (ro_boot_ddrsize < 1024) {
         range = "[512,1024)";
-    } else if (ro_boot_ddrsize < 2048) {
-        range = "[1024,2048)";
+    } else if (ro_boot_ddrsize < 6144){
+        uint64_t mid_size = 0;
+        mid_size = (ro_boot_ddrsize/1024)*1024;
+        sprintf(buf2, "[%lld,%lld)", mid_size, mid_size+1024);
+        range = buf2;
     } else {
-        range = "[2048,)";
+        range = "[6144,)";
     }
 #else
     range = "[1024,2048)";
@@ -1753,5 +1774,77 @@ int fdt_fixup_cpu_serial_number(void *fdt)
 	}
 
 	return 0;
+}
+
+char *cpu_serial_hash(void)
+{
+	int err;
+	char serial_num[17];
+	char raw_serial_num[32];
+	static char mask_serial_num[65];
+	int cnt;
+	long ret1 = 1, ret2 = 1;
+	const char *p;
+
+	memset(serial_num, 0, sizeof(serial_num));
+	err = sprd_get_chip_hex_uid(serial_num);
+	if (err < 0) {
+		printf("read serial number error\n");
+		sprintf(mask_serial_num, "%016lX", 0);
+		return mask_serial_num;
+	}
+
+	memset(raw_serial_num, 0, sizeof(raw_serial_num));
+	sha256_csum_wd_sw(serial_num, strlen(serial_num), raw_serial_num, NULL);
+
+	memset(mask_serial_num, 0, sizeof(mask_serial_num));
+	for (cnt = 0; cnt < sizeof(raw_serial_num); cnt++) {
+		sprintf(mask_serial_num + cnt * 2, "%02x", raw_serial_num[cnt]);
+	}
+
+	printf("cpu serial: [%s]\n", mask_serial_num);
+
+	p = mask_serial_num;
+	while (*p) {
+		ret1 = ret1 * 12582917 + *p - 'a';
+		p++;
+	}
+	p = mask_serial_num;
+	while (*p) {
+		ret2 = ret2 * 2333 + *p - 'a';
+		p++;
+	}
+	sprintf(mask_serial_num, "%016lX", ret1 + ret2);
+
+	printf("cpu serial hash: [%s]\n", mask_serial_num);
+
+	return mask_serial_num;
+}
+#endif
+
+#if defined(CONFIG_UFS) && defined(CONFIG_MMC) && defined(CONFIG_SEND_STORAGE_TYPE)
+int fdt_fixup_boot_device(void *fdt)
+{
+
+	char buf[255];
+	int str_len;
+	int ret;
+	memset(buf, 0, 255);
+
+#if defined(CONFIG_BLK_DEV_BOOT)
+	if (get_bootdevice() == BOOT_DEVICE_UFS)
+		sprintf(buf, CONFIG_UFS_BOOTDEVICE); //ufs
+	else if (get_bootdevice() == BOOT_DEVICE_EMMC)
+		sprintf(buf, CONFIG_EMMC_BOOTDEVICE); //eMMC
+#else
+#ifdef CONFIG_EMMC_BOOT
+	sprintf(buf, CONFIG_EMMC_BOOTDEVICE); //eMMC
+#endif
+#endif
+
+	str_len = strlen(buf);
+	buf[str_len] = '\0';
+	ret = fdt_chosen_bootargs_append(fdt, buf, 1);
+	return ret;
 }
 #endif

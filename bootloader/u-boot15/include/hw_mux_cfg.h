@@ -8,7 +8,7 @@
 #define SPRD_MAGIC_HEADER		0x5555aaaa
 #define SPRD_MAGIC_END			0xaaaa5555
 #define SPRD_MAX_SYS_NAME_LEN		20
-#define SPRD_UART_MUX_VERSION		0x0000
+#define SPRD_UART_MUX_VERSION		0x0001
 
 #define SPRD_MAX_UART_CTRL_NUM		16
 #define SPRD_MAX_UART_PORT_NUM		11
@@ -24,6 +24,7 @@ typedef struct {
 typedef struct {
 	uint32_t magic_header;
 	uint32_t version;
+	uint32_t enable;
 	uint32_t uart_port_num;
 	pin_uart_port_sel_t port[SPRD_MAX_UART_PORT_NUM];
 	uint32_t magic_end;

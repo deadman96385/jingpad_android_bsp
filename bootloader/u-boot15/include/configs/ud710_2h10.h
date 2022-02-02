@@ -11,8 +11,10 @@
 #define SPRD_DEBUG_LEVEL		2
 
 #define CONFIG_KERNEL_BOOT_CP
-//#define CONFIG_MEM_LAYOUT_DECOUPLING
-
+#define CONFIG_MEM_LAYOUT_DECOUPLING
+#define CONFIG_POWERON_EXTERN_MODEM
+#define EXT_MODEM_PBINT		15
+#define CONFIG_SP_DDR_BOOT
 #define CONFIG_CP_MAX_REGION_NUM	0xC
 
 /*build aarch64 u-boot.elf*/
@@ -68,6 +70,8 @@
 #define CONFIG_ADIE_SC2730
 
 #define CONFIG_DTS_MEM_LAYOUT
+
+#define CONFIG_EMMC_DDR_CHECK_TYPE
 
 /* SPRD Serial Configuration */
 #define CONFIG_SPRD_UART		1
@@ -285,16 +289,29 @@
 #define CORE_CP0                          BIT_0
 #define CORE_CP2                          BIT_2
 
+/* spi */
+#define CONFIG_SPRD_SPI_V2
+
+/* lattice crosslink, spi */
+#ifdef CONFIG_SPRD_SPI_V2
+#define CONFIG_SPRD_SPI_MD6000
+#endif
+
 /* display config */
 #define CONFIG_LCD
 #define CONFIG_CMD_BMP
 #define CONFIG_SPLASH_SCREEN
-#define CONFIG_SC2703_LCD_POWERON
 #define CONFIG_VIDEO_SPRD
 #define CONFIG_DPU_R3P0
 #define CONFIG_DSIH_SPRD_CTRL_RXP0
 #define CONFIG_DPHY_SPRD_ROC1
-#define CONFIG_LCD_TD4310_TRULY_MIPI_FHD
+#define CONFIG_S813_P7106_G1
+
+#ifdef CONFIG_S813_P7106_G1
+#define CONFIG_LCD_RM69380_FPGA_MIPI
+#define CONFIG_SC2703_LCD_POWERON
+#define CONFIG_LCM_GPIO_1V8_LDO  60
+#endif
 #define CONFIG_LCM_GPIO_RSTN    50
 #define CONFIG_SYS_WHITE_ON_BLACK
 #define LCD_BPP LCD_COLOR32
@@ -359,7 +376,20 @@
 #define ADI_15BIT_MODE
 #endif
 
+#ifndef CONFIG_CHIP_UID
+#define CONFIG_CHIP_UID
+#endif
+
 #define CONFIG_RTC_START_YEAR		1970
-#define CONFIG_DEBUG_DCDCLDO_FORCE_ON  //for bringup
+//#define CONFIG_DEBUG_DCDCLDO_FORCE_ON  //for bringup
 #define CONFIG_SUPPORT_LOWPOWER
+
+/*get flash type during uboot downloading*/
+#define CONFIG_SEND_STORAGE_TYPE
+
+#if defined(CONFIG_UFS) && defined(CONFIG_MMC)
+#define CONFIG_UFS_BOOTDEVICE	"androidboot.boot_devices=soc/soc:ap-apb/71900000.ufs"
+#define CONFIG_EMMC_BOOTDEVICE	"androidboot.boot_devices=soc/soc:ap-apb/71400000.sdio"
+#endif
+
 #endif /* __CONFIG_H  */

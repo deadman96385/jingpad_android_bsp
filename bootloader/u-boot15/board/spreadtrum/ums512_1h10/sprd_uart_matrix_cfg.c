@@ -37,6 +37,7 @@
 volatile pin_mux uport = {
 	.magic_header = SPRD_MAGIC_HEADER,
 	.uart_port_num = 10,
+	.enable = 0,
 	.version = SPRD_UART_MUX_VERSION,
 	.port = {
 			{
@@ -146,6 +147,10 @@ volatile pin_mux uport = {
 void pin_uart_port_cfg(void)
 {
 	pin_uart_port_sel_t *up = uport.port;
+
+	if(!uport.enable)
+		return ;
+
 	__raw_writel(UART_MATRIX_MTX_CFG(up[0].reg, up[1].reg, up[2].reg,
 					up[3].reg, up[4].reg, up[5].reg,
 					up[6].reg), CTL_PIN_BASE + REG_PIN_UART_MATRIX_MTX_CFG );

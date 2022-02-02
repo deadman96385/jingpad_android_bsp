@@ -151,6 +151,10 @@ typedef struct smc_param {
         uint32_t a7;
 }smc_param;
 
+uint8_t rpmb_blk_read(char *blk_data, uint16_t blk_index, uint8_t block_count);
+int check_rpmb_key(uint8_t *package, int package_size);
+int is_wr_rpmb_key(void);
+
 int uboot_check_rpmb_key();
 int uboot_is_wr_rpmb_key();
 int uboot_set_rpmb_size();

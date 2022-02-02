@@ -51,7 +51,7 @@ do	\
 #define ENDORKEY_BLOCK_END		(NONE)
 
 /********************** Public Part **********************/
-#define PUBLIC_EFUSE_BLOCK2		(46)
+#define PUBLIC_EFUSE_BLOCK2		(66)
 #define RMA_MODE_BIT			(0)
 
 /* Secure Public Efuse Fuction */

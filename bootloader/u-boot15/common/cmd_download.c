@@ -27,6 +27,21 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+typedef enum {
+	E_DISABLE_TRAN_CODE = 0,
+	E_IS_OLD_MEMORY,
+	E_SUPPORT_RAW_DATA,
+	E_FLUSH_SIZE,
+	E_RSA, //0: not support; 1:AES CBC  2: RSA2048
+	E_TIME_STAMP,
+#ifdef CONFIG_SEND_STORAGE_TYPE
+	E_STORAGE_TYPE,
+#endif
+	E_SUPPORT_DUMP_UBOOT_LOG = 7,
+	E_MAX_ID = 0xFFFF
+} E_DA_INFO_ID;
+
+
 static int dl_times=0;
 static struct dl_cmd *cmdlist = NULL;
 extern int sprd_clean_rtc(void);
@@ -39,8 +54,21 @@ typedef struct _DA_INFO_T_
 	uint8_t    bSupportRawData;
 	uint8_t    bReserve[2];
 	uint32_t   dwFlushSize;		//unit KB
-	uint32_t   dwReserve[60];	//Reserve
+#ifdef CONFIG_SEND_STORAGE_TYPE
+	uint32_t   dwStorageType;
+	uint32_t   dwReserve[59];	//Reserve
+#else
+	uint32_t   dwReserve[60];   //Reserve
+#endif
 }DA_INFO_T;
+
+#ifdef CONFIG_SEND_STORAGE_TYPE
+typedef enum storage_type {
+	STORAGE_TYPE_NAND = 0x101,
+	STORAGE_TYPE_EMMC = 0x102,
+	STORAGE_TYPE_UFS  = 0x103
+}storage_type_t;
+#endif
 
 void dl_cmd_register(enum dl_cmd_type type,
 		       int (*handle)(struct dl_packet *pkt, void *arg))
@@ -92,6 +120,27 @@ void dl_cmd_handler(void)
 extern void dl_power_control(void);
 #endif
 
+static int dl_da_tlv(uint8_t *content, uint16_t type, uint16_t len,
+	uint8_t *value)
+{
+	uint16_t *pt;
+	uint16_t *pl;
+	uint8_t *pv;
+
+	pt = (uint16_t *)content;
+	pl = pt + 1;
+	pv = (uint8_t *)(pl + 1);
+
+	*pt = type;
+	*pl = len;
+	if (len == 1)
+		*pv = *value;
+	else
+		memcpy(pv, value, len);
+
+	return sizeof(*pt) + sizeof(*pl) + len;
+}
+
 int do_download(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	extern int autodloader_mainhandler(void);
@@ -99,6 +148,7 @@ int do_download(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	int chip_version = 0;
 	dl_packet_t ack_packet;
 	DA_INFO_T Da_Info = {0};
+	int offset = 0;
 
 #ifdef CONFIG_USB_ENUM_IN_UBOOT
 	chip_version = sprd_get_chip_version();
@@ -161,6 +211,9 @@ int do_download(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 #ifdef CONFIG_EMMC_DDR_CHECK_TYPE
 	dl_cmd_register(BSL_CMD_READ_FLASH_TYPE, dl_cmd_read_flashtype);
 #endif
+#if !defined(CONFIG_NAND_BOOT) && !defined(CONFIG_DDR_BOOT)
+	dl_cmd_register(BSL_CMD_CHECK_PARTITION, dl_cmd_check_partition);
+#endif
 	dl_cmd_register(BSL_CMD_SET_FIRST_MODE, dl_set_first_mode);
 	dl_cmd_register(BSL_CMD_WRITE_RAW_DATA_ENABLE, dl_cmd_write_raw_data_enable);
 	dl_cmd_register(BSL_CMD_DLOAD_RAW_START, dl_cmd_per_raw_packet_start);
@@ -190,9 +243,43 @@ int do_download(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 			Da_Info.dwFlushSize = 2048;//KB
 		}
 
+#ifdef CONFIG_SEND_STORAGE_TYPE
+#if defined(CONFIG_BLK_DEV_BOOT)
+		if (get_bootdevice() == BOOT_DEVICE_EMMC)
+			Da_Info.dwStorageType = STORAGE_TYPE_EMMC;
+		else if (get_bootdevice() == BOOT_DEVICE_UFS)
+			Da_Info.dwStorageType = STORAGE_TYPE_UFS;
+#elif defined(CONFIG_EMMC_BOOT)
+		Da_Info.dwStorageType = STORAGE_TYPE_EMMC;
+#elif defined(CONFIG_NAND_BOOT)
+		Da_Info.dwStorageType = STORAGE_TYPE_NAND;
+#else
+		#error Macros(CONFIG_BLK_DEV_BOOT\CONFIG_EMMC_BOOT\CONFIG_EMMC_BOOT) \
+			need to be defined in this project
+#endif
+#endif
+
 		ack_packet.body.type = BSL_INCOMPATIBLE_PARTITION;
+#ifdef CONFIG_SEND_STORAGE_TYPE
+		/* specify magic for new da_info */
+		*(uint32_t *)ack_packet.body.content = 0x7477656e;
+		offset += 4;
+		offset += dl_da_tlv(ack_packet.body.content + offset,
+					(uint16_t)E_DISABLE_TRAN_CODE, 4, &Da_Info.bDisableHDLC);
+		offset += dl_da_tlv(ack_packet.body.content + offset,
+			(uint16_t)E_IS_OLD_MEMORY, 1, &Da_Info.bIsOldMemory);
+		offset += dl_da_tlv(ack_packet.body.content + offset,
+					(uint16_t)E_SUPPORT_RAW_DATA, 1,
+					&Da_Info.bSupportRawData);
+		offset += dl_da_tlv(ack_packet.body.content + offset,
+					(uint16_t)E_FLUSH_SIZE, 4, &Da_Info.dwFlushSize);
+		offset += dl_da_tlv(ack_packet.body.content + offset,
+					(uint16_t)E_STORAGE_TYPE, 4, &Da_Info.dwStorageType);
+		ack_packet.body.size = offset;
+#else
 		memcpy((unchar *)ack_packet.body.content, (unchar *)&Da_Info,sizeof(Da_Info));
 		ack_packet.body.size = sizeof(Da_Info);
+#endif
 		dl_send_packet(&ack_packet);
 	}
 

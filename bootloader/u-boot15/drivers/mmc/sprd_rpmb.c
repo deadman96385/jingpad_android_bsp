@@ -20,26 +20,6 @@
 #include <malloc.h>
 #include <sprd_rpmb.h>
 
-#define RPMB_MSG_TYPE_REQ_AUTH_KEY_PROGRAM          0x0001
-#define RPMB_MSG_TYPE_REQ_WRITE_COUNTER_VAL_READ    0x0002
-#define RPMB_MSG_TYPE_REQ_AUTH_DATA_WRITE           0x0003
-#define RPMB_MSG_TYPE_REQ_AUTH_DATA_READ            0x0004
-#define RPMB_MSG_TYPE_REQ_RESULT_READ               0x0005
-
-#define RPMB_MSG_TYPE_RESP_AUTH_KEY_PROGRAM         0x0100
-#define RPMB_MSG_TYPE_RESP_WRITE_COUNTER_VAL_READ   0x0200
-#define RPMB_MSG_TYPE_RESP_AUTH_DATA_WRITE          0x0300
-#define RPMB_MSG_TYPE_RESP_AUTH_DATA_READ           0x0400
-
-#define RPMB_STUFF_DATA_SIZE                        196
-#define RPMB_KEY_MAC_SIZE                           32
-#define RPMB_DATA_SIZE                              256
-#define RPMB_NONCE_SIZE                             16
-#define RPMB_RESULT_OK                              0x00
-#define RPMB_RES_NO_AUTH_KEY                        0x0007
-
-#define RPMB_BLOCK_COUNT    1
-
 #define BLOCK_SIZE 512
 #define EMMC  0
 #define RPMB_PARTITION 3
@@ -48,18 +28,6 @@
 
 extern int mmc_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd,
 			struct mmc_data *data);
-
-struct rpmb_data_frame {
-	uint8_t stuff_bytes[RPMB_STUFF_DATA_SIZE];
-	uint8_t key_mac[RPMB_KEY_MAC_SIZE];
-	uint8_t data[RPMB_DATA_SIZE];
-	uint8_t nonce[RPMB_NONCE_SIZE];
-	uint8_t write_counter[4];
-	uint8_t address[2];
-	uint8_t block_count[2];
-	uint8_t op_result[2];
-	uint8_t msg_type[2];
-};
 
 static void u16_to_bytes(uint16_t u16, uint8_t * bytes)
 {
@@ -137,7 +105,7 @@ int mmc_set_blockcount(struct mmc *mmc, unsigned int blockcount,
 }
 
 /**@retrun 0 get rpmb package successful*/
-int check_rpmb_key(uint8_t *package, int package_size)
+int check_mmc_rpmb_key(uint8_t *package, int package_size)
 {
 	//Must match in tos
 	uint8_t nonce[RPMB_NONCE_SIZE] = {0xA5,0x5A,0xFF,0x00,0xBE,0xEF,0xBE,0xEF,0xBE,0xEF,0xBE,0xEF,0x00,0xFF,0x5A,0xA5};
@@ -177,7 +145,7 @@ int check_rpmb_key(uint8_t *package, int package_size)
 
 
 /**@retrun 0 rpmb key unwritten*/
-int is_wr_rpmb_key(void)
+int is_wr_mmc_rpmb_key(void)
 {
 	struct rpmb_data_frame *data_frame;
 	uint16_t msg_type;
@@ -225,7 +193,7 @@ int is_wr_rpmb_key(void)
 }
 
 
-uint32_t rpmb_read_writecount(void)
+uint32_t mmc_rpmb_read_writecount(void)
 {
 	struct rpmb_data_frame *data_frame;
 	uint16_t msg_type;
@@ -272,7 +240,7 @@ blk_index: the block index for read;
 block_count: the read count;
 success return 0 ;
 */
-uint8_t rpmb_blk_read(char *blk_data, uint16_t blk_index, uint8_t block_count)
+uint8_t mmc_rpmb_blk_read(char *blk_data, uint16_t blk_index, uint8_t block_count)
 {
 	struct rpmb_data_frame *data_frame;
 	struct rpmb_data_frame *resp_buf;
@@ -331,7 +299,7 @@ write_data: data for write
 blk_index: the block will be write to;
 success return 0 
 */
-uint8_t rpmb_blk_write(char *write_data, uint16_t blk_index)
+uint8_t mmc_rpmb_blk_write(char *write_data, uint16_t blk_index)
 {
 	struct rpmb_data_frame *data_frame;
 	uint16_t msg_type;
@@ -349,7 +317,7 @@ uint8_t rpmb_blk_write(char *write_data, uint16_t blk_index)
 	msg_type = RPMB_MSG_TYPE_REQ_AUTH_DATA_WRITE;
 	data_frame = (uint8_t *) malloc(RPMB_DATA_FRAME_SIZE);
 	memset(data_frame, 0, RPMB_DATA_FRAME_SIZE);
-	writecount = rpmb_read_writecount();
+	writecount = mmc_rpmb_read_writecount();
 	u16_to_bytes(msg_type, data_frame->msg_type);
 	u16_to_bytes(blk_index, data_frame->address);
 	u16_to_bytes(block_count, data_frame->block_count);
@@ -400,7 +368,7 @@ uint8_t rpmb_blk_write(char *write_data, uint16_t blk_index)
   len :must be 32;
   reutrn 0 success
 */
-uint8_t rpmb_write_key(uint8_t * key, uint8_t len)
+uint8_t mmc_rpmb_write_key(uint8_t * key, uint8_t len)
 {
 	struct rpmb_data_frame *data_frame = NULL;
 	uint16_t msg_type;
@@ -451,7 +419,7 @@ uint8_t rpmb_write_key(uint8_t * key, uint8_t len)
 	return 1;		//should not run here;
 };
 
-uint8_t rpmb_get_wr_cnt(void){
+uint8_t mmc_rpmb_get_wr_cnt(void){
 	struct mmc *mmc = find_mmc_device(0);	//0 is emmc
 	printf(" rpmb_get_wr_cnt:0x%x\n",mmc->rel_wr_sec_c);
 	return mmc->rel_wr_sec_c;

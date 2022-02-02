@@ -12,6 +12,10 @@
  */
 
 #include "sprd_dispc.h"
+#include <libfdt.h>
+#include <fdtdec.h>
+
+DECLARE_GLOBAL_DATA_PTR;
 
 #define DISPC_INT_FBC_PLD_ERR_MASK	BIT(8)
 #define DISPC_INT_FBC_HDR_ERR_MASK	BIT(9)
@@ -259,6 +263,25 @@ static void dpu_layer(struct dispc_context *ctx,
 static void dpu_write_back(struct dispc_context *ctx,
 		struct wb_region region[], u8 count);
 
+int fdt_getprop_u32(const void *fdt, int off, const char *prop, u32 *dflt)
+{
+	const void *val;
+	int len;
+
+	if (!fdt || !prop) {
+		pr_err("fdt or prop is NULL\n");
+		return -1;
+	}
+
+	val = fdt_getprop(fdt, off, prop, &len);
+	if (val) {
+		*dflt = fdt32_to_cpu(*((const fdt32_t*)val));
+		return 0;
+	}
+
+	return -1;
+}
+
 static u32 dpu_get_version(struct dispc_context *ctx)
 {
 	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
@@ -441,6 +464,11 @@ static int dpu_init(struct dispc_context *ctx)
 	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
 	struct panel_info *panel = ctx->panel;
 	u32 size;
+	const void *fdt = gd->fdt_blob;
+	int dpu_offset;
+	int ret = -1;
+	uint32_t val = 0;
+	int i;
 
 	if (reg == NULL) {
 		pr_err("dpu base address is null!");
@@ -460,11 +488,20 @@ static int dpu_init(struct dispc_context *ctx)
 	reg->panel_size = size;
 	reg->blend_size = size;
 
-	reg->dpu_cfg0 = 0;
+	dpu_offset = fdt_path_offset(fdt, "/dpu");
+	if (dpu_offset >= 0) {
+		ret = fdt_getprop_u32(fdt, dpu_offset, "sprd,gsp-outstanding-thres", &val);
+		if (!ret)
+			reg->dpu_cfg0 = val;
+		else
+			reg->dpu_cfg0 = 0x0;
+	} else
+		reg->dpu_cfg0 = 0x0;
+
 	reg->dpu_cfg1 = 0x00447171;
 	reg->dpu_cfg2 = 0x14002;
 	dpu_clean(ctx);
-	reg->dpu_enhance_cfg = 0;
+	reg->dpu_enhance_cfg = BIT(2); //FORCE HSV ENABLE
 
 	reg->mmu_en = 0;
 	reg->mmu_min_ppn1 = 0;
@@ -474,6 +511,13 @@ static int dpu_init(struct dispc_context *ctx)
 	reg->mmu_vpn_range = 0x1ffff;
 
 	/*dpu_write_back_config(ctx);*/
+
+	//BYPASS HSV
+	for (i = 0; i < 360; i++) {
+		reg->hsv_lut_addr = i;
+		udelay(1);
+		reg->hsv_lut_wdata = (1024 << 16) | i;
+	}
 
 	return 0;
 }
@@ -769,9 +813,13 @@ static void dpu_dpi_init(struct dispc_context *ctx)
 	if (ctx->if_type == SPRD_DISPC_IF_DPI) {
 		/*use dpi as interface */
 		reg->dpu_cfg0 &= ~(BIT(0));
-
-		/* disalbe halt enable for SPRD DSI */
-		/* reg_val |= BIT(16); */
+		/*
+		 * FIXME:
+		 * Dpu halt enable for SPRD DSI.
+                 * Dpi_ctrl reg is static,  which just take affect after dpu_run().
+                 * So kernel cfg is not useful when first boot. We must enable it in uboot.
+                 */
+		reg_val |= BIT(16);
 
 		reg->dpi_ctrl = reg_val;
 

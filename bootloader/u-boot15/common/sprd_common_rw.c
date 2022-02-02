@@ -12,6 +12,7 @@
 #include <ubi_uboot.h>
 #include <dl_ubi.h>
 #endif
+#include <errno.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -161,6 +162,13 @@ int block_dev_write(block_dev_desc_t *dev_desc, uint64_t size, uint64_t offset, 
 
 	if (NULL != temp)
 		free(temp);
+
+	if(NULL == dev_desc->block_sync)
+		return 0;
+
+	if (0 != dev_desc->block_sync(dev_desc->dev))
+		return -1;
+
 	return 0;
 
 fail:
@@ -783,6 +791,39 @@ int common_query_backstage(char *part_name, uint32_t size, char *buf)
 	blk_num = size / local_part_info.blksz;
 	if (blk_num != dev_desc->backstage_write_query(dev_id, blk_num, buf))
 		return -1;
+
+	return 0;
+}
+
+int get_partition_information(disk_partition_t *info, u32 *cnt)
+{
+	int i;
+	int ret;
+	int dev_id;
+	char *ifname;
+	block_dev_desc_t *dev_desc;
+
+	ifname = block_dev_get_name();
+
+	dev_id = get_devnum_hwpart(ifname, USER_PART);
+	if (dev_id < 0) {
+		errorf("get user part dev num fail!\n");
+		return dev_id;
+	}
+
+	dev_desc = get_dev_hwpart(ifname, dev_id, USER_PART);
+	if (!dev_desc) {
+		errorf("get user part dev fail!\n");
+		return -ENODEV;
+	}
+
+	for (i = 0; i < GPT_ENTRY_NUMBERS; i++) {
+		ret = get_partition_info(dev_desc, i + 1, info + i);
+		if (ret)
+			break;
+	}
+
+	*cnt = i;
 
 	return 0;
 }

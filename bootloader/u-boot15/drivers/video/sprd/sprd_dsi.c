@@ -155,7 +155,7 @@ static int dsi_context_init(struct sprd_dsi *dsi)
 		dsi->glb->parse_dt(&dsi->ctx);
 
 	ctx->id = 0;
-	ctx->max_rd_time = 6000;
+	ctx->max_rd_time = 8000;
 	ctx->int0_mask = 0xffffffff;
 	ctx->int1_mask = 0xffffffff;
 

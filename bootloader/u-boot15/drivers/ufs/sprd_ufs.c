@@ -251,7 +251,7 @@ static int wait_for_cmd_completion()
 	/*instruction "invd" must be excuted inline, it's strange*/
 	invd();
 #else
-	invalidate_dcache_range(0, 0);
+	invalidate_dcache_all();
 #endif
 
 	return UFS_SUCCESS;
@@ -288,7 +288,7 @@ static int wait_for_previous_scsi_completion()
 	/*instruction "invd" must be excuted inline, it's strange*/
 	//invd();
 #else
-	invalidate_dcache_range(0, 0);
+	invalidate_dcache_all();
 #endif
 
 	return UFS_SUCCESS;
@@ -725,6 +725,8 @@ int init_ufs_hostc()
 	 * Link Startup Procedure
 	 * keep sending the DME_LINKSTARTUP command until the device is detected
 	 */
+       CHIP_REG_AND(0x71800820,~(BIT(16)));
+       CHIP_REG_OR(0x718001e0, BIT(16));
 	while(retry > 0) {
 		if(ufs_readl(DW_UFS_HCS) & DW_UFS_HCS_UCRDY) {
 			debugf("Send link startup UIC command\n");
@@ -1023,9 +1025,10 @@ int compare_cfg_lu_table(struct lu_specific_cfg_tbl *lu_cfg, struct lu_common_cf
 	return ret;
 }
 
-void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu, 
-			struct ufs_cfg_desc_tbl *default_desc, struct lu_specific_cfg_tbl *new_cfg,
-			struct lu_common_cfg_tbl *common_cfg)
+void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
+				uint8_t *default_desc,
+				struct lu_specific_cfg_tbl *new_cfg,
+				struct lu_common_cfg_tbl *common_cfg)
 {
 	uint16_t data_len = 0;
 	int lu_index = 0;
@@ -1033,8 +1036,11 @@ void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
 	uint32_t id = 0;
 	uint64_t assigned_au = 0;
 	struct ufs_cfg_desc_tbl *req_cfg_desc;
+	struct ufs_unit_cfg_tbl *unit_cfg_desc;
 	uint16_t assigned_context = 0;
 	uint16_t context = 0;
+	uint16_t cfg_length = ufs_info.unit_offset + (UFS_MAX_LU_NUM * ufs_info.unit_length);
+	uint8_t *cfg_desc_ptr;
 
 	/* Command Descriptor Programming */
 	req_upiu->trans_type        = 0x16;
@@ -1049,7 +1055,7 @@ void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
 	req_upiu->reserved_3        = 0x00;
 	req_upiu->tot_ehs_len       = 0x00;
 
-	data_len = (uint16_t) (sizeof(struct ufs_cfg_desc_tbl) & 0xFFFF);
+	data_len = (uint16_t) ((cfg_length) & 0xFFFF);
 	/*in big endian*/
 	req_upiu->data_seg_len      = cpu_to_be16(data_len);
 
@@ -1060,17 +1066,20 @@ void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
 	req_upiu->tsf[4]            = 0x0;
 	req_upiu->tsf[5]            = 0x0;
 
-	req_upiu->tsf[6]            = (uint8_t) ((sizeof(struct ufs_cfg_desc_tbl) >> 8)  & 0xFF);
-	req_upiu->tsf[7]            = (uint8_t) (sizeof(struct ufs_cfg_desc_tbl) & 0xFF);
+	req_upiu->tsf[6]            = (uint8_t) ((cfg_length >> 8)  & 0xFF);
+	req_upiu->tsf[7]            = (uint8_t) (cfg_length & 0xFF);
 
 	for(id = 8; id < 15 ;id++)
 		req_upiu->tsf[id]    = 0x00;
 
 	for(id = 0; id < 3 ;id++)
 		req_upiu->reserved_5[id] = 0x00;
+
+	cfg_desc_ptr = ((uchar *)req_upiu + sizeof(struct dwc_ufs_query_upiu));
+	memcpy(cfg_desc_ptr, default_desc, cfg_length);
+
 	req_cfg_desc = (struct ufs_cfg_desc_tbl *)((uchar *)req_upiu + sizeof(struct dwc_ufs_query_upiu));
-	if (req_cfg_desc != default_desc)
-		memcpy(req_cfg_desc, default_desc, sizeof(struct ufs_cfg_desc_tbl));
+
 	req_cfg_desc->bBootEnable = 0x01;
 	req_cfg_desc->bDescrAccessEn = 0x01;
 	assigned_au = 0;
@@ -1085,13 +1094,16 @@ void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
 
 	id = 0;
 	for (lu_index = 0; lu_index < UFS_MAX_LU_NUM; lu_index++) {
+		unit_cfg_desc = (struct ufs_unit_cfg_tbl*)((uchar*)req_cfg_desc +
+						(ufs_info.unit_offset) +
+						(lu_index * (ufs_info.unit_length)));
 		if (UFS_PLATFORM_LU_NUM == id)
 			break;
 		if (lu_index == new_cfg[id].lu_index) {
-			req_cfg_desc->unit_cfg[lu_index].bLUEnable = 0x01;
-			req_cfg_desc->unit_cfg[lu_index].bBootLunID = new_cfg[id].bootable;
-			req_cfg_desc->unit_cfg[lu_index].bLogicalBlockSize = new_cfg[id].log2blksz;
-			req_cfg_desc->unit_cfg[lu_index].bMemoryType = new_cfg[id].memory_type;
+			unit_cfg_desc->bLUEnable = 0x01;
+			unit_cfg_desc->bBootLunID = new_cfg[id].bootable;
+			unit_cfg_desc->bLogicalBlockSize = new_cfg[id].log2blksz;
+			unit_cfg_desc->bMemoryType = new_cfg[id].memory_type;
 
 			if (0xFF == new_cfg[id].lu_context) {
 				context = (uint16_t)ufs_info.max_context - assigned_context;
@@ -1100,20 +1112,19 @@ void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
 				assigned_context += context;
 			}
 			context = cpu_to_be16(context & 0xF);
-			req_cfg_desc->unit_cfg[lu_index].wContextCapabilities = context;
-
-			req_cfg_desc->unit_cfg[lu_index].bLUWriteProtect = common_cfg->write_protect;
-			req_cfg_desc->unit_cfg[lu_index].bProvisioningType = common_cfg->provisioning_type;
-			req_cfg_desc->unit_cfg[lu_index].bDataReliability = common_cfg->data_reliability;
+			unit_cfg_desc->wContextCapabilities = context;
+			unit_cfg_desc->bLUWriteProtect = common_cfg->write_protect;
+			unit_cfg_desc->bProvisioningType = common_cfg->provisioning_type;
+			unit_cfg_desc->bDataReliability = common_cfg->data_reliability;
 
 			if (0 == new_cfg[id].blkcnt) {
 				au_num = (ufs_info.dev_total_cap / ufs_info.alloc_unit_sz) - assigned_au;
-				req_cfg_desc->unit_cfg[lu_index].dNumAllocUnits = cpu_to_be32(au_num);
-				debugf("Use all remain space, alloc unit=0x%x, big endian=0x%x\n", au_num, req_cfg_desc->unit_cfg[lu_index].dNumAllocUnits);
+				unit_cfg_desc->dNumAllocUnits = cpu_to_be32(au_num);
+				debugf("Use all remain space, alloc unit=0x%x, big endian=0x%x\n", au_num, unit_cfg_desc->dNumAllocUnits);
 			} else {
 				au_num = enhance_memory_alloc_unit(new_cfg[id].memory_type, new_cfg[id].blkcnt, new_cfg[id].log2blksz);
-				req_cfg_desc->unit_cfg[lu_index].dNumAllocUnits = cpu_to_be32(au_num);
-				debugf("Assign space, alloc unit=0x%x, big endian=0x%x\n", au_num, req_cfg_desc->unit_cfg[lu_index].dNumAllocUnits);
+				unit_cfg_desc->dNumAllocUnits = cpu_to_be32(au_num);
+				debugf("Assign space, alloc unit=0x%x, big endian=0x%x\n", au_num, unit_cfg_desc->dNumAllocUnits);
 			}
 		id++;
 		}
@@ -1123,12 +1134,12 @@ void prepare_write_desc_upiu(struct dwc_ufs_query_upiu *req_upiu,
 }
 
 
-int set_descriptor_data(struct ufs_cfg_desc_tbl *default_desc, struct lu_specific_cfg_tbl *new_cfg,
-		struct lu_common_cfg_tbl *common_cfg)
+int set_descriptor_data(uint8_t *default_desc, struct lu_specific_cfg_tbl *new_cfg,
+			struct lu_common_cfg_tbl *common_cfg)
 {
 	int ret = 0;
 	int retry = 3;
-	struct   dwc_ufs_query_upiu *req_upiu;
+	struct dwc_ufs_query_upiu *req_upiu;
 
 	do {
 		req_upiu = (struct dwc_ufs_query_upiu *)(ufs_info.cmd_desc->command_upiu);
@@ -1368,7 +1379,7 @@ int ufs_lu_reconstruct(struct lu_specific_cfg_tbl *lu_cfg, struct lu_common_cfg_
 	int ret = 0;
 	uint8_t val[4] = {0, 0, 0, 0};
 
-	struct ufs_cfg_desc_tbl *cfg_desc;
+	uint8_t *cfg_desc;
 
 	ret = verify_lu_cfg(lu_cfg);
 	if (LU_INFO_ILLEGAL == ret) {
@@ -1376,11 +1387,11 @@ int ufs_lu_reconstruct(struct lu_specific_cfg_tbl *lu_cfg, struct lu_common_cfg_
 		return UFS_INVALID_PARTITIONING;
 	}
 
-	/*Enable boot from Boot LU A*/
-	val[3] = BOOT_LU_A_ENABLE;
-	ret = write_attribute(B_BOOT_LUNEN, val, 0);
+	/* Set RF CLK 26M */
+	val[3] = 0x1;
+	ret = write_attribute(B_REFCLK_FREQ, val, 0);
 	if (UFS_SUCCESS != ret) {
-		errorf("Write Attribute bBootLunEn to enable boot from boot LU A fail!ret=%d\n",ret);
+		errorf("UFS set RF CLK fail!ret=%d\n",ret);
 		return ret;
 	}
 
@@ -1463,7 +1474,7 @@ static ulong ufs_bread(int dev_num, lbaint_t start, lbaint_t blkcnt, void *dst)
 
 	if (0 != (ulong)dst % 4) {
 		errorf("UFS read destination addr not aligned to 4 bytes, it will harm the read efficiency!\n");
-		max_read_size = ufs_info.max_prdt_cap > SZ_1M ? SZ_1M : ufs_info.max_prdt_cap;
+		max_read_size = ufs_info.max_read_prdt_cap > SZ_1M ? SZ_1M : ufs_info.max_read_prdt_cap;
 		max_read_blk = max_read_size >> lu_info->log2blksz;
 		/*malloc can guarantee 8 bytes aligned*/
 		temp_buff = malloc(max_read_size);
@@ -1485,7 +1496,7 @@ static ulong ufs_bread(int dev_num, lbaint_t start, lbaint_t blkcnt, void *dst)
 		} while (blocks_todo > 0);
 		free(temp_buff);
 	} else {
-		max_read_blk = ufs_info.max_prdt_cap >> lu_info->log2blksz;
+		max_read_blk = ufs_info.max_read_prdt_cap >> lu_info->log2blksz;
 		do {
 			cur = (blocks_todo > max_read_blk) ? max_read_blk : blocks_todo;
 			/* Send Read 10 Command and handle its completion */
@@ -1721,9 +1732,11 @@ int ufs_update_native(void)
 	struct ufs_dev_desc_tbl *main_desc;
 	struct ufs_geo_desc_tbl *geo_desc;
 	struct ufs_unit_desc_tbl *unit_desc;
+	uint8_t val[4] = {0, 0, 0, 0};
 
 	ufs_info.prdt_entry_size = PRDT_BUFFER_SIZE;
 	ufs_info.max_prdt_cap =  TOTAL_PRDT_CAP;
+	ufs_info.max_read_prdt_cap =  TOTAL_READ_PRDT_CAP;
 	ret = get_descriptor_data((void **)(&main_desc), DEVICE_DESC, 0);
 	if (UFS_SUCCESS != ret) {
 		errorf("get device descriptor data fail!\n");
@@ -1747,6 +1760,7 @@ int ufs_update_native(void)
 	ufs_info.dev_total_cap = be64_to_cpu(geo_desc->qTotalRawDeviceCapacity);
 	ufs_info.max_context = geo_desc->bMaxContexIDNumber;
 	ufs_info.bootAdjFac = be16_to_cpu(geo_desc->wEnhanced1CapAdjFac) / SZ_256;
+        debugf("UFS device version: 0x%x\n", ufs_info.wSpecVersion);
 	debugf("UFS device total cap=0x%llx,allocation unit size=0x%x\n", ufs_info.dev_total_cap, ufs_info.alloc_unit_sz);
 
 	for (lun_index = 0; lun_index < UFS_MAX_LU_NUM; lun_index++)	{
@@ -1776,13 +1790,21 @@ int ufs_update_native(void)
 	ret = ufs_lu_reconstruct(factory_lu_tbl, &lu_common_tbl);
 	if (UFS_SUCCESS != ret)
 		return -1;
+
+	/*Enable boot from Boot LU A*/
+	val[3] = BOOT_LU_A_ENABLE;
+	ret = write_attribute(B_BOOT_LUNEN, val, 0);
+	if (UFS_SUCCESS != ret) {
+		errorf("Write Attribute bBootLunEn to enable boot from boot LU A fail!ret=%d\n",ret);
+		return ret;
+	}
 	return 0;
 }
 
 int get_lun_by_bootable(enum lu_bootable target)
 {
 	int id = 0;
-	for (id = 0; id < UFS_MAX_LU_NUM; id++) {
+	for (id = 0; id < UFS_PLATFORM_LU_NUM; id++) {
 		if (0 == factory_lu_tbl[id].log2blksz)
 			break;
 		/*TODO, only support single user lu now*/
@@ -1810,7 +1832,7 @@ int ufs_get_dev_id(int bootable_part)
 {
 	int id = 0;
 
-	for (id = 0; id < UFS_MAX_LU_NUM; id++) {
+	for (id = 0; id < UFS_PLATFORM_LU_NUM; id++) {
 		if (0 == factory_lu_tbl[id].log2blksz)
 			break;
 		if (factory_lu_tbl[id].bootable == bootable_part)
@@ -1822,9 +1844,9 @@ int ufs_get_dev_id(int bootable_part)
 u64 ufs_get_hwpartsize(int bootable_part)
 {
 	int id = 0;
-	int lu_index;
+	int lu_index = 0;
 
-	for (id = 0; id < UFS_MAX_LU_NUM; id++) {
+	for (id = 0; id < UFS_PLATFORM_LU_NUM; id++) {
 		if (0 == factory_lu_tbl[id].log2blksz)
 			break;
 		if (factory_lu_tbl[id].bootable == bootable_part)
@@ -1834,6 +1856,6 @@ u64 ufs_get_hwpartsize(int bootable_part)
 	if (IF_TYPE_UFS == ufs_info.block_dev[lu_index].if_type) {
 		return ufs_info.block_dev[lu_index].lba * ufs_info.block_dev[lu_index].blksz;
 	}
-
+	return 0;
 }
 

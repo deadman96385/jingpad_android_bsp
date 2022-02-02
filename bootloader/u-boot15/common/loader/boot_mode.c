@@ -5,6 +5,7 @@
 #include "secureboot/sec_common.h"
 
 extern unsigned int g_charger_mode;
+extern unsigned int g_recovery_mode;
 extern int do_fastboot(void);
 extern void lcd_printf(const char *fmt, ...);
 void lcd_enable(void);
@@ -71,6 +72,8 @@ void autoload_mode(void)
 
 void normal_mode(void)
 {
+    
+	setenv("bootmode", "normal");
 #ifndef CONFIG_ZEBU
 	vibrator_hw_init();
 
@@ -106,6 +109,8 @@ void autotest_mode(void)
 
 void recovery_mode(void)
 {
+	g_recovery_mode = 1;
+
     debugf("recovery_mode\n");
     setenv("bootmode", "recovery");
     vlx_nand_boot(RECOVERY_PART, BACKLIGHT_ON, LCD_ON);

@@ -15,11 +15,13 @@
 
 extern struct panel_driver ft8006p_hlt_driver;
 extern struct panel_driver ft8006p_huaxian_driver;
+extern struct panel_driver ft8006s_huaxian_driver;
 extern struct panel_driver dummy_mipi_driver;
 extern struct panel_driver icnl9911_txd_driver;
 extern struct panel_driver ili9881c_truly_driver;
 extern struct panel_driver ili9881c_3lane_driver;
 extern struct panel_driver ili9881c_skyworth_driver;
+extern struct panel_driver ssd2092_truly_driver;
 extern struct panel_driver st7701_boe_driver;
 extern struct panel_driver st7701_coe_driver;
 extern struct panel_driver nt35532_truly_driver;
@@ -33,8 +35,39 @@ extern struct panel_driver jd9366d_truly_driver;
 extern struct panel_driver rm67191_edo_driver;
 extern struct panel_driver r61350_truly_driver;
 extern struct panel_driver td4310_truly_driver;
+extern struct panel_driver td4320_truly_driver;
+extern struct panel_driver nt36525b_boe_driver;
+extern struct panel_driver ili9882n_boe_driver;
+extern struct panel_driver rm69380_fpga_driver;
 
 static struct panel_cfg supported_panel[] = {
+#ifdef CONFIG_S813_P7106_G1
+    {
+        .lcd_id = 0xFFF0,
+        .drv = &rm69380_fpga_driver,
+    },
+
+#endif
+#ifdef CONFIG_S813_P7106_LT
+    {
+        .lcd_id = 0xFFF0,
+        .drv = &rm69380_fpga_driver,
+    },
+
+#endif
+#ifdef CONFIG_LCD_NT36525B_BOE_MIPI_HDP
+	{
+		.lcd_id = 0x96,
+		.drv = &nt36525b_boe_driver,
+	},
+#endif
+#ifdef CONFIG_LCD_ILI9882N_BOE_MIPI_HDP
+	{
+		.lcd_id = 0x9882,
+		.drv = &ili9882n_boe_driver,
+	},
+#endif
+
 #ifdef CONFIG_LCD_FT8006P_HLT_MIPI_HDP
 	{
 		.lcd_id = 0xf0,
@@ -45,6 +78,12 @@ static struct panel_cfg supported_panel[] = {
 	{
 		.lcd_id = 0xe0,
 		.drv = &ft8006p_huaxian_driver,
+	},
+#endif
+#ifdef CONFIG_LCD_FT8006S_HUAXIAN_MIPI_HDP
+	{
+		.lcd_id = 0x8006,
+		.drv = &ft8006s_huaxian_driver,
 	},
 #endif
 #ifdef CONFIG_LCD_ICNL9911_TXD_MIPI_HDP
@@ -69,6 +108,12 @@ static struct panel_cfg supported_panel[] = {
 	{
 		.lcd_id = 0x98814,
 		.drv = &ili9881c_skyworth_driver,
+	},
+#endif
+#ifdef CONFIG_LCD_SSD2092_TRULY_MIPI_FHD
+	{
+		.lcd_id = 0x2092,
+		.drv = &ssd2092_truly_driver,
 	},
 #endif
 #ifdef CONFIG_LCD_ST7701_BOE_MIPI_WVGA
@@ -105,6 +150,12 @@ static struct panel_cfg supported_panel[] = {
 	{
 		.lcd_id = 0x97,
 		.drv = &nt35597_fpga_driver,
+	},
+#endif
+#ifdef CONFIG_LCD_NT36525B_BOE_MIPI_FHD
+	{
+		.lcd_id = 0x96,
+		.drv = &nt36525b_boe_driver,
 	},
 #endif
 #ifdef CONFIG_LCD_NT35695_TRULY_MIPI_FHD
@@ -147,6 +198,12 @@ static struct panel_cfg supported_panel[] = {
 	{
 		.lcd_id = 0x4310,
 		.drv = &td4310_truly_driver,
+	},
+#endif
+#ifdef CONFIG_LCD_TD4320_TRULY_MIPI_FHD
+	{
+		.lcd_id = 0x4320,
+		.drv = &td4320_truly_driver,
 	},
 #endif
 /* warning: the dummy lcd must be the last item in this array */

@@ -18,7 +18,7 @@
 #include <sprd_battery.h>
 
 
-
+#define CALIBERATE_COMMAND_AUTODOWNLOAD 0x02
 #define CALIBERATE_COMMAND_AUTOTEST  0x15
 #define CALIBERATE_COMMAND_PROGRAMKEY 0x17
 #define ADC_MAGIC      (0x4144434D)//ADCM, header flag of adc data

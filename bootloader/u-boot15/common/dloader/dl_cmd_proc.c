@@ -796,6 +796,47 @@ OPERATE_STATUS dload_one_raw_packet(uint32_t packet_len)
 	return OPERATE_SUCCESS;
 }
 
+#if !defined(CONFIG_NAND_BOOT) && !defined(CONFIG_DDR_BOOT)
+int dl_cmd_check_partition(dl_packet_t *packet, void *arg)
+{
+	int i;
+	int j;
+	int ret;
+	int total;
+
+	OPERATE_STATUS op_res;
+
+	disk_partition_t info[GPT_ENTRY_NUMBERS];
+	tool_partition_t tool_info[GPT_ENTRY_NUMBERS];
+
+	memset(info, 0x0, sizeof(disk_partition_t) * GPT_ENTRY_NUMBERS);
+	memset(tool_info, 0x0, sizeof(tool_partition_t) * GPT_ENTRY_NUMBERS);
+
+	ret = get_partition_information(info, &total);
+	if (ret) {
+		errorf("get partition information error!\n");
+		dl_send_ack(BSL_REP_OPERATION_FAILED);
+		return 0;
+	}
+
+	for (i = 0; i < total; i++) {
+		for (j = 0; j < strlen(info[i].name); j++) {
+			tool_info[i].name[2 * j] = info[i].name[j];
+		}
+
+		tool_info[i].size = info[i].size >> 1;
+	}
+
+	packet->body.type = BSL_REP_READ_PARTITION;
+	packet->body.size = sizeof(tool_partition_t) * total;
+	memcpy(packet->body.content, &tool_info[0], packet->body.size);
+
+	dl_send_packet (packet);
+
+	return 0;
+}
+#endif
+
 /*
  *  Download optimization of the second stage: start once per
  * file(raw data). used ping pong buffer and concurrent transmission

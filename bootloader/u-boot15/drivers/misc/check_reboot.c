@@ -6,7 +6,9 @@
 #include <asm/arch/check_reboot.h>
 #include <asm/arch/sprd_debug.h>
 #include <sprd_pmic_misc.h>
-
+#ifdef BAT_LOW_LCD_SHOW
+#include <sprd_battery.h>
+#endif
 #define KEY_PRESSED		0
 #define KEY_NOT_PRESSED		1
 
@@ -17,7 +19,9 @@ extern int is_hw_smpl_enable(void);
 extern void power_down_cpu(ulong ignored);
 extern int sprd_eic_request(unsigned offset);
 extern int sprd_eic_get(unsigned offset);
-
+#ifdef BAT_LOW_LCD_SHOW
+extern void bat_low_screen_show(void);
+#endif
 static void rtc_domain_reg_write(uint32_t val)
 {
 #if  !defined(CONFIG_ADIE_SC2713S)  &&  !defined(CONFIG_ADIE_SC2713)
@@ -39,6 +43,9 @@ static uint32_t rtc_domain_reg_read(void)
 
 unsigned check_reboot_mode(void)
 {
+#ifdef BAT_LOW_LCD_SHOW
+	int32_t vbat_vol;
+#endif	
 	unsigned rst_mode= 0;
 	unsigned hw_rst_mode = ANA_REG_GET(ANA_REG_GLB_POR_SRC_FLAG);
 	debugf("hw_rst_mode==%x\n", hw_rst_mode);
@@ -68,8 +75,24 @@ unsigned check_reboot_mode(void)
 			return CMD_RECOVERY_MODE;
 		else if(rst_mode == HWRST_STATUS_FASTBOOT)
 			return CMD_FASTBOOT_MODE;
-		else if(rst_mode == HWRST_STATUS_NORMAL)
-			return CMD_NORMAL_MODE;
+		else if(rst_mode == HWRST_STATUS_NORMAL){
+			#ifdef BAT_LOW_LCD_SHOW
+				vbat_vol = sprdfgu_read_vbat_vol();
+				debugf("check_reboot_mode vbat_vol = %d\n",vbat_vol);
+				if(vbat_vol < BOOT_BAT_VOL){
+					bat_low_screen_show();
+					mdelay(250);
+					set_backlight(BACKLIGHT_ON);
+					mdelay(5000);
+					set_backlight(BACKLIGHT_OFF);
+				return CMD_POWER_DOWN_DEVICE;
+				}else{
+				return CMD_NORMAL_MODE;
+				}
+			#else
+				return CMD_NORMAL_MODE;
+			#endif
+		}
 		else if(rst_mode == HWRST_STATUS_NORMAL2)
 			return CMD_WATCHDOG_REBOOT;
 		else if(rst_mode == HWRST_STATUS_NORMAL3)

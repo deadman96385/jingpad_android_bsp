@@ -17,6 +17,10 @@ static const char *cmd_arr[] = {
 	AUTO_TEST,
 	CRYSTAL_TYPE,
 	RF_HW_ID,
+	BAT_ID,
+	LCM_ID,
+	HW_VERSION,
+	WCN_SEL,
 #ifdef CONFIG_SC9833
 	RF_CHIP_ID,
 #endif
@@ -118,12 +122,16 @@ void cp_cmdline_fixup(void)
 	int value_less = 0;
 	char buf[30] = {0};
 	unsigned char v32kless;
+	int batid = 0;
+	int lcmid = 0;
+	unsigned int hw_version = -1;
+	unsigned int wcn_sel = -1;
 
 	cmdline_prepare();
 
 	// androd boot mode
 	value = getenv("bootmode");
-	if (NULL != value)
+//	if (NULL != value)
 	{
 		cmdline_add_cp_cmdline(BOOT_MODE, value);
 	}
@@ -166,9 +174,38 @@ void cp_cmdline_fixup(void)
 #if (defined(CONFIG_BOARD_ID) || defined(CONFIG_BAND_DETECT))
 	//rf band auto adaption
 	boardid = sprd_get_bandinfo();
-	sprintf(buf,"%d",boardid);
+	sprintf(buf,"0x%x",boardid);
 	cmdline_add_cp_cmdline(RF_BOARD_ID, buf);
 #endif
+
+#ifdef CONFIG_BAT_ID
+/* add bat id in cpcmdline*/
+	batid = sprd_get_batid();
+	sprintf(buf, "%d", batid);
+	cmdline_add_cp_cmdline(BAT_ID, buf);
+#endif
+
+#ifdef CONFIG_LCM_ID
+/* add lcm id in cpcmdline*/
+	lcmid = sprd_get_lcmid();
+	sprintf(buf, "%d", lcmid);
+	cmdline_add_cp_cmdline(LCM_ID, buf);
+#endif
+
+#ifdef CONFIG_HW_VERSION
+/* get wcn sel*/
+	hw_version = sprd_get_hw_version();
+	sprintf(buf,"%d",hw_version);
+	cmdline_add_cp_cmdline(HW_VERSION, buf);
+#endif
+
+#ifdef CONFIG_WCN_SEL
+/* get hw version*/
+	wcn_sel = sprd_get_wcn_sel();
+	sprintf(buf,"%d",wcn_sel);
+	cmdline_add_cp_cmdline(WCN_SEL, buf);
+#endif
+
 /* Printing the clock and crystal type in cpcmdline by clk & crystal adaption */
 #if (defined(CONFIG_BOARD_ID) || defined(CONFIG_ADIE_SC2730))
 	//board id

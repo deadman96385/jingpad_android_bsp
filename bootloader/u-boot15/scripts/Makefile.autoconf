@@ -99,13 +99,33 @@ export NEED_AUTO_ADAPTIVE
 #DO NOT MODIFY RF_ADAPTIVE_BOARD_LIST if you don't know what it is
 #Add rf band auto adaptive only to specified board in RF_ADAPTIVE_BOARD_LIST
 
-RF_ADAPTIVE_BOARD_LIST := "ums312_1h10" "ums312_1h10_32b" "ums312_2h10_32b" "udx710_3h10" "ums512_1h10" \
-"sp9863a_3c10"
+RF_ADAPTIVE_BOARD_LIST := "ums312_1h10" "ums312_1h10_32b" "ums312_2h10_32b" "udx710_3h10" "ums512_1h10" "ums512_2h10" \
+"sp9863a_3c10" "ud710_2h10" "ud710_10h10" "ud710_2c11" "ud710_7h10" "ud710_2h10u" "ud710_3h10u" "ud710_9h10u" "ud710_20c11"
 
 NEED_RF_ADAPTIVE := $(filter $(CONFIG_SYS_CONFIG_NAME), $(RF_ADAPTIVE_BOARD_LIST))
 export NEED_RF_ADAPTIVE
 
-WCN_ADAPTIVE_BOARD_LIST := "ums512_1h10" "ums512_20c10"
+BATID_ADAPTIVE_BOARD_LIST := "ud710_7h10" "ud710_2h10u" "ud710_3h10u"
+
+NEED_BATID_ADAPTIVE := $(filter $(CONFIG_SYS_CONFIG_NAME), $(BATID_ADAPTIVE_BOARD_LIST))
+export NEED_BATID_ADAPTIVE
+
+LCMID_ADAPTIVE_BOARD_LIST := "ud710_7h10"
+
+NEED_LCMID_ADAPTIVE := $(filter $(CONFIG_SYS_CONFIG_NAME), $(LCMID_ADAPTIVE_BOARD_LIST))
+export NEED_LCMID_ADAPTIVE
+
+HW_VERSION_ADAPTIVE_BOARD_LIST := "ud710_9h10u"
+
+NEED_HW_VERSION_ADAPTIVE := $(filter $(CONFIG_SYS_CONFIG_NAME), $(HW_VERSION_ADAPTIVE_BOARD_LIST))
+export NEED_HW_VERSION_ADAPTIVE
+
+WCN_SEL_ADAPTIVE_BOARD_LIST := "ud710_9h10u"
+
+NEED_WCN_SEL_ADAPTIVE := $(filter $(CONFIG_SYS_CONFIG_NAME), $(WCN_SEL_ADAPTIVE_BOARD_LIST))
+export NEED_WCN_SEL_ADAPTIVE
+
+WCN_ADAPTIVE_BOARD_LIST := "ums512_1h10" "ums512_2h10" "ums512_20c10"
 
 NEED_WCN_ADAPTIVE := $(filter $(CONFIG_SYS_CONFIG_NAME), $(WCN_ADAPTIVE_BOARD_LIST))
 export NEED_WCN_ADAPTIVE
@@ -124,6 +144,22 @@ define filechk_config_h
 	if [ $(NEED_RF_ADAPTIVE) ]; then \
 		echo "/* Add rf auto adaptive to $(NEED_RF_ADAPTIVE) */";		\
 		echo \#define CONFIG_BAND_DETECT;		\
+	fi;	\
+	if [ $(NEED_BATID_ADAPTIVE) ]; then \
+		echo "/* Add bat id adaptive to $(NEED_BATID_ADAPTIVE) */";		\
+		echo \#define CONFIG_BAT_ID;		\
+	fi;	\
+	if [ $(NEED_LCMID_ADAPTIVE) ]; then \
+		echo "/* Add lcm id adaptive to $(NEED_LCM_ADAPTIVE) */";		\
+		echo \#define CONFIG_LCM_ID;		\
+	fi;	\
+	if [ $(NEED_HW_VERSION_ADAPTIVE) ]; then \
+		echo "/* Add hw version adaptive to $(NEED_HW_VERSION_ADAPTIVE) */";		\
+		echo \#define CONFIG_HW_VERSION;		\
+	fi;	\
+	if [ $(NEED_WCN_SEL_ADAPTIVE) ]; then \
+		echo "/* Add wcn sel adaptive to $(NEED_WCN_SEL_ADAPTIVE) */";		\
+		echo \#define CONFIG_WCN_SEL;		\
 	fi;	\
 	if [ $(NEED_WCN_ADAPTIVE) ]; then \
 		echo "/* Add wcn auto adaptive to $(NEED_WCN_ADAPTIVE) */";		\

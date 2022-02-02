@@ -253,12 +253,18 @@ static int ap_efuse_prog(u32 blk, bool backup, bool lock, u32 val)
 	ap_efuse_reg_write(cfg0, EFUSE_PW_SWT);
 
 	ap_efuse_double(backup);
-	ap_efuse_auto_check(true);
+	if (lock)
+		ap_efuse_auto_check(true);
+
 	ap_efuse_reg_write(val, EFUSE_MEM(blk));
-	ap_efuse_auto_check(false);
+	if (lock)
+		ap_efuse_auto_check(false);
+
 	ap_efuse_double(false);
 	ret = ap_efuse_reg_read(EFUSE_NS_ERR_FLAG);
-	if (!ret) {
+	if(ret) {
+		debugf("write efuse error status\n", ret);
+	} else if (lock) {
 		ap_efuse_prog_lock(lock);
 		ap_efuse_reg_write(0x0, EFUSE_MEM(blk));
 		ap_efuse_prog_lock(false);

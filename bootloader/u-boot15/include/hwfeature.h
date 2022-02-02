@@ -33,7 +33,7 @@ struct hwfeature {
     char *value;
     void *fdt;
     char value_fixed[HWFEATURE_VALUE_MAX];
-    char format_buf[HWFEATURE_KEY_MAX+HWFEATURE_VALUE_MAX+12+1]; // androidboot.=
+    char format_buf[2 * HWFEATURE_KEY_MAX]; // androidboot.=
 
     union {
         long value;

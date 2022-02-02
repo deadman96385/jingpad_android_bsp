@@ -40,6 +40,7 @@ obj-$(CONFIG_SPL_MMC_BOOT) += fsl_esdhc_spl.o
 else
 #obj-$(CONFIG_GENERIC_MMC) += mmc_write.o
 endif
+ifdef CONFIG_MMC
 obj-$(CONFIG_EMMC_VERSION_R7P0) += sprd_mmc_r7.o
 obj-$(CONFIG_EMMC_VERSION_R7P0) += sprd_sdhci_r7.o
 obj-$(CONFIG_EMMC_VERSION_R8P0) += sprd_mmc_r8.o
@@ -50,7 +51,7 @@ obj-$(CONFIG_EMMC_VERSION_R11P0) += sprd_mmc_r11.o
 obj-$(CONFIG_EMMC_VERSION_R11P0) += sprd_sdhci_r11.o
 obj-$(CONFIG_SPRD_MMC) += sprd_mmc.o
 obj-$(CONFIG_SPRD_MMC) += sprd_sdhci.o
-obj-$(CONFIG_EMMC_VERSION_R8P0) += sprd_rpmb.o
-obj-$(CONFIG_EMMC_VERSION_R10P0) += sprd_rpmb.o
-obj-$(CONFIG_EMMC_VERSION_R11P0) += sprd_rpmb.o
-obj-$(CONFIG_SPRD_RPMB) += sprd_rpmb.o
+ifdef CONFIG_SPRD_RPMB
+obj-y += sprd_rpmb.o
+endif
+endif

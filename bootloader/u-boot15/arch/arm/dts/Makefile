@@ -192,6 +192,13 @@ dtb-$(CONFIG_VENDOR_SPRD) += sp9850s-1h10-native.dtb \
 	sp9855a_haps.dtb \
 	ud710_haps.dtb	\
 	ud710_2h10.dtb	\
+	ud710_10h10.dtb	\
+	ud710_2c11.dtb	\
+	ud710_7h10.dtb	\
+	ud710_2h10u.dtb	\
+	ud710_3h10u.dtb	\
+	ud710_9h10u.dtb	\
+	ud710_20c11.dtb	\
 	ud710_3h10.dtb	\
 	ud710_orca_haps.dtb	\
 	sp9863a_1h10.dtb \
@@ -220,6 +227,7 @@ dtb-$(CONFIG_VENDOR_SPRD) += sp9850s-1h10-native.dtb \
 	ums518_haps.dtb \
 	ums518_haps_bkd.dtb \
 	ums512_1h10.dtb \
+	ums512_2h10.dtb \
 	ums7520_haps.dtb \
 	ums7520_zebu.dtb \
 	ums512_20c10.dtb \

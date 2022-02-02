@@ -59,16 +59,24 @@ static int hwfeature_pick_element(struct hwfeature *phwf, const char *token)
 
 static int hwfeature_process_element(struct hwfeature *phwf)
 {
+    const char *boot_flag;
     phwf->trim(phwf, &phwf->param_curr, phwf->param_start);
     if (phwf->param_curr[0] == '\0')
         return 0;
 
     phwf->count++;
-    if (strncmp("androidboot/", phwf->param_curr, 12) == 0) {
+    boot_flag = "androidboot/";
+    if (strncmp(boot_flag, phwf->param_curr, 12) == 0) {
         phwf->param_curr += 12;
         phwf->append_to_cmdline = 1;
-    } else
-        phwf->append_to_cmdline = 0;
+    } else {
+        boot_flag = "linuxboot/";
+        if (strncmp(boot_flag, phwf->param_curr, 10) == 0) {
+            phwf->param_curr += 10;
+            phwf->append_to_cmdline = 1;
+        } else
+          phwf->append_to_cmdline = 0;
+    }
 
     /* Process the phwf->param_curr, ef:key=value or key=auto,e1:m1,e2:m2 */
     phwf->key = strsep(&phwf->param_curr, "=");
@@ -82,7 +90,7 @@ static int hwfeature_process_element(struct hwfeature *phwf)
     // Append to bootargs
     if (phwf->append_to_cmdline) {
         phwf->format(phwf, NULL); /* Init buf cache */
-        phwf->format(phwf, "androidboot/%s=", phwf->key);
+        phwf->format(phwf, "%s%s=", boot_flag, phwf->key);
         phwf->replace(phwf, phwf->format_buf, '/', '.');
         phwf->format(phwf, "%s", phwf->value);
         fdt_chosen_bootargs_append(phwf->fdt, phwf->format_buf, 1);
@@ -278,7 +286,6 @@ static void hwfeature_parse(struct hwfeature *phwf)
     if (phwf == NULL)
         phwf = &hwf;
     phwf->param_start = (char*)phwf->param;
-
     while (phwf->pick_element(phwf, ";")) {
         phwf->process_element(phwf);
     }

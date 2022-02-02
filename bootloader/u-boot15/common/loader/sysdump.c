@@ -93,6 +93,8 @@ extern ddr_info_t* get_ddr_range(void);
 extern void pmic_arm7_RAM_active(void);
 #endif
 
+/*	for etb */
+#define ETBDATA "etbdata_uboot.bin"
 #ifdef CONFIG_ETB_DUMP
 extern unsigned char etb_dump_mem[SZ_32K];
 extern u32 etb_buf_size;
@@ -1711,7 +1713,8 @@ int update_exception_info(struct minidump_info *minidump_infop, int rst_mode)
 #ifdef CONFIG_SPRD_MINI_SYSDUMP
 void show_minidump_info(struct minidump_info *minidump_infop)
 {
-	int i;
+	int i, l, n;
+	char *p = minidump_infop->exception_info.exception_stack_info;
 
 	dump_logd("kernel_magic: %s  \n ", minidump_infop->kernel_magic);
 
@@ -1756,7 +1759,15 @@ void show_minidump_info(struct minidump_info *minidump_infop)
 	debugf("exception_task_id:        %d  \n ", minidump_infop->exception_info.exception_task_id);
 	debugf("exception_task_family:      %s  \n ", minidump_infop->exception_info.exception_task_family);
 	debugf("exception_pc_symbol:      %s  \n ", minidump_infop->exception_info.exception_pc_symbol);
-	debugf("exception_stack_info:     %s  \n ", minidump_infop->exception_info.exception_stack_info);
+	/*	debugf exception stack info	*/
+	l = strlen(p);
+	n = (l - (l % 1024)) / 1024;
+	debugf("exception_stack_info:     \n");
+	for(i = 0; i < n; i++){
+		printf("%1024.1024s", p + i*1024);
+	}
+	printf("%s", p + n * 1024);
+	/*	debugf exception stack info end		*/
 
 	return;
 }
@@ -2103,10 +2114,45 @@ int update_header(struct dumpdb_header *header_g)
 	return 0;
 
 }
+int save_etb_dump_to_minidump(struct dumpdb_header *header_g)
+{
+	int i;
+	struct minidump_info *minidump_infop;
+	char etb_data[20] = "etb data is null";
+	dump_logd("%s: %s in \n", SYSDUMPDB_LOG_TAG, __FUNCTION__);
+	dump_logd("%s: minidump_info paddr : 0x%x\n", __FUNCTION__, header_g->minidump_info_desc.paddr);
+	/*      get minidump info data  */
+	minidump_infop = (struct minidump_info *)(header_g->minidump_info_desc.paddr);
+
+
+	for(i=0;i<minidump_infop->section_info_total.total_num;i++){
+		if(!(memcmp(ETBDATA, minidump_infop->section_info_total.section_info[i].section_name, strlen(ETBDATA)))){
+#ifdef CONFIG_ETB_DUMP
+			dump_logd ("\n Start to dump ETB trace data to minidump\n");
+			sprd_etb_hw_dis();
+			sprd_etb_dump();
+			minidump_infop->section_info_total.section_info[i].section_start_paddr = &etb_dump_mem[0];
+			minidump_infop->section_info_total.section_info[i].section_size = etb_buf_size * 4;
+			dump_logd ("\n Dump ETB data to minidump finished\n");
+#else
+			dump_logd(" no etb data to save!!! \n");
+			minidump_infop->section_info_total.section_info[i].section_start_paddr = &etb_data;
+			minidump_infop->section_info_total.section_info[i].section_size = 20;
+#endif
+			return 0;
+		}
+	}
+
+	dump_logd ("\n Dump ETB data to minidump failed!!!\n");
+	return 0;
+}
 int save_sysdumpdb(int rst_mode)
 {
 	int ret = 0;
 	struct dumpdb_header header_g;
+	char *paddr_header = NULL;
+
+	paddr_header = &header_g;
 
 	if ((rst_mode == CMD_WATCHDOG_REBOOT) || (rst_mode == CMD_AP_WATCHDOG_REBOOT) || (rst_mode == CMD_UNKNOW_REBOOT_MODE) || \
 			(rst_mode == CMD_PANIC_REBOOT) || (rst_mode == CMD_SPECIAL_MODE) || (rst_mode == CMD_VMM_PANIC_MODE) || (rst_mode == CMD_TOS_PANIC_MODE)) {
@@ -2131,14 +2177,18 @@ int save_sysdumpdb(int rst_mode)
 #ifdef CONFIG_ARM7_RAM_ACTIVE
 	pmic_arm7_RAM_active();
 #endif
+
+	/*      save etb dump   */
+	save_etb_dump_to_minidump(&header_g);
+
 	/*	handle minidump	*/
-	if (handle_minidump(&header_g, rst_mode)){
+	if (handle_minidump(paddr_header, rst_mode)){
 		dump_loge("%s: handle minidump  fail . \n",SYSDUMPDB_LOG_TAG);
 		return -1;
 	}
 
 	/*	handle minidump	*/
-	if (update_header(&header_g)){
+	if (update_header(paddr_header)){
 		dump_loge("%s: update_header  fail . \n",SYSDUMPDB_LOG_TAG);
 		return -1;
 	}
@@ -3032,6 +3082,7 @@ int save_reset_mode_after_dump(void)
 
 void display_sysdump_info(int rst_mode)
 {
+	int i, l, n;
 	struct minidump_info *minidump_infop;
 
 	/*	check header magic	*/
@@ -3050,8 +3101,17 @@ void display_sysdump_info(int rst_mode)
 	update_exception_info(minidump_infop, rst_mode);
 	sysdump_lcd_printf("exception_file_info:\n%s\n ", minidump_infop->exception_info.exception_file_info);
 	sysdump_lcd_printf("exception_panic_reason:\n%s\n ", minidump_infop->exception_info.exception_panic_reason);
-	sysdump_lcd_printf("exception_stack_info:\n%s\n ", minidump_infop->exception_info.exception_stack_info);
 
+	/* printf exception stack info to lcd */
+	char *p = minidump_infop->exception_info.exception_stack_info;
+	l = strlen(p);
+	n = (l - (l % 1024)) / 1024;
+	sysdump_lcd_printf("exception_stack_info:\n");
+	for(i = 0; i < n; i++) {
+		sysdump_lcd_printf("%1024.1024s", p + i*1024);
+	}
+	sysdump_lcd_printf("%s\n", p + n * 1024);
+	/* printf exception stack info to lcd end */
 }
 void write_sysdump_before_boot(int rst_mode)
 {

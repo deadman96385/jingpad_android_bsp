@@ -18,8 +18,6 @@
 
 #define ANA_BLTC_STS      SCI_ADDR(ANA_BLTC_BASE, 0x0034)
 
-
-
 #define BLTC_EN          BIT(9)
 #define RTC_BLTC_EN      BIT(7)
 #define RGB_PD_SW        BIT(0)
@@ -32,10 +30,16 @@
 #define G_TYPE           BIT(5)
 #define B_RUN            BIT(8)
 #define B_TYPE           BIT(9)
-
+#define RGB_CURRENT_MASK (0x3F)  /*for sc2720*/
+#define RGB_CURRENT_V (0x02)  /*for sc2720, mA:1.68+0.84*n*/
 #define SC2730_RGB_PD_SW BIT(12)
 #define SC2730_RGB_HW_PD BIT(13)
 #define SC2730_RGB_V     (0xf8)
+
+#define SPRD_LED_RISING   1
+#define SPRD_LED_FALLING  1
+#define SPRD_LED_HIGH     2
+#define SPRD_LED_LOW      3
 
 #ifdef CONFIG_NONE_LED
 
@@ -49,10 +53,9 @@ void sprd_led_pattern_set(LedType type, uint32_t brightness) {}
 
 static uint32_t init = 0;
 
-// TODO: difference between sc2723 and sc2731
 void sprd_led_init(void)
 {
-#ifdef CONFIG_ADIE_SC2731
+#if defined(CONFIG_ADIE_SC2731)
 	ANA_REG_OR(ANA_REG_GLB_MODULE_EN0, BLTC_EN);
 	ANA_REG_OR(ANA_REG_GLB_RTC_CLK_EN0, RTC_BLTC_EN);
 	ANA_REG_BIC(ANA_REG_GLB_RGB_CTRL, RGB_PD_SW);
@@ -60,23 +63,31 @@ void sprd_led_init(void)
 	ANA_REG_OR(ANA_REG_GLB_WHTLED_CTRL, WHTLED_PD);
 	ANA_REG_OR(ANA_REG_GLB_WHTLED_CTRL, WHTLED_SERIES_EN);
 
-#endif
-
-#ifdef CONFIG_ADIE_SC2730
+#elif defined(CONFIG_ADIE_SC2730)
 	ANA_REG_OR(ANA_REG_GLB_MODULE_EN0, BLTC_EN);
 	ANA_REG_OR(ANA_REG_GLB_RTC_CLK_EN0, RTC_BLTC_EN);
 	ANA_REG_BIC(ANA_BLTC_CTRL, SC2730_RGB_PD_SW);
 	ANA_REG_BIC(ANA_BLTC_CTRL, SC2730_RGB_HW_PD);
 	ANA_REG_BIC(ANA_BLTC_STS, SC2730_RGB_V);
-#endif
 
-#ifdef CONFIG_ADIE_SC2721  || defined(CONFIG_ADIE_SC2720)
+#elif defined(CONFIG_ADIE_SC2721)
 	ANA_REG_OR(ANA_REG_GLB_MODULE_EN0, BLTC_EN);
 	ANA_REG_OR(ANA_REG_GLB_RTC_CLK_EN0, RTC_BLTC_EN);
 	ANA_REG_BIC(ANA_REG_GLB_RGB_CTRL, RGB_PD_SW);
 	ANA_REG_BIC(ANA_REG_GLB_RGB_CTRL, RGB_V);
+
+#elif defined(CONFIG_ADIE_SC2720)
+	ANA_REG_OR(ANA_REG_GLB_MODULE_EN0, BLTC_EN);
+	ANA_REG_OR(ANA_REG_GLB_RTC_CLK_EN0, RTC_BLTC_EN);
+	ANA_REG_BIC(ANA_REG_GLB_RGB_CTRL, RGB_PD_SW);
+	ANA_REG_BIC(ANA_REG_GLB_SOFT_RST0, BIT_BLTC_SOFT_RST);
+	/*current*/
+	ANA_REG_MSK_OR(ANA_BLTC_BASE+0x38, RGB_CURRENT_V, RGB_CURRENT_MASK);
+	ANA_REG_MSK_OR(ANA_BLTC_BASE+0x3C, RGB_CURRENT_V, RGB_CURRENT_MASK);
+	ANA_REG_MSK_OR(ANA_BLTC_BASE+0x40, RGB_CURRENT_V, RGB_CURRENT_MASK);
+
 #endif
-	printf("[LED] init led\]");
+	printf("[LED] init led]");
 	init = 1;
 }
 
@@ -165,7 +176,6 @@ void sprd_led_pattern_clear(LedType type)
 		break;
 	}
 
-
 	ANA_REG_OR(curve0_reg, 0);
 	ANA_REG_OR(curve1_reg, 0);
 	ANA_REG_BIC(ANA_BLTC_CTRL, bits);
@@ -203,11 +213,12 @@ void sprd_led_pattern_set(LedType type, uint32_t brightness)
 		break;
 	}
 	sprd_led_pattern_clear(type);
-	ANA_REG_OR(curve0_reg, (2 << 8) | 2);
-	ANA_REG_OR(curve1_reg, (12 << 8) | 8);
+	ANA_REG_OR(curve0_reg, (SPRD_LED_FALLING << 8) | SPRD_LED_RISING);
+	ANA_REG_OR(curve1_reg, (SPRD_LED_LOW << 8) | SPRD_LED_HIGH);
 	ANA_REG_OR(reg, (brightness << 8) | 0xFF);
 	ANA_REG_OR(ANA_BLTC_CTRL, bits);
-	printf("[LED] pattern set, type=%d, brightness=%d, rising=2, high=8, falling=2, low=12\n", type, brightness);
+	printf("[LED] pattern set, type=%d, brightness=%d, rising=%d, high=%d, falling=%d, low=%d\n",
+	       type, brightness,SPRD_LED_RISING,SPRD_LED_HIGH,SPRD_LED_FALLING,SPRD_LED_LOW);
 
 }
 

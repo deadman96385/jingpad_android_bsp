@@ -74,6 +74,31 @@ void lcd_use_sc2703l_to_power_on(void)
 			i2c_reg_read(SC2703_LCD_I2C_ADDRESS, SC2703_SYSCTRL_DISPLAY_STATUS));
 	while(loop --);
 }
+/* sc2703 power off */
+void lcd_use_sc2703l_to_power_off(void)
+{
+
+	i2c_set_bus_num(SC2703_LCD_I2C_BUS);
+	i2c_reg_write(SC2703_LCD_I2C_ADDRESS, SC2703_SYSCTRL_DISPLAY_ACTIVE, SC2703_DISPLAY_EN_SHIFT);
+	printf("SC2703 status is %d\n", \
+			i2c_reg_read(SC2703_LCD_I2C_ADDRESS, SC2703_SYSCTRL_DISPLAY_STATUS));
+}
+
+void lcd_use_sc2703l_to_power_boost(void)
+{
+	//int loop = 100;
+
+	i2c_set_bus_num(SC2703_LCD_I2C_BUS);
+	i2c_reg_write(SC2703_LCD_I2C_ADDRESS, SC2703_SYSCTRL_DISPLAY_ACTIVE, 0x0);
+	/* boost avdd/avee vol to 5.8v*/
+	i2c_reg_write(SC2703_LCD_I2C_ADDRESS, SC2703_DISPLAY_BOOST_VOLTAGE, 0x78);
+	i2c_reg_write(SC2703_LCD_I2C_ADDRESS, SC2703_DISPLAY_LDO_VOLTAGE, 0x6d);
+	i2c_reg_write(SC2703_LCD_I2C_ADDRESS, SC2703_DISPLAY_CP_VOLTAGE, 0x6d);
+	i2c_reg_write(SC2703_LCD_I2C_ADDRESS, SC2703_SYSCTRL_DISPLAY_ACTIVE, SC2703_DISPLAY_EN_MASK);
+	printf("SC2703 boost status is %d\n", \
+			i2c_reg_read(SC2703_LCD_I2C_ADDRESS, SC2703_SYSCTRL_DISPLAY_STATUS));
+//	while(loop --);
+}
 
 void set_backlight(uint32_t brightness)
 {

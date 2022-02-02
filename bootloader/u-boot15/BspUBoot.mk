@@ -46,6 +46,10 @@ ifeq ($(strip $(BSP_PKCS1_PSS_FLAG)),true)
 UBOOT_SECURE_BOOT_FLAG += -DPKCS1_PSS_FLAG
 endif
 
+ifeq ($(strip $(BSP_NOT_VERIFY_MODEM_FLAG)),true)
+UBOOT_SECURE_BOOT_FLAG += -DNOT_VERIFY_MODEM
+endif
+
 ifeq ($(strip $(BSP_SHARKL5_CDSP_FLAG)),true)
 UBOOT_SECURE_BOOT_FLAG += -DSHARKL5_CDSP
 endif

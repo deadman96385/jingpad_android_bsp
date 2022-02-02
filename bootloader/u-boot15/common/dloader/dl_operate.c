@@ -9,13 +9,15 @@
 #include <sprd_common_rw.h>
 #include <sprd_rpmb.h>
 #include <mmc.h>
-
+#include <sprd_ufs.h>
 #include <secure_boot.h>
 #include <secureboot/sec_common.h>
 #include <otp_helper.h>
 #include <chipram_env.h>
 #include "../../fs/f2fs-tools/include/f2fs_fs.h"
+#include <uboot_sec_drv.h>
 
+DECLARE_GLOBAL_DATA_PTR;
 static DL_EMMC_FILE_STATUS g_status;
 static DL_EMMC_STATUS g_dl_eMMCStatus;
 
@@ -735,15 +737,16 @@ OPERATE_STATUS _download_image(void)
 	}
 	write_start = g_eMMCBuf + strip_header;
 
+	if (!strcmp(g_dl_eMMCStatus.curUserPartitionName, "userdata")) {
+		debugf("userdata image format is %d\n", g_dl_eMMCStatus.curImgType);
+		get_img_partition_size(g_dl_eMMCStatus.curUserPartitionName, &total_size);
+		common_raw_erase(g_dl_eMMCStatus.curUserPartitionName, total_size/100, (uint64_t)0LL);
+	}
+
 	/*sparse image*/
 	if (IMG_WITH_SPARSE == g_dl_eMMCStatus.curImgType) {
 		debugf("Handle the saving of image with sparse,name=%s,buf start at %p,size=0x%x\n",
 		       g_dl_eMMCStatus.curUserPartitionName, write_start, write_size);
-
-		if (!strcmp(g_dl_eMMCStatus.curUserPartitionName, "userdata")) {
-			get_img_partition_size(g_dl_eMMCStatus.curUserPartitionName, &total_size);
-			common_raw_erase(g_dl_eMMCStatus.curUserPartitionName, total_size/100, (uint64_t)0LL);
-		}
 
 		retval = write_sparse_img(g_dl_eMMCStatus.curUserPartitionName, write_start, (ulong)write_size);
 		if (-1 == retval) {
@@ -785,8 +788,27 @@ OPERATE_STATUS _download_image(void)
 			errorf("write %s size 0x%x offset 0x%x fail\n", g_dl_eMMCStatus.curUserPartitionName, write_size, g_dl_eMMCStatus.offset);
 			g_status.unsave_recv_size = 0;
 			return OPERATE_WRITE_ERROR;
+		} else if (is_f2fs_filesystem(g_dl_eMMCStatus.curUserPartitionName)) {
+			total_size = 0;
+			debugf("write %s size 0x%x offset 0x%x ok\n", g_dl_eMMCStatus.curUserPartitionName, write_size, g_dl_eMMCStatus.offset);
+			get_img_partition_size(g_dl_eMMCStatus.curUserPartitionName, &total_size);
+			if (emmc_buf_size < (total_size/128)) {
+				errorf("resize skip! small buffer, config dts!\n");
+			} else {
+				retval = f2fs_resize_main(total_size,
+					512,
+					f2fs_write_callback,
+					f2fs_read_callback,
+					(void*)g_dl_eMMCStatus.curUserPartitionName,
+					g_eMMCBuf,
+					emmc_buf_size);
+				if (retval==0) {
+					debugf("resize userdata ok\n");
+				} else {
+					errorf("resize userdata error or Nothing to resize\n");
+				}
+			}
 		}
-
 		g_dl_eMMCStatus.offset += write_size;
 		g_status.unsave_recv_size = 0;
 	}
@@ -1272,13 +1294,19 @@ OPERATE_STATUS dl_get_flashtype(uchar * content, uint16_t * size)
 	flash_type.mid = get_correct_size(dram_size_inMB);
 
 	/* calculate emmc size in GB */
-	int emmc_size = 0, emmc_size_inMB = 0;
-	emmc_size = emmc_get_capacity(PARTITION_USER)/1000/1000;
-	emmc_size_inMB = (emmc_size+500)/1000*1024;
-
+	int mem_size = 0, size_inMB = 0;
+	if (gd->boot_device == BOOT_DEVICE_EMMC) {
+		mem_size = emmc_get_capacity(PARTITION_USER)/1000/1000;
+		size_inMB = (mem_size+500)/1000*1024;
+		printf("emmc_size:%llu,emmc_size_inMB:%d\n", emmc_get_capacity(PARTITION_USER), size_inMB);
+	}
+	if (gd->boot_device == BOOT_DEVICE_UFS) {
+		mem_size = ufs_info.dev_total_cap*512/1000/1000;
+		size_inMB = (mem_size+500)/1000*1024;
+		printf("ufs_size:%llu,ufs_size_inMB:%d\n", ufs_info.dev_total_cap*512, size_inMB);
+	}
 	/* did field is used for emmc size */
-	flash_type.did = get_correct_size(emmc_size_inMB);
-	printf("emmc_size:%llu,emmc_size_inMB:%d\n", emmc_get_capacity(PARTITION_USER), emmc_size_inMB);
+	flash_type.did = get_correct_size(size_inMB);
 	*size = sizeof(struct FLASH_TYPE);
 	memcpy(temp, &flash_type, *size);
 	for (i = 0; i < *size; i++) {
