@@ -1171,6 +1171,11 @@ function make()
 			continue
 		fi
 
+		if ([[ $cmd == "trusty" ]] || [[ $cmd == "teecfg" ]]) && \
+			([[ $BSP_BOARD_TEE_CONFIG != "trusty" ]]); then
+			continue
+		fi
+
 		make_$cmd $@
 		if [[ $? -ne 0 ]]; then
 			return 1

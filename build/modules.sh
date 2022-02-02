@@ -2,14 +2,14 @@ function source_configuration()
 {
 	# the max number of parameters is 1, one of "chipram uboot tos sml kernel"
 	# if "$1".is null, only include the common.cfg
-	if [[ -f $BSP_SYSTEM_COMMON/common.cfg ]]; then
-		echo "source $BSP_SYSTEM_COMMON/common.cfg"
-		source $BSP_SYSTEM_COMMON/common.cfg
+	if [[ -f $BSP_SYSTEM_COMMON/common/common.cfg ]]; then
+		echo "source $BSP_SYSTEM_COMMON/common/common.cfg"
+		source $BSP_SYSTEM_COMMON/common/common.cfg
 	fi
 
-	if [[ -f $BSP_SYSTEM_COMMON/$1.cfg ]]; then
-		echo "source $BSP_SYSTEM_COMMON/$1.cfg"
-		source $BSP_SYSTEM_COMMON/$1.cfg
+	if [[ -f $BSP_SYSTEM_COMMON/common/$1.cfg ]]; then
+		echo "source $BSP_SYSTEM_COMMON/common/$1.cfg"
+		source $BSP_SYSTEM_COMMON/common/$1.cfg
 	fi
 
 	if [[ -f $BSP_BOARD_BASE_PATH/common.cfg ]]; then

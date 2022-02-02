@@ -10,6 +10,10 @@ DESTDIR=$BSP_SIGN_DIR/mkdbimg/bin
 #chipram bins location
 SPL=$BSP_CHIPRAM_DIST/u-boot-spl-16k.bin
 SPLSIGN=$BSP_CHIPRAM_DIST/u-boot-spl-16k-sign.bin
+SPL_EMMC=$BSP_CHIPRAM_DIST/u-boot-spl-16k-emmc.bin
+SPL_EMMCSIGN=$BSP_CHIPRAM_DIST/u-boot-spl-16k-emmc-sign.bin
+SPL_UFS=$BSP_CHIPRAM_DIST/u-boot-spl-16k-ufs.bin
+SPL_UFSSIGN=$BSP_CHIPRAM_DIST/u-boot-spl-16k-ufs-sign.bin
 FDL1=$BSP_CHIPRAM_DIST/fdl1.bin
 FDL1SIGN=$BSP_CHIPRAM_DIST/fdl1-sign.bin
 DDR_SCAN=$BSP_CHIPRAM_DIST/ddr_scan.bin
@@ -150,6 +154,16 @@ dosprdcopy()
         #echo -e "\033[33m copy spl-sign.bin finish!\033[0m"
     fi
 
+    if [ -f $SPL_EMMCSIGN ];then
+        cp $SPL_EMMCSIGN $DESTDIR
+        #echo -e "\033[33m copy spl-emmc-sign.bin finish!\033[0m"
+    fi
+
+    if [ -f $SPL_UFSSIGN ];then
+        cp $SPL_UFSSIGN $DESTDIR
+        #echo -e "\033[33m copy spl-ufs-sign.bin finish!\033[0m"
+    fi
+
     if [ -f $FDL1SIGN ]; then
         cp $FDL1SIGN $DESTDIR
         #echo -e "\033[33m copy fdl1-sign.bin finish!\033[0m"
@@ -185,11 +199,11 @@ doPackImage()
 {
     case $(getModuleName "$@") in
         "chipram")
-            doImgHeaderInsert $SPL $FDL1 $DDR_SCAN
+            doImgHeaderInsert $SPL $SPL_EMMC $SPL_UFS $FDL1 $DDR_SCAN
             if [ "$?" = "1" ]; then
                return 1
             fi
-            doSignImage $SPLSIGN $FDL1SIGN $DDR_SCANSIGN
+            doSignImage $SPLSIGN $SPL_EMMCSIGN $SPL_UFSSIGN  $FDL1SIGN $DDR_SCANSIGN
             ;;
         "bootloader")
             doImgHeaderInsert $UBOOT $FDL2 $UBOOTAUTO
@@ -225,15 +239,15 @@ doPackImage()
             if [ "NONE" = $SECURE_BOOT ]; then
                 #the next line is for dynamic TA
                 python $TA_DESTDIR/dynamicTA/genkey/main_process.py $BSP_TOS_DIST $TA_DESTDIR
-                doImgHeaderInsert $SPL $UBOOT $FDL1 $FDL2 $UBOOTAUTO $SML $TEECFG $TOS $DDR_SCANSIGN
+                doImgHeaderInsert $SPL $SPL_EMMC $SPL_UFS $UBOOT $FDL1 $FDL2 $UBOOTAUTO $SML $TEECFG $TOS $DDR_SCANSIGN
             else
                 #the next line is for dynamic TA
                 python $TA_DESTDIR/dynamicTA/genkey/main_process.py $BSP_TOS_DIST $TA_DESTDIR
-                doImgHeaderInsert $SPL $UBOOT $FDL1 $FDL2 $UBOOTAUTO $SML $TEECFG $TOS $DDR_SCAN
+                doImgHeaderInsert $SPL $SPL_EMMC $SPL_UFS $UBOOT $FDL1 $FDL2 $UBOOTAUTO $SML $TEECFG $TOS $DDR_SCAN
                 if [ "$?" = "1" ]; then
                    return 1
                 fi
-                doSignImage $SPLSIGN $UBOOTSIGN $FDL1SIGN $FDL2SIGN $SMLSIGN $TEECFGSIGN $TOSSIGN $UBOOTAUTOSIGN $DDR_SCANSIGN
+                doSignImage $SPLSIGN $SPL_EMMCSIGN $SPL_UFSSIGN $UBOOTSIGN $FDL1SIGN $FDL2SIGN $SMLSIGN $TEECFGSIGN $TOSSIGN $UBOOTAUTOSIGN $DDR_SCANSIGN
                 #$HOST_OUT/imgheaderinsert $VBMETA 1 1
             fi
             ;;
