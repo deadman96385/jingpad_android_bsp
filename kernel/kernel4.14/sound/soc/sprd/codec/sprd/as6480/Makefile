@@ -1,0 +1,2 @@
+#for AWINIC AW889X Smart K PA
+obj-$(CONFIG_SND_SOC_AS6480) += as6480.o

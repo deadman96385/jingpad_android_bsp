@@ -261,7 +261,7 @@ static int _genpd_power_on(struct generic_pm_domain *genpd, bool timed)
 
 	genpd->states[state_idx].power_on_latency_ns = elapsed_ns;
 	genpd->max_off_time_changed = true;
-	pr_debug("%s: Power-%s latency exceeded, new value %lld ns\n",
+	pr_info("%s: Power-%s latency exceeded, new value %lld ns\n",
 		 genpd->name, "on", elapsed_ns);
 
 	return ret;
@@ -291,7 +291,7 @@ static int _genpd_power_off(struct generic_pm_domain *genpd, bool timed)
 
 	genpd->states[state_idx].power_off_latency_ns = elapsed_ns;
 	genpd->max_off_time_changed = true;
-	pr_debug("%s: Power-%s latency exceeded, new value %lld ns\n",
+	pr_info("%s: Power-%s latency exceeded, new value %lld ns\n",
 		 genpd->name, "off", elapsed_ns);
 
 	return ret;
@@ -578,7 +578,7 @@ static int genpd_runtime_suspend(struct device *dev)
 	s64 elapsed_ns;
 	int ret;
 
-	dev_dbg(dev, "%s()\n", __func__);
+	dev_info(dev, "%s()\n", __func__);
 
 	genpd = dev_to_genpd(dev);
 	if (IS_ERR(genpd))
@@ -614,7 +614,7 @@ static int genpd_runtime_suspend(struct device *dev)
 		elapsed_ns = ktime_to_ns(ktime_sub(ktime_get(), time_start));
 		if (elapsed_ns > td->suspend_latency_ns) {
 			td->suspend_latency_ns = elapsed_ns;
-			dev_dbg(dev, "suspend latency exceeded, %lld ns\n",
+			dev_info(dev, "suspend latency exceeded, %lld ns\n",
 				elapsed_ns);
 			genpd->max_off_time_changed = true;
 			td->constraint_changed = true;
@@ -653,7 +653,7 @@ static int genpd_runtime_resume(struct device *dev)
 	int ret;
 	bool timed = true;
 
-	dev_dbg(dev, "%s()\n", __func__);
+	dev_info(dev, "%s()\n", __func__);
 
 	genpd = dev_to_genpd(dev);
 	if (IS_ERR(genpd))
@@ -694,7 +694,7 @@ static int genpd_runtime_resume(struct device *dev)
 		elapsed_ns = ktime_to_ns(ktime_sub(ktime_get(), time_start));
 		if (elapsed_ns > td->resume_latency_ns) {
 			td->resume_latency_ns = elapsed_ns;
-			dev_dbg(dev, "resume latency exceeded, %lld ns\n",
+			dev_info(dev, "resume latency exceeded, %lld ns\n",
 				elapsed_ns);
 			genpd->max_off_time_changed = true;
 			td->constraint_changed = true;

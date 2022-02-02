@@ -33,46 +33,10 @@ enum sc2703_irq_defs {
 	SC2703_IRQ_GPI3,
 };
 
-static bool sc2703_volatile_reg(struct device *dev, u32 reg)
-{
-	switch (reg) {
-	case SC2703_STATUS_A:
-	case SC2703_STATUS_B:
-	case SC2703_STATUS_C:
-	case SC2703_STATUS_D:
-	case SC2703_STATUS_E:
-	case SC2703_STATUS_F:
-	case SC2703_STATUS_G:
-	case SC2703_STATUS_H:
-	case SC2703_STATUS_I:
-	case SC2703_EVENT_A:
-	case SC2703_EVENT_B:
-	case SC2703_EVENT_C:
-	case SC2703_EVENT_D:
-	case SC2703_EVENT_E:
-	case SC2703_EVENT_F:
-	case SC2703_DCDC_CTRL_A:
-	case SC2703_ADC_CTRL_A:
-	case SC2703_ADC_RES_0:
-	case SC2703_ADC_RES_1:
-	case SC2703_ADC_RES_2:
-	case SC2703_ADC_RES_3:
-	case SC2703_ADC_RES_4:
-	case SC2703_ADC_RES_5:
-	case SC2703_CHG_TIMER_CTRL_B:
-	case SC2703_CHG_TIMER_CTRL_C:
-		return true;
-	default:
-		return false;
-	}
-}
-
 static const struct regmap_config sc2703_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.max_register = SC2703_MAX_REG,
-	.cache_type = REGCACHE_RBTREE,
-	.volatile_reg = sc2703_volatile_reg,
 };
 
 /* Helper macro to automatically populate resource name */

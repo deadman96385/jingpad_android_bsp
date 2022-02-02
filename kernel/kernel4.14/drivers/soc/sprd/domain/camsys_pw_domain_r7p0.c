@@ -305,11 +305,14 @@ int sprd_cam_pw_off(void)
 			ret = -1;
 			goto err_pw_off;
 		}
-	}
+	} else if (atomic_read(&pw_info->users_pw) < 0)
+		atomic_set(&pw_info->users_pw, 0);
+
 	mutex_unlock(&pw_info->mlock);
 	/* if count != 0, other using */
-	pr_info("Done, read count %d, cb: %p\n",
-		read_count, __builtin_return_address(0));
+	pr_info("Done, uses: %d, read count %d, cb: %p\n",
+		atomic_read(&pw_info->users_pw), read_count,
+		__builtin_return_address(0));
 
 	return 0;
 
@@ -390,7 +393,7 @@ int sprd_cam_pw_on(void)
 	pr_info("Done, uses: %d, read count %d, cb: %p\n",
 		atomic_read(&pw_info->users_pw), read_count,
 		__builtin_return_address(0));
-	pr_info("sprd cam pw on end\n");
+
 	return 0;
 err_pw_on:
 	atomic_dec_return(&pw_info->users_pw);
@@ -411,10 +414,6 @@ int sprd_cam_domain_eb(void)
 			__builtin_return_address(0), ret);
 		return -ENODEV;
 	}
-
-	pr_debug("users count %d, cb %p\n",
-		atomic_read(&pw_info->users_clk),
-		__builtin_return_address(0));
 
 	mutex_lock(&pw_info->mlock);
 	if (atomic_inc_return(&pw_info->users_clk) == 1) {
@@ -445,6 +444,11 @@ int sprd_cam_domain_eb(void)
 		mmsys_notifier_call_chain(_E_PW_ON, NULL);
 	}
 	mutex_unlock(&pw_info->mlock);
+
+	pr_info("users count %d, cb %p\n",
+		atomic_read(&pw_info->users_clk),
+		__builtin_return_address(0));
+
 	return 0;
 }
 EXPORT_SYMBOL(sprd_cam_domain_eb);
@@ -458,10 +462,6 @@ int sprd_cam_domain_disable(void)
 			atomic_read(&pw_info->users_pw),
 			__builtin_return_address(0), ret);
 	}
-
-	pr_debug("users count %d, cb %p\n",
-		atomic_read(&pw_info->users_clk),
-		__builtin_return_address(0));
 
 	mutex_lock(&pw_info->mlock);
 	if (atomic_dec_return(&pw_info->users_clk) == 0) {
@@ -479,8 +479,15 @@ int sprd_cam_domain_disable(void)
 
 		clk_disable_unprepare(pw_info->cam_mm_ahb_eb);
 		clk_disable_unprepare(pw_info->cam_mm_eb);
-	}
+	} else if (atomic_read(&pw_info->users_clk) < 0)
+		atomic_set(&pw_info->users_clk, 0);
+
 	mutex_unlock(&pw_info->mlock);
+
+	pr_info("users count %d, cb %p\n",
+		atomic_read(&pw_info->users_clk),
+		__builtin_return_address(0));
+
 	return 0;
 }
 EXPORT_SYMBOL(sprd_cam_domain_disable);

@@ -1,0 +1,13 @@
+/* AWINIC AW881XX Smart PA */
+&i2c3 {
+	aw881xx_smartpa@34 {
+		compatible = "awinic,aw881xx_smartpa";
+		reg = <0x34>;
+		reset-gpio = <&pio 65 0>;
+		irq-gpio = <&pio 5 0>;
+		monitor-flag = <1>;
+		monitor-timer-val = <30000>;
+		status = "okay";
+	};
+};
+/* AWINIC AW881XX Smart PA End */

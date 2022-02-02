@@ -26,6 +26,7 @@ struct ufs_sprd_host {
 	void __iomem *unipro_reg;
 	void __iomem *ufs_ao_reg;
 	void __iomem *mphy_reg;
+	void __iomem *analog_reg;
 	void __iomem *rus;
 	struct syscon_ufs ap_apb_ufs_en;
 	struct syscon_ufs ap_apb_ufs_rst;
@@ -77,6 +78,9 @@ struct ufs_sprd_host {
 /* UFS mphy registers */
 #define REG_DIG_CFG7		0x1c
 #define CDR_MONITOR_BYPASS	(1 << 24)
+
+#define REG_DIG_CFG14	0x38
+#define RCLK_OUT_SEL	(1 << 5)
 
 #define REG_DIG_CFG35	0x8c
 #define TX_FIFOMODE	(1 << 15)

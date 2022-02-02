@@ -482,6 +482,25 @@ static int sprd_dma_set_2stage_config(struct sprd_dma_chn *schan)
 	return 0;
 }
 
+static void sprd_dma_set_pending(struct sprd_dma_chn *schan, bool enable)
+{
+	struct sprd_dma_dev *sdev = to_sprd_dma_dev(&schan->vc.chan);
+	u32 reg, val, req_id = schan->dev_id - 1;
+
+	if (schan->dev_id == SPRD_DMA_SOFTWARE_UID)
+		return;
+
+	if (req_id < 32) {
+		reg = SPRD_DMA_GLB_REQ_PEND0_EN;
+		val = BIT(req_id);
+	} else {
+		reg = SPRD_DMA_GLB_REQ_PEND1_EN;
+		val = BIT(req_id - 32);
+	}
+
+	sprd_dma_glb_update(sdev, reg, val, enable ? val : 0);
+}
+
 static void sprd_dma_set_chn_config(struct sprd_dma_chn *schan,
 				    struct sprd_dma_desc *sdesc)
 {
@@ -523,6 +542,7 @@ static void sprd_dma_start(struct sprd_dma_chn *schan)
 	 */
 	sprd_dma_set_chn_config(schan, schan->cur_desc);
 	sprd_dma_set_uid(schan);
+	sprd_dma_set_pending(schan, true);
 	sprd_dma_enable_chn(schan);
 
 	if (schan->dev_id == SPRD_DMA_SOFTWARE_UID &&
@@ -534,6 +554,7 @@ static void sprd_dma_start(struct sprd_dma_chn *schan)
 static void sprd_dma_stop(struct sprd_dma_chn *schan)
 {
 	sprd_dma_stop_and_disable(schan);
+	sprd_dma_set_pending(schan, false);
 	sprd_dma_unset_uid(schan);
 	sprd_dma_clear_int(schan);
 	schan->cur_desc = NULL;
@@ -960,6 +981,7 @@ sprd_dma_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 	struct sprd_dma_chn_hw *hw;
 	enum sprd_dma_datawidth datawidth;
 	u32 step, temp;
+	size_t frag_len, frag_max, blk_max;
 
 	sdesc = kzalloc(sizeof(*sdesc), GFP_NOWAIT);
 	if (!sdesc)
@@ -979,24 +1001,36 @@ sprd_dma_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 	if (IS_ALIGNED(len, 8)) {
 		datawidth = SPRD_DMA_DATAWIDTH_8_BYTES;
 		step = SPRD_DMA_DWORD_STEP;
+		frag_max = ALIGN_DOWN(SPRD_DMA_FRG_LEN_MASK, 8);
+		blk_max = ALIGN_DOWN(SPRD_DMA_BLK_LEN_MASK, 8);
 	} else if (IS_ALIGNED(len, 4)) {
 		datawidth = SPRD_DMA_DATAWIDTH_4_BYTES;
 		step = SPRD_DMA_WORD_STEP;
+		frag_max = ALIGN_DOWN(SPRD_DMA_FRG_LEN_MASK, 4);
+		blk_max = ALIGN_DOWN(SPRD_DMA_BLK_LEN_MASK, 4);
 	} else if (IS_ALIGNED(len, 2)) {
 		datawidth = SPRD_DMA_DATAWIDTH_2_BYTES;
 		step = SPRD_DMA_SHORT_STEP;
+		frag_max = ALIGN_DOWN(SPRD_DMA_FRG_LEN_MASK, 2);
+		blk_max = ALIGN_DOWN(SPRD_DMA_BLK_LEN_MASK, 2);
 	} else {
 		datawidth = SPRD_DMA_DATAWIDTH_1_BYTE;
 		step = SPRD_DMA_BYTE_STEP;
+		frag_max = ALIGN_DOWN(SPRD_DMA_FRG_LEN_MASK, 1);
+		blk_max = ALIGN_DOWN(SPRD_DMA_BLK_LEN_MASK, 1);
 	}
 
+	frag_len = (len & SPRD_DMA_FRG_LEN_MASK) ?
+		len & SPRD_DMA_FRG_LEN_MASK : frag_max;
 	temp = datawidth << SPRD_DMA_SRC_DATAWIDTH_OFFSET;
 	temp |= datawidth << SPRD_DMA_DES_DATAWIDTH_OFFSET;
 	temp |= SPRD_DMA_TRANS_REQ << SPRD_DMA_REQ_MODE_OFFSET;
-	temp |= len & SPRD_DMA_FRG_LEN_MASK;
+	temp |= frag_len;
 	hw->frg_len = temp;
 
-	hw->blk_len = len & SPRD_DMA_BLK_LEN_MASK;
+	hw->blk_len = (len & SPRD_DMA_BLK_LEN_MASK) ?
+		len & SPRD_DMA_BLK_LEN_MASK : blk_max;
+
 	hw->trsc_len = len & SPRD_DMA_TRSC_LEN_MASK;
 
 	temp = (step & SPRD_DMA_TRSF_STEP_MASK) << SPRD_DMA_DEST_TRSF_STEP_OFFSET;

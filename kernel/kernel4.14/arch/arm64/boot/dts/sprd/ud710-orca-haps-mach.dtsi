@@ -13,7 +13,7 @@
 
 			vbmeta {
 				compatible = "android,vbmeta";
-				parts = "vbmeta,boot,recovery,system,vendor,product";
+				parts = "socko,odmko,dtbo,vbmeta,boot,recovery,l_pmsys,l_agdsp,system,vendor,product";
 			};
 
 			fstab {

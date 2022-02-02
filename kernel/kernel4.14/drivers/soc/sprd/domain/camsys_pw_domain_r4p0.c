@@ -161,10 +161,6 @@ int sprd_cam_pw_off(void)
 	unsigned int read_count = 0;
 	unsigned int val = 0;
 
-	pr_info("%s, count:%d, cb: %pS\n", __func__,
-			atomic_read(&cam_pw->users_pw),
-			__builtin_return_address(0));
-
 	mutex_lock(&cam_pw->client_lock);
 
 	if (atomic_dec_return(&cam_pw->users_pw) == 0) {
@@ -212,10 +208,15 @@ int sprd_cam_pw_off(void)
 			ret = -1;
 			goto err_pw_off;
 		}
-	} else {
-		pr_info("cam domain, other camera module is working\n");
-	}
+	} else if (atomic_read(&cam_pw->users_pw) < 0)
+		atomic_set(&cam_pw->users_pw, 0);
+
 	mutex_unlock(&cam_pw->client_lock);
+
+	pr_info("%s, count:%d, cb: %pS, read_count %d\n", __func__,
+		atomic_read(&cam_pw->users_pw),
+		__builtin_return_address(0), read_count);
+
 	return 0;
 
 err_pw_off:
@@ -303,10 +304,6 @@ int sprd_cam_pw_on(void)
 	unsigned int read_count = 0;
 	unsigned int val = 0;
 
-	pr_info("%s, count:%d, cb: %pS\n", __func__,
-			atomic_read(&cam_pw->users_pw),
-			__builtin_return_address(0));
-
 	mutex_lock(&cam_pw->client_lock);
 
 	if (atomic_inc_return(&cam_pw->users_pw) == 1) {
@@ -360,10 +357,12 @@ int sprd_cam_pw_on(void)
 		udelay(50);
 		sprd_mm_lpc_ctrl();
 		pr_info("cam_pw_domain:cam_pw_on set OK.\n");
-	} else {
-		pr_info("cam_pw_domain:cam_domain is already power on.\n");
 	}
 	mutex_unlock(&cam_pw->client_lock);
+
+	pr_info("%s, count:%d, cb: %pS, read_count %d\n", __func__,
+		atomic_read(&cam_pw->users_pw),
+		__builtin_return_address(0), read_count);
 
 	return 0;
 err_pw_on:
@@ -379,10 +378,6 @@ int sprd_cam_domain_eb(void)
 {
 	unsigned int rst_bit = 0;
 	unsigned int eb_bit = 0;
-
-	pr_info("%s, count:%d, cb: %pS\n", __func__,
-			atomic_read(&cam_pw->users_clk),
-			__builtin_return_address(0));
 
 	mutex_lock(&cam_pw->client_lock);
 	if (atomic_inc_return(&cam_pw->users_clk) == 1) {
@@ -425,16 +420,16 @@ int sprd_cam_domain_eb(void)
 	}
 	mutex_unlock(&cam_pw->client_lock);
 
+	pr_info("%s, count:%d, cb: %pS\n", __func__,
+		atomic_read(&cam_pw->users_clk),
+		__builtin_return_address(0));
+
 	return 0;
 }
 EXPORT_SYMBOL(sprd_cam_domain_eb);
 
 int sprd_cam_domain_disable(void)
 {
-	pr_info("%s, count:%d, cb: %pS\n", __func__,
-			atomic_read(&cam_pw->users_clk),
-			__builtin_return_address(0));
-
 	mutex_lock(&cam_pw->client_lock);
 
 	if (atomic_dec_return(&cam_pw->users_clk) == 0) {
@@ -445,8 +440,14 @@ int sprd_cam_domain_disable(void)
 		clk_disable_unprepare(cam_pw->cam_ckg_eb);
 
 		/*clk_disable_unprepare(cam_pw->cam_mm_eb);*/
-	}
+	} else if (atomic_read(&cam_pw->users_clk) < 0)
+		atomic_set(&cam_pw->users_clk, 0);
+
 	mutex_unlock(&cam_pw->client_lock);
+
+	pr_info("%s, count:%d, cb: %pS\n", __func__,
+		atomic_read(&cam_pw->users_clk),
+		__builtin_return_address(0));
 
 	return 0;
 }

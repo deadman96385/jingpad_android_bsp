@@ -67,7 +67,7 @@ int handle_vsp_interrupt(struct vsp_dev_t *vsp_hw_dev, int *status,
 	if (mmu_status & 0xff) {
 		/* mmu ERR */
 		pr_err("vsp iommu addr: 0x%x\n",
-		       readl_relaxed(sprd_vsp_base + VSP_MMU_INT_RAW_OFF));
+			readl_relaxed(sprd_vsp_base + VSP_MMU_INT_RAW_OFF));
 
 		for (i = 0x18; i <= 0x2c; i += 4)
 			pr_info("addr 0x%x is 0x%x\n", i,

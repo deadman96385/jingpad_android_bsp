@@ -1,0 +1,5 @@
+config SND_SOC_AS6480
+	tristate "SoC Audio for awinic AS6480 Switch"
+	depends on I2C
+	help
+	  This option enables support for AS6480 Switch.

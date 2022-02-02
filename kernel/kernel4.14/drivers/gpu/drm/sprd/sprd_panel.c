@@ -12,6 +12,7 @@
  */
 
 #include <drm/drm_atomic_helper.h>
+#include <linux/component.h>
 #include <linux/backlight.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -20,14 +21,55 @@
 #include <video/mipi_display.h>
 #include <video/of_display_timing.h>
 #include <video/videomode.h>
-
 #include "sprd_dpu.h"
 #include "sprd_panel.h"
 #include "dsi/sprd_dsi_api.h"
 #include "sysfs/sysfs_display.h"
-
+#ifdef CONFIG_LATTICE_FPGA
+#include "sprd_spi_md6000_initial_impl_double_mipi.h"
+#include "sprd_spi_md6000.h"
+#endif
+#ifdef CONFIG_GOWIN_FPGA
+struct regulator *fpga3v3;
+#endif
+struct regulator *lcd3v3;
+struct sprd_oled *oled_xr;
 #define SPRD_MIPI_DSI_FMT_DSC 0xff
+extern int sprd_close_brightness(void);
+int sprd_close_gowin_brightness(void);
 static DEFINE_MUTEX(panel_lock);
+
+static DEFINE_MUTEX(notifier_lock); 
+static RAW_NOTIFIER_HEAD(panel_notifier);
+
+int panel_notifier_register(struct notifier_block *nb)
+{
+	int err;
+
+	mutex_lock(&notifier_lock);
+	err = raw_notifier_chain_register(&panel_notifier, nb);
+	mutex_unlock(&notifier_lock);
+
+	return err;
+}
+
+int panel_notifier_unregister(struct notifier_block *nb)
+{
+	int err;
+
+	mutex_lock(&notifier_lock);
+	err = raw_notifier_chain_unregister(&panel_notifier, nb);
+	mutex_unlock(&notifier_lock);
+
+	return err;
+}
+
+static void panel_notifier_event(unsigned long event, void *data)
+{
+	mutex_lock(&notifier_lock);
+	raw_notifier_call_chain(&panel_notifier, event, data);
+	mutex_unlock(&notifier_lock);
+}
 
 const char *lcd_name;
 static int __init lcd_name_get(char *str)
@@ -44,6 +86,69 @@ static inline struct sprd_panel *to_sprd_panel(struct drm_panel *panel)
 	return container_of(panel, struct sprd_panel, base);
 }
 
+
+struct sprd_panel *fpga_panel;
+static struct kobject *fpga_ctrl_kobj = NULL;
+static int fpga_disable_ldo(void)
+{
+#ifdef CONFIG_LATTICE_FPGA
+   // sprd_close_brightness();
+   // mdelay(20);
+   // gpiod_direction_output(fpga_panel->info.reset_gpio, 0);
+   // mdelay(2);
+   // regulator_disable(lcd3v3);
+   // mdelay(1);
+   // gpiod_direction_output(fpga_panel->info.lcd1v8_gpio, 0);
+#endif
+
+#ifdef  CONFIG_GOWIN_FPGA
+	sprd_close_gowin_brightness();
+	  msleep(50);
+//    gpiod_direction_output(fpga_panel->info.fpgarst_gpio,0);
+//    regulator_disable(lcd3v3);
+//    gpiod_direction_output(fpga_panel->info.lcd1v8_gpio, 0);
+//    regulator_disable(fpga3v3);
+//    gpiod_direction_output(fpga_panel->info.fpga1v8_gpio, 0);
+ //   gpiod_direction_output(fpga_panel->info.fpga1v2_gpio, 0);
+#endif
+    return 0;
+}
+static ssize_t fpga_disable_store(struct device *dev,struct device_attribute *attr, const char *buf, size_t count)   
+{
+    unsigned int i;
+
+    if (kstrtouint(buf, 10, &i))
+        return -EINVAL;
+
+    if (i == 1)
+        fpga_disable_ldo();
+    else
+        return -EINVAL;
+
+    return count;
+
+}
+
+static DEVICE_ATTR(fpga_disable, 0664, NULL, fpga_disable_store);
+
+static struct attribute *fpga_sysfs_attrs[] = {
+    &dev_attr_fpga_disable.attr,
+    NULL,
+};
+
+static struct attribute_group fpga_attr_group = {
+    .attrs = fpga_sysfs_attrs,
+};
+
+static int fpga_sysfs_init(void)
+{
+    fpga_ctrl_kobj = kobject_create_and_add("fpga", NULL);
+    if (!fpga_ctrl_kobj){
+        printk("Create fpga_sysfs_init failed!\n");
+        return -ENOMEM;
+    }
+    return sysfs_create_group(fpga_ctrl_kobj, &fpga_attr_group);
+}
 static int sprd_panel_send_cmds(struct mipi_dsi_device *dsi,
 				const void *data, int size)
 {
@@ -75,22 +180,32 @@ static int sprd_panel_send_cmds(struct mipi_dsi_device *dsi,
 
 static int sprd_panel_unprepare(struct drm_panel *p)
 {
-	struct sprd_panel *panel = to_sprd_panel(p);
-	struct gpio_timing *timing;
-	int items, i;
+    struct sprd_panel *panel = to_sprd_panel(p);
+    struct gpio_timing *timing;
+    int items, i;
 
-	DRM_INFO("%s()\n", __func__);
+    DRM_INFO("%s()\n", __func__);
 
-	if (panel->info.avee_gpio) {
-		gpiod_direction_output(panel->info.avee_gpio, 0);
+    panel_notifier_event(1,0);
+#ifdef CONFIG_GOWIN_FPGA
+    regulator_disable(fpga3v3);
+    mdelay(5);
+    regulator_disable(lcd3v3);
+    mdelay(5);
+
+  if (panel->info.fpga1v2_gpio) {
+                gpiod_direction_output(panel->info.fpga1v2_gpio, 0);
+                mdelay(5);
+        }
+	if (panel->info.fpga1v8_gpio) {
+		gpiod_direction_output(panel->info.fpga1v8_gpio, 0);
 		mdelay(5);
 	}
 
-	if (panel->info.avdd_gpio) {
-		gpiod_direction_output(panel->info.avdd_gpio, 0);
+	if (panel->info.lcd1v8_gpio) {
+		gpiod_direction_output(panel->info.lcd1v8_gpio, 0);
 		mdelay(5);
 	}
-
 	if (panel->info.reset_gpio) {
 		items = panel->info.rst_off_seq.items;
 		timing = panel->info.rst_off_seq.timing;
@@ -100,9 +215,52 @@ static int sprd_panel_unprepare(struct drm_panel *p)
 			mdelay(timing[i].delay);
 		}
 	}
+    if (panel->info.fpgarst_gpio) {
+        gpiod_direction_output(panel->info.fpgarst_gpio,0);
+        mdelay(5);
+    }
+#endif
+
+#ifdef CONFIG_LATTICE_FPGA
+    if (panel->info.avee_gpio) {
+		gpiod_direction_output(panel->info.avee_gpio, 0);
+		mdelay(5);
+	}
+
+	if (panel->info.avdd_gpio) {
+		gpiod_direction_output(panel->info.avdd_gpio, 0);
+		mdelay(5);
+	}
+
+    if (panel->info.fpga1v2_gpio) {
+                gpiod_direction_output(panel->info.fpga1v2_gpio, 0);
+                mdelay(5);
+        }
+	if (panel->info.fpga1v8_gpio) {
+		gpiod_direction_output(panel->info.fpga1v8_gpio, 0);
+		mdelay(5);
+	}
+
+	if (panel->info.lcd1v8_gpio) {
+		gpiod_direction_output(panel->info.lcd1v8_gpio, 0);
+		mdelay(5);
+	}
+   regulator_disable(lcd3v3);
+   mdelay(5);
+	if (panel->info.reset_gpio) {
+		items = panel->info.rst_off_seq.items;
+		timing = panel->info.rst_off_seq.timing;
+		for (i = 0; i < items; i++) {
+			gpiod_direction_output(panel->info.reset_gpio,
+						timing[i].level);
+			mdelay(timing[i].delay);
+		}
+	}
+	spi_md6000_suspend();
+	mdelay(5);
+#endif
 
 	regulator_disable(panel->supply);
-
 	return 0;
 }
 
@@ -114,9 +272,10 @@ static int sprd_panel_prepare(struct drm_panel *p)
 
 	DRM_INFO("%s()\n", __func__);
 
-	ret = regulator_enable(panel->supply);
-	if (ret < 0)
-		DRM_ERROR("enable lcd regulator failed\n");
+    panel_notifier_event(2,0);
+    ret = regulator_enable(panel->supply);
+    if (ret < 0)
+        DRM_ERROR("enable lcd regulator failed\n");
 
 	if (panel->info.avdd_gpio) {
 		gpiod_direction_output(panel->info.avdd_gpio, 1);
@@ -127,7 +286,36 @@ static int sprd_panel_prepare(struct drm_panel *p)
 		gpiod_direction_output(panel->info.avee_gpio, 1);
 		mdelay(5);
 	}
+#ifdef CONFIG_LATTICE_FPGA
+	spi_md6000_resume();
+	mdelay(5);
+#endif
+    if (panel->info.fpga1v2_gpio) {
+        gpiod_direction_output(panel->info.fpga1v2_gpio, 1);
+        mdelay(5);
+    }
+#ifdef CONFIG_GOWIN_FPGA
+    regulator_enable(fpga3v3);
+    mdelay(5);
+#endif
+    if (panel->info.fpga1v8_gpio) {
+        gpiod_direction_output(panel->info.fpga1v8_gpio, 1);
+        mdelay(5);
+    }
 
+
+    if (panel->info.lcd1v8_gpio) {
+        gpiod_direction_output(panel->info.lcd1v8_gpio, 1);
+        mdelay(5);
+    }
+    regulator_enable(lcd3v3);
+   
+#if 0
+	if(panel->info.lcdtp3v3_gpio) {
+    		gpiod_direction_output(panel->info.lcdtp3v3_gpio, 1);
+		mdelay(5);
+    	}
+#endif
 	if (panel->info.reset_gpio) {
 		items = panel->info.rst_on_seq.items;
 		timing = panel->info.rst_on_seq.timing;
@@ -137,7 +325,17 @@ static int sprd_panel_prepare(struct drm_panel *p)
 			mdelay(timing[i].delay);
 		}
 	}
-
+#ifdef CONFIG_GOWIN_FPGA
+    if (panel->info.fpgarst_gpio) {
+        gpiod_direction_output(panel->info.fpgarst_gpio,1);
+        mdelay(5);
+    }
+#endif
+#ifdef CONFIG_LATTICE_FPGA
+    printk("zhangming start\n");
+	sprd_spi_md6000_load_bitfile(bitfile_double_mipi, sizeof(bitfile_double_mipi));
+    printk("zhangming end\n");
+#endif
 	return 0;
 }
 
@@ -148,6 +346,21 @@ static int sprd_panel_disable(struct drm_panel *p)
 	DRM_INFO("%s()\n", __func__);
 
 	mutex_lock(&panel_lock);
+	#ifdef CONFIG_LATTICE_FPGA
+			mdelay(50);
+			sprd_panel_send_cmds(panel->slave,
+			panel->info.cmds[CMD_CODE_SLEEP_IN1],
+			panel->info.cmds_len[CMD_CODE_SLEEP_IN1]);
+			mdelay(50);
+			sprd_panel_send_cmds(panel->slave,
+			panel->info.cmds[CMD_CODE_SLEEP_IN2],
+			panel->info.cmds_len[CMD_CODE_SLEEP_IN2]);
+	#endif
+	#ifdef CONFIG_GOWIN_FPGA
+    sprd_panel_send_cmds(panel->slave,
+            panel->info.cmds[CMD_CODE_SLEEP_IN],
+            panel->info.cmds_len[CMD_CODE_SLEEP_IN]);
+	#endif
 	/*
 	 * FIXME:
 	 * The cancel work should be executed before DPU stop,
@@ -167,39 +380,50 @@ static int sprd_panel_disable(struct drm_panel *p)
 		backlight_update_status(panel->backlight);
 	}
 
-	sprd_panel_send_cmds(panel->slave,
-			     panel->info.cmds[CMD_CODE_SLEEP_IN],
-			     panel->info.cmds_len[CMD_CODE_SLEEP_IN]);
-
 	panel->is_enabled = false;
 	mutex_unlock(&panel_lock);
 
 	return 0;
 }
 
+//int sprd_resume_backlight_set(struct drm_panel *p)
+//{
+//    struct sprd_panel *panel = to_sprd_panel(p);
+//    mutex_lock(&panel_lock);
+//    if (panel->backlight) {
+//        panel->backlight->props.power = FB_BLANK_UNBLANK;
+//        panel->backlight->props.state &= ~BL_CORE_FBBLANK;
+//        backlight_update_status(panel->backlight);
+//    }
+//    mutex_unlock(&panel_lock);
+//    return 0;
+//
+//}
+static int flag = 0;
 static int sprd_panel_enable(struct drm_panel *p)
 {
 	struct sprd_panel *panel = to_sprd_panel(p);
-
 	DRM_INFO("%s()\n", __func__);
+    
 
-	mutex_lock(&panel_lock);
-	sprd_panel_send_cmds(panel->slave,
-			     panel->info.cmds[CMD_CODE_INIT],
-			     panel->info.cmds_len[CMD_CODE_INIT]);
-
-	if (panel->backlight) {
-		panel->backlight->props.power = FB_BLANK_UNBLANK;
-		panel->backlight->props.state &= ~BL_CORE_FBBLANK;
-		backlight_update_status(panel->backlight);
-	}
+    mutex_lock(&panel_lock);
+#if 0//def CONFIG_GOWIN_FPGA
+        sprd_panel_send_cmds(panel->slave,
+            panel->info.cmds[CMD_CODE_INIT],
+            panel->info.cmds_len[CMD_CODE_INIT]);
+#endif 
+        if (panel->backlight) {
+            panel->backlight->props.power = FB_BLANK_UNBLANK;
+            panel->backlight->props.state &= ~BL_CORE_FBBLANK;
+            backlight_update_status(panel->backlight);
+        }
 
 	if (panel->info.esd_check_en) {
 		schedule_delayed_work(&panel->esd_work,
 				      msecs_to_jiffies(1000));
 		panel->esd_work_pending = true;
 	}
-
+    flag = 1;
 	panel->is_enabled = true;
 	mutex_unlock(&panel_lock);
 
@@ -240,7 +464,7 @@ static int sprd_panel_get_modes(struct drm_panel *p)
 	of_property_read_u32(np, "sprd,surface-width", &surface_width);
 	of_property_read_u32(np, "sprd,surface-height", &surface_height);
 	if (surface_width && surface_height) {
-		struct videomode vm = {};
+                struct videomode vm = {};
 
 		vm.hactive = surface_width;
 		vm.vactive = surface_height;
@@ -410,6 +634,36 @@ static int sprd_panel_gpio_request(struct device *dev,
 		DRM_WARN("can't get panel reset gpio: %ld\n",
 				 PTR_ERR(panel->info.reset_gpio));
 
+	panel->info.lcd1v8_gpio = devm_gpiod_get_optional(dev,
+					"lcd1v8", GPIOD_ASIS);
+	if (IS_ERR_OR_NULL(panel->info.lcd1v8_gpio))
+		DRM_WARN("can't get panel lcd1v8 gpio: %ld\n",
+				 PTR_ERR(panel->info.lcd1v8_gpio));
+	panel->info.fpga1v8_gpio= devm_gpiod_get_optional(dev,
+					"fpga1v8", GPIOD_ASIS);
+	if (IS_ERR_OR_NULL(panel->info.fpga1v8_gpio))
+		DRM_WARN("can't get panel fpga1v8 gpio: %ld\n",
+				 PTR_ERR(panel->info.fpga1v8_gpio));
+	panel->info.fpga1v2_gpio= devm_gpiod_get_optional(dev,
+					"fpga1v2", GPIOD_ASIS);
+	if (IS_ERR_OR_NULL(panel->info.fpga1v2_gpio))
+		DRM_WARN("can't get panel fpga1v2 gpio: %ld\n",
+				 PTR_ERR(panel->info.fpga1v2_gpio));
+#ifdef CONFIG_GOWIN_FPGA
+	panel->info.fpgarst_gpio= devm_gpiod_get_optional(dev,
+					"fpgarst", GPIOD_ASIS);
+	if (IS_ERR_OR_NULL(panel->info.fpgarst_gpio))
+		DRM_WARN("can't get panel fpgarst_gpiogpio: %ld\n",
+				 PTR_ERR(panel->info.fpgarst_gpio));
+#endif
+
+#if 0
+	panel->info.lcdtp3v3_gpio = devm_gpiod_get_optional(dev,
+					"lcdtp3v3", GPIOD_ASIS);
+	if (IS_ERR_OR_NULL(panel->info.lcdtp3v3_gpio))
+		DRM_WARN("can't get panel lcd1v8 gpio: %ld\n",
+				 PTR_ERR(panel->info.lcdtp3v3_gpio));
+#endif
 	return 0;
 }
 
@@ -547,11 +801,63 @@ static int of_parse_oled_cmds(struct sprd_oled *oled,
 	return 0;
 }
 
+#if 0
+int sprd_close_brightness(void)
+{
+    struct sprd_panel *panel = oled_xr->panel;
+
+    mutex_lock(&panel_lock);
+
+    mdelay(25);
+    sprd_panel_send_cmds(panel->slave,
+            oled_xr->cmds[0],
+            oled_xr->cmd_len);
+    sprd_panel_send_cmds(panel->slave,
+            panel->info.cmds[CMD_CODE_SLEEP_IN],
+            panel->info.cmds_len[CMD_CODE_SLEEP_IN]);
+    mdelay(25);
+    sprd_panel_send_cmds(panel->slave,
+            panel->info.cmds[CMD_CODE_SLEEP_IN2],
+            panel->info.cmds_len[CMD_CODE_SLEEP_IN2]);
+    mdelay(5);
+    
+
+
+    mutex_unlock(&panel_lock);
+
+    return 0;
+
+
+}
+#endif
+
+
+int sprd_close_gowin_brightness(void)
+{
+    int i = 0;
+    struct sprd_panel *panel = oled_xr->panel;
+
+    mutex_lock(&panel_lock);
+    for(i = 0; i++; i< 10)
+    {
+        sprd_panel_send_cmds(panel->slave,
+                oled_xr->cmds[0],
+                oled_xr->cmd_len);
+    }
+
+    mutex_unlock(&panel_lock);
+
+    return 0;
+
+
+}
+
 static int sprd_oled_set_brightness(struct backlight_device *bdev)
 {
 	int level, brightness;
 	struct sprd_oled *oled = bl_get_data(bdev);
 	struct sprd_panel *panel = oled->panel;
+    int i;
 
 	mutex_lock(&panel_lock);
 	if (!panel->is_enabled) {
@@ -562,25 +868,73 @@ static int sprd_oled_set_brightness(struct backlight_device *bdev)
 
 	brightness = bdev->props.brightness;
 	level = brightness * oled->max_level / 255;
-
-	DRM_INFO("%s level: %d\n", __func__, level);
+   
+    DRM_INFO("%s level: %d\n", __func__, level);
 
 	sprd_panel_send_cmds(panel->slave,
 			     panel->info.cmds[CMD_OLED_REG_LOCK],
 			     panel->info.cmds_len[CMD_OLED_REG_LOCK]);
 
-	if (oled->cmds_total == 1) {
-		oled->cmds[0]->payload[1] = level;
-		sprd_panel_send_cmds(panel->slave,
-			     oled->cmds[0],
-			     oled->cmd_len);
-	} else
-		sprd_panel_send_cmds(panel->slave,
-			     oled->cmds[level],
-			     oled->cmd_len);
+    if (oled->cmds_total == 1) {
+        oled->cmds[0]->payload[1] = level;
+        sprd_panel_send_cmds(panel->slave,
+                oled->cmds[0],
+                oled->cmd_len);
+    } else {
+#ifdef CONFIG_GOWIN_FPGA
 
-	sprd_panel_send_cmds(panel->slave,
-			     panel->info.cmds[CMD_OLED_REG_UNLOCK],
+        if(flag == 1){
+            for (i = 0; i < 10; i++)
+                sprd_panel_send_cmds(panel->slave,
+                        oled->cmds[level],
+                        oled->cmd_len);
+            flag = 0;
+        } else {
+            if(level == 0)
+            {
+                for(i = 0; i< 10; i++)
+                    sprd_panel_send_cmds(panel->slave,
+                            oled->cmds[level],
+                            oled->cmd_len);
+            } else {
+                sprd_panel_send_cmds(panel->slave,
+                        oled->cmds[level],
+                        oled->cmd_len);
+            }
+        }
+#endif
+#ifdef CONFIG_LATTICE_FPGA
+        if(flag == 1){
+            for(i = 0;i<2;i++)
+            {
+                mdelay(25);
+                sprd_panel_send_cmds(panel->slave,
+                        oled->cmds[level],
+                        oled->cmd_len);
+            }
+            flag = 0;
+        } else {
+            if(level == 0)
+            {
+
+                mdelay(50);
+                sprd_panel_send_cmds(panel->slave,
+                        oled->cmds[level],
+                        oled->cmd_len);
+                mdelay(5);
+
+            } else {
+                sprd_panel_send_cmds(panel->slave,
+                        oled->cmds[level],
+                        oled->cmd_len);
+
+            }
+        }
+#endif
+
+    }
+    sprd_panel_send_cmds(panel->slave,
+            panel->info.cmds[CMD_OLED_REG_UNLOCK],
 			     panel->info.cmds_len[CMD_OLED_REG_UNLOCK]);
 
 	mutex_unlock(&panel_lock);
@@ -657,7 +1011,7 @@ static int sprd_oled_backlight_init(struct sprd_panel *panel)
 	of_parse_oled_cmds(oled,
 			panel->info.cmds[CMD_OLED_BRIGHTNESS],
 			panel->info.cmds_len[CMD_OLED_BRIGHTNESS]);
-
+    oled_xr= oled;
 	DRM_INFO("%s() ok\n", __func__);
 
 	return 0;
@@ -776,13 +1130,25 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 		info->cmds_len[CMD_CODE_INIT] = bytes;
 	} else
 		DRM_ERROR("can't find sprd,initial-command property\n");
-
 	p = of_get_property(lcd_node, "sprd,sleep-in-command", &bytes);
 	if (p) {
 		info->cmds[CMD_CODE_SLEEP_IN] = p;
 		info->cmds_len[CMD_CODE_SLEEP_IN] = bytes;
 	} else
 		DRM_ERROR("can't find sprd,sleep-in-command property\n");
+	p = of_get_property(lcd_node, "sprd,sleep-in1-command", &bytes);
+	if (p) {
+		info->cmds[CMD_CODE_SLEEP_IN1] = p;
+		info->cmds_len[CMD_CODE_SLEEP_IN1] = bytes;
+	} else
+		DRM_ERROR("can't find sprd,sleep-in1-command property\n");
+	p = of_get_property(lcd_node, "sprd,sleep-in2-command", &bytes);
+	if (p) {
+		info->cmds[CMD_CODE_SLEEP_IN2] = p;
+		info->cmds_len[CMD_CODE_SLEEP_IN2] = bytes;
+	} else
+		DRM_ERROR("can't find sprd,sleep-in2-command property\n");
+
 
 	p = of_get_property(lcd_node, "sprd,sleep-out-command", &bytes);
 	if (p) {
@@ -803,6 +1169,32 @@ int sprd_panel_parse_lcddtb(struct device_node *lcd_node,
 
 	return 0;
 }
+
+/*
+ * FIXME:
+ * Adding the following interfaces is just for fbdev emulation support.
+ * Put panel into component match lists. drm just bind after panel probe.
+ */
+static int sprd_panel_bind(struct device *dev,
+			struct device *master, void *data)
+{
+	/* do nothing */
+	DRM_INFO("%s()\n", __func__);
+	return 0;
+}
+
+static void sprd_panel_unbind(struct device *dev,
+			struct device *master, void *data)
+{
+	/* do nothing */
+	DRM_INFO("%s()\n", __func__);
+}
+
+static const struct component_ops panel_component_ops = {
+	.bind	= sprd_panel_bind,
+	.unbind	= sprd_panel_unbind,
+};
+
 
 static int sprd_panel_parse_dt(struct device_node *np, struct sprd_panel *panel)
 {
@@ -846,6 +1238,29 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 	struct sprd_panel *panel;
 	struct device_node *bl_node;
 
+
+
+#ifdef CONFIG_GOWIN_FPGA
+    fpga3v3 = regulator_get(NULL, "vddldo2");
+    if (IS_ERR(fpga3v3) || !fpga3v3) {
+        printk("get gowin 3v3 failed, return!\n");
+        return -EFAULT;
+    }
+    regulator_set_voltage(fpga3v3, 3300000, 3300000);
+    ret = regulator_enable(fpga3v3);
+    if(ret != 0)
+        printk("gowin %s: some error happen, fail to enable regulator!\n", __func__);
+#endif
+    lcd3v3 = regulator_get(NULL, "vddldo1");
+    if (IS_ERR(lcd3v3) || !lcd3v3) {
+        printk("get lcd 3v3 failed, return!\n");
+        return -EFAULT;
+    }
+    regulator_set_voltage(lcd3v3, 3300000, 3300000);
+    ret = regulator_enable(lcd3v3);
+    if(ret != 0)
+        printk("lcd %s: some error happen, fail to enable regulator!\n", __func__);
+   
 	panel = devm_kzalloc(&slave->dev, sizeof(*panel), GFP_KERNEL);
 	if (!panel)
 		return -ENOMEM;
@@ -943,9 +1358,10 @@ static int sprd_panel_probe(struct mipi_dsi_device *slave)
 
 	panel->is_enabled = true;
 
-	DRM_INFO("panel driver probe success\n");
-
-	return 0;
+    DRM_INFO("panel driver probe success\n");
+    fpga_panel = panel;
+    fpga_sysfs_init();
+    return component_add(&slave->dev, &panel_component_ops);
 }
 
 static int sprd_panel_remove(struct mipi_dsi_device *slave)
@@ -954,6 +1370,8 @@ static int sprd_panel_remove(struct mipi_dsi_device *slave)
 	int ret;
 
 	DRM_INFO("%s()\n", __func__);
+
+	component_del(&slave->dev, &panel_component_ops);
 
 	sprd_panel_disable(&panel->base);
 	sprd_panel_unprepare(&panel->base);

@@ -25,6 +25,7 @@
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
+#include <linux/usb/sprd_usbm.h>
 
 #include "usbaudio.h"
 #include "card.h"
@@ -1205,6 +1206,17 @@ static int setup_hw_info(struct snd_pcm_runtime *runtime, struct snd_usb_substre
 	unsigned int pt, ptmin;
 	int param_period_time_if_needed;
 	int err;
+
+	/* If usb driver didn't support offload mode, return error, audio hal
+	 * will retry with normal mode
+	 */
+#if IS_ENABLED(CONFIG_SPRD_USBM)
+	struct snd_usb_audio *chip = subs->stream ? subs->stream->chip : NULL;
+
+	pr_info("%s offload check val(%d)\n", __func__, sprd_usbm_hsphy_get_onoff());
+	if (chip && sprd_usb_aud_ofld_en(chip, subs->direction) && !sprd_usbm_hsphy_get_onoff())
+		return -EIO;
+#endif
 
 	runtime->hw.formats = subs->formats;
 

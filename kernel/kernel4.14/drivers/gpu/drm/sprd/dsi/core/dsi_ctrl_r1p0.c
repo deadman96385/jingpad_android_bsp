@@ -53,15 +53,16 @@ static void dsi_power_enable(struct dsi_context *ctx, int enable)
 	write32(enable, &reg->SOFT_RESET);
 }
 /**
- * Enable/disable DPI video mode
+ * Enable/disable DPI video mode & halt function
  * @param instance pointer to structure holding the DSI Host core information
- * @param enable (1) - disable (0)
+ * @param bit0 : DPI video mode enable (1) - disable (0)
+ *	  bit1 : halt function  enable (1) - disable (0)
  */
 static void dsi_video_mode(struct dsi_context *ctx)
 {
 	struct dsi_reg *reg = (struct dsi_reg *)ctx->base;
 
-	write32(0, &reg->DSI_MODE_CFG);
+	write32(0x2, &reg->DSI_MODE_CFG);
 }
 /**
  * Enable command mode (Generic interface)
@@ -78,8 +79,12 @@ static void dsi_cmd_mode(struct dsi_context *ctx)
 static bool dsi_is_cmd_mode(struct dsi_context *ctx)
 {
 	struct dsi_reg *reg = (struct dsi_reg *)ctx->base;
-
+#ifdef CONFIG_GOWIN_FPGA
+//	return read32(&reg->DSI_MODE_CFG);
+  return read32(&reg->DSI_MODE_CFG) & BIT(0);
+#else
 	return read32(&reg->DSI_MODE_CFG);
+#endif
 }
 /**
  * Configure the read back virtual channel for the generic interface

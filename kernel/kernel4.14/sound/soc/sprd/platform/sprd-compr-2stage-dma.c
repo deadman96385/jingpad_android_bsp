@@ -1728,12 +1728,11 @@ static int sprd_platform_compr_pointer(struct snd_compr_stream *cstream,
 	 */
 	memcpy(arg, &tstamp, sizeof(struct snd_compr_tstamp));
 	sp_asoc_pr_info(
-		"%s: copied_total: %d bit_rate: %d sample_rate: %d  pcm_io_frames: %d\n",
+		"%s: copied_total: %d pcm_io_frames: %d total_bytes_available=%lld\n",
 		__func__,
 		tstamp.copied_total,
-		srtd->codec_param.codec.bit_rate,
-		srtd->sample_rate,
-		tstamp.pcm_io_frames);
+		tstamp.pcm_io_frames,
+		cstream->runtime->total_bytes_available);
 
 	return 0;
 }

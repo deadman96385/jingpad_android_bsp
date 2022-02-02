@@ -317,7 +317,11 @@
 #define CLK_EMMC_EB		25
 #define CLK_CE_SEC_EB		26
 #define CLK_CE_PUB_EB		27
-#define CLK_AP_APB_GATE_NUM     (CLK_CE_PUB_EB + 1)
+#define CLK_UFS_EB		28
+#define CLK_UFS_UNIPRO_EB	29
+#define CLK_UFS_HCI_EB		30
+#define CLK_UFS_UTP_EB		31
+#define CLK_AP_APB_GATE_NUM     (CLK_UFS_UTP_EB + 1)
 
 #define CLK_RC100M_CAL_EB	0
 #define CLK_DJTAG_TCK_EB	1

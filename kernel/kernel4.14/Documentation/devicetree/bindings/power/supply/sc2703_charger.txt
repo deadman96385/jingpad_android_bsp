@@ -13,6 +13,8 @@ Optional Properties:
   See Documentation/devicetree/bindings/power/supply/battery.txt
 - sprd,long-key-detection: the long key power on configuration option, if
   configured, press 15s the internal battery will disconnect.
+- pd-extcon-enable: use pd extcon to ignore vbus off that pd hard reset
+  lead to.
 
 Example:
 
@@ -29,6 +31,7 @@ Example:
 		phys = <&ssphy>;
 		monitored-battery = <&bat>;
 		sprd,long-key-detection;
+		pd-extcon-enable;
 		vddvbus:otg-vbus {
 			regulator-name = "vddvbus";
 			regulator-ramp-delay = <25000>;

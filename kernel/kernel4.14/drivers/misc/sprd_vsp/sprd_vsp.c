@@ -223,6 +223,7 @@ static long vsp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		} else
 			tmp_rst_msk = regs[RESET].mask;
 
+		tmp_rst_msk = regs[RESET].mask;
 		ret = regmap_update_bits(regs[RESET].gpr, regs[RESET].reg,
 				   tmp_rst_msk, tmp_rst_msk);
 		if (ret) {
@@ -248,7 +249,8 @@ static long vsp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			sprd_iommu_restore(vsp_hw_dev.vsp_dev);
 
 		if (vsp_hw_dev.vsp_qos_exist_flag) {
-			if (vsp_hw_dev.version == SHARKL5Pro || vsp_hw_dev.version == ROC1) {
+			if (vsp_hw_dev.version == SHARKL5Pro ||
+					vsp_hw_dev.version == ROC1) {
 				writel_relaxed(((qos_cfg.awqos & 0x7) << 29) |
 				((qos_cfg.arqos_low & 0x7) << 23),
 				vsp_glb_reg_base + qos_cfg.reg_offset);
@@ -336,7 +338,7 @@ static long vsp_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EINVAL;
 		}
 
-		codec_counter = codec_instance_count[vsp_fp->codec_id];
+		codec_counter = atomic_read(&vsp_instance_cnt);
 		put_user(codec_counter, (int __user *)arg);
 		pr_debug("total  counter %d current codec-id %d\n",
 			codec_counter, vsp_fp->codec_id);

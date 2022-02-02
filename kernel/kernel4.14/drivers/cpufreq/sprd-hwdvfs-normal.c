@@ -49,6 +49,7 @@ static const struct of_device_id sprd_cpudvfs_of_match[] = {
 	},
 	{
 		.compatible = "sprd,roc1-cpudvfs",
+		.data = &ud710_dvfs_private_data,
 	},
 	{
 		.compatible = "sprd,sharkl5pro-cpudvfs",
@@ -1659,8 +1660,9 @@ static int sprd_cpudvfs_idle_pd_volt_update(void *data, int cluster)
 	 */
 	if (clu->is_host_cluster && pdev->pwr[clu->dcdc].fix_dcdc_pd_volt) {
 		vol = clu->max_vol_grade;
-		pr_debug("Update idle pd volt for dcdc%d: %d\n", clu->dcdc, vol);
+		pdev->pwr[clu->dcdc].idle_vol_val = clu->max_vol_grade;
 
+		pr_debug("Update idle pd volt for dcdc%d: %d\n", clu->dcdc, vol);
 		ret = pdev->phy_ops->set_dcdc_idle_voltage(pdev, clu->dcdc,
 							   vol);
 		if (ret)
@@ -2204,6 +2206,9 @@ static int dcdc_pwr_dt_parse(struct cpudvfs_archdata *pdev)
 			pdev->pwr[ix].blk_reg = syscon_args[0];
 			pdev->pwr[ix].blk_off = syscon_args[1];
 		}
+
+		if (of_property_read_bool(node, "sync-dcdc-idle-voltage"))
+			pdev->sync_idle_voltage = true;
 
 		if (of_find_property(dcdc_node, "dcdc-idle-voltage", NULL)) {
 			pdev->pwr[ix].fix_dcdc_pd_volt = true;
@@ -3104,6 +3109,27 @@ static int sprd_cpudvfs_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
+static int sprd_cpudvfs_suspend(struct device *dev)
+{
+	struct sprd_cpudvfs_device *platdev = dev_get_drvdata(dev);
+	struct cpudvfs_archdata *pdev =
+		(struct cpudvfs_archdata *)platdev->archdata;
+	int i, ret;
+
+	if (!pdev->sync_idle_voltage)
+		return 0;
+
+	for (i = 0; i < pdev->dcdc_num; ++i) {
+		if (pdev->pwr[i].fix_dcdc_pd_volt) {
+			ret = pdev->phy_ops->set_dcdc_idle_voltage(pdev, i, 0);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int sprd_cpudvfs_resume(struct device *dev)
 {
 	struct sprd_cpudvfs_device *platdev = dev_get_drvdata(dev);
@@ -3111,6 +3137,7 @@ static int sprd_cpudvfs_resume(struct device *dev)
 		(struct cpudvfs_archdata *)platdev->archdata;
 	struct dvfs_cluster *clu;
 	int ret, ix, jx;
+	int vol;
 
 	for (ix = 0; ix < pdev->total_cluster_num; ++ix) {
 		clu = pdev->cluster_array[ix];
@@ -3121,13 +3148,25 @@ static int sprd_cpudvfs_resume(struct device *dev)
 		}
 	}
 
+	if (!pdev->sync_idle_voltage)
+		return 0;
+
+	for (ix = 0; ix < pdev->dcdc_num; ++ix) {
+		if (pdev->pwr[ix].fix_dcdc_pd_volt) {
+			vol = pdev->pwr[ix].idle_vol_val;
+			ret = pdev->phy_ops->set_dcdc_idle_voltage(pdev, ix, vol);
+			if (ret)
+				return ret;
+		}
+	}
 	return 0;
 }
-#endif
 
 static const struct dev_pm_ops sprd_cpudvfs_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(NULL, sprd_cpudvfs_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(sprd_cpudvfs_suspend, sprd_cpudvfs_resume)
 };
+
+#endif
 
 static struct platform_driver sprd_cpudvfs_driver = {
 	.probe = sprd_cpudvfs_probe,

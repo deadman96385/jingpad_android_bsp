@@ -1,0 +1,19 @@
+Spreadtrum verify bindings
+
+This driver is soft logic,it is used to verify modem when kernel is ready,
+it will use ap-efuse driver to read or write public efuse block,and it is
+designed only for the project of orca.
+
+Required properties:
+- compatible: "sprd,orca-verify".
+- nvmem-names: Should contain following entries:
+	"ap-efuse" for match the name of efuse driver
+- nvmem: Should contain the phandle for the entry in nvmem-names.
+
+Example:
+
+	sprd-verify {
+		compatible = "sprd,orca-verify";
+		nvmem-names = "ap-efuse";
+		nvmem = <&ap_efuse>;
+	};

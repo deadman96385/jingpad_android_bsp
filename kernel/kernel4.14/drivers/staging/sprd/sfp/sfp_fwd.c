@@ -124,7 +124,7 @@ int delete_in_sfp_fwd_table(const struct sfp_mgr_fwd_tuple_hash *fwd_hash_entry)
 		if (nf_ct_tuple_equal(&cur_entry->tuple,
 				      &fwd_hash_entry->tuple)) {
 			hlist_del_rcu(&cur_entry->entry_lst);
-			call_rcu(&cur_entry->rcu, sfp_fwd_entry_free);
+			call_rcu_bh(&cur_entry->rcu, sfp_fwd_entry_free);
 		}
 	}
 	rcu_read_unlock_bh();
@@ -180,7 +180,7 @@ void clear_sfp_fwd_table(void)
 					 &sfp_fwd_entries[i],
 					 entry_lst) {
 			hlist_del_rcu(&sfp_fwd_entry->entry_lst);
-			call_rcu(&sfp_fwd_entry->rcu, sfp_fwd_entry_free);
+			call_rcu_bh(&sfp_fwd_entry->rcu, sfp_fwd_entry_free);
 		}
 	}
 	rcu_read_unlock_bh();

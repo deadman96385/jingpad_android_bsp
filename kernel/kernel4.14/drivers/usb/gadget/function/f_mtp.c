@@ -93,12 +93,12 @@ struct mtp_dev {
 	atomic_t ioctl_excl;
 
 	struct list_head tx_idle;
+	struct list_head rx_idle;
 	struct list_head intr_idle;
 
 	wait_queue_head_t read_wq;
 	wait_queue_head_t write_wq;
 	wait_queue_head_t intr_wq;
-	struct usb_request *rx_req[RX_REQ_MAX];
 	int rx_done;
 	uint32_t tx_buf_size;
 	uint32_t rx_buf_size;
@@ -122,9 +122,9 @@ static struct usb_interface_descriptor mtp_interface_desc = {
 	.bDescriptorType        = USB_DT_INTERFACE,
 	.bInterfaceNumber       = 0,
 	.bNumEndpoints          = 3,
-	.bInterfaceClass        = USB_CLASS_VENDOR_SPEC,
-	.bInterfaceSubClass     = USB_SUBCLASS_VENDOR_SPEC,
-	.bInterfaceProtocol     = 0,
+	.bInterfaceClass        = USB_CLASS_STILL_IMAGE,
+	.bInterfaceSubClass     = 1,
+	.bInterfaceProtocol     = 1,
 };
 
 static struct usb_interface_descriptor ptp_interface_desc = {
@@ -451,13 +451,24 @@ static void mtp_complete_out(struct usb_ep *ep, struct usb_request *req)
 {
 	struct mtp_dev *dev = _mtp_dev;
 
-	dev->rx_done = 1;
-	if (req->status != 0) {
-		if (req->status == -ESHUTDOWN)
-			dev->state = STATE_OFFLINE;
-		else
-			dev->state = STATE_ERROR;
+	spin_lock_irq(&dev->lock);
+	if (!dev->rx_done) {
+		dev->rx_done = 1;
+		if (req->status != 0) {
+			if (req->status == -ESHUTDOWN)
+				dev->state = STATE_OFFLINE;
+			else
+				dev->state = STATE_ERROR;
+		}
+		spin_unlock_irq(&dev->lock);
+	} else {
+		/*Protect for double mtp_req_put() into rx_idle list*/
+		spin_unlock_irq(&dev->lock);
+		DBG(dev->cdev, "[%s]:rx_done(1)", __func__);
+		return;
 	}
+
+	mtp_req_put(dev, &dev->rx_idle, req);
 
 	wake_up(&dev->read_wq);
 }
@@ -511,7 +522,7 @@ static int mtp_request_rx(struct mtp_dev *dev)
 {
 	struct usb_request *req = NULL;
 	uint32_t rx_buf_sz = MTP_BULK_BUFFER_SIZE;
-	int i, j;
+	int i;
 
 retry:
 	if (rx_buf_sz != MTP_BULK_BUFFER_SIZE)
@@ -519,8 +530,8 @@ retry:
 	for (i = 0; i < RX_REQ_MAX; i++) {
 		req = mtp_request_new(dev->ep_out, rx_buf_sz);
 		if (!req) {
-			for (j = 0; j < i; j++)
-				mtp_request_free(dev->rx_req[j], dev->ep_out);
+			while ((req = mtp_req_get(dev, &dev->rx_idle)))
+				mtp_request_free(req, dev->ep_out);
 			rx_buf_sz >>= 1;
 			if (rx_buf_sz >= MTP_MINIMUM_BUFFER_SIZE)
 				goto retry;
@@ -528,7 +539,7 @@ retry:
 				return -ENOMEM;
 		}
 		req->complete = mtp_complete_out;
-		dev->rx_req[i] = req;
+		mtp_req_put(dev, &dev->rx_idle, req);
 	}
 	dev->rx_buf_size = rx_buf_sz;
 	DBG(dev->cdev, "[%s]:rx_buf_size(%d)\n", __func__, dev->rx_buf_size);
@@ -602,7 +613,7 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 {
 	struct mtp_dev *dev = fp->private_data;
 	struct usb_composite_dev *cdev = dev->cdev;
-	struct usb_request *req;
+	struct usb_request *req = 0;
 	ssize_t r = count;
 	unsigned int xfer;
 	int ret = 0;
@@ -654,7 +665,12 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 
 requeue_req:
 	/* queue a request */
-	req = dev->rx_req[0];
+	req = mtp_req_get(dev, &dev->rx_idle);
+	if (!req) {
+		DBG(cdev, "%s: req_get error\n", __func__);
+		r = -EIO;
+		goto done;
+	}
 	req->length = count;
 	dev->rx_done = 0;
 	ret = usb_ep_queue(dev->ep_out, req, GFP_KERNEL);
@@ -685,7 +701,23 @@ requeue_req:
 	} else
 		r = -EIO;
 
+	/* zero this so we don't try to free it on error exit */
+	req = 0;
+
 done:
+	if (req) {
+		INFO(cdev, "[%s]:later rx_done(%d)", __func__, dev->rx_done);
+		spin_lock_irq(&dev->lock);
+		/*Assign rx_done to 1 to skip the late mtp_complete_out() processing*/
+		if (!dev->rx_done) {
+			dev->rx_done = 1;
+			spin_unlock_irq(&dev->lock);
+			mtp_req_put(dev, &dev->rx_idle, req);
+		} else {
+			spin_unlock_irq(&dev->lock);
+		}
+	}
+
 	spin_lock_irq(&dev->lock);
 	if (dev->state == STATE_CANCELED)
 		r = -ECANCELED;
@@ -907,7 +939,7 @@ static void receive_file_work(struct work_struct *data)
 	struct file *filp;
 	loff_t offset;
 	int64_t count;
-	int ret, cur_buf = 0;
+	int ret;
 	int r = 0;
 
 	/* read our parameters */
@@ -934,8 +966,12 @@ static void receive_file_work(struct work_struct *data)
 
 		if (count > 0) {
 			/* queue a request */
-			read_req = dev->rx_req[cur_buf];
-			cur_buf = (cur_buf + 1) % RX_REQ_MAX;
+			read_req = mtp_req_get(dev, &dev->rx_idle);
+			if (!read_req) {
+				DBG(cdev, "%s: req_get error\n", __func__);
+				r = -EIO;
+				break;
+			}
 
 			read_req->length = (count > dev->rx_buf_size
 					? dev->rx_buf_size : count);
@@ -971,7 +1007,13 @@ static void receive_file_work(struct work_struct *data)
 			/* wait for our last read to complete */
 			ret = wait_event_interruptible(dev->read_wq,
 				dev->rx_done || dev->state != STATE_BUSY);
-
+			if (ret < 0) {
+				r = ret;
+				if (!dev->rx_done)
+					usb_ep_dequeue(dev->ep_out, read_req);
+				DBG(cdev, "%s: wait rx_done error\n", __func__);
+				break;
+			}
 			if (dev->state == STATE_CANCELED
 				|| dev->state == STATE_OFFLINE) {
 				if (dev->state == STATE_OFFLINE)
@@ -1007,6 +1049,19 @@ static void receive_file_work(struct work_struct *data)
 
 			write_req = read_req;
 			read_req = NULL;
+		}
+	}
+
+	if (read_req) {
+		DBG(cdev, "[%s]:later rx_done(%d)", __func__, dev->rx_done);
+		spin_lock_irq(&dev->lock);
+		/*Assign rx_done to 1 to skip the late mtp_complete_out() processing*/
+		if (!dev->rx_done) {
+			dev->rx_done = 1;
+			spin_unlock_irq(&dev->lock);
+			mtp_req_put(dev, &dev->rx_idle, read_req);
+		} else {
+			spin_unlock_irq(&dev->lock);
 		}
 	}
 
@@ -1369,14 +1424,13 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct mtp_dev	*dev = func_to_mtp(f);
 	struct usb_request *req;
-	int i;
 
 	missed_req = NULL;
 	mtp_string_defs[INTERFACE_STRING_INDEX].id = 0;
 	while ((req = mtp_req_get(dev, &dev->tx_idle)))
 		mtp_request_free(req, dev->ep_in);
-	for (i = 0; i < RX_REQ_MAX; i++)
-		mtp_request_free(dev->rx_req[i], dev->ep_out);
+	while ((req = mtp_req_get(dev, &dev->rx_idle)))
+		mtp_request_free(req, dev->ep_out);
 	while ((req = mtp_req_get(dev, &dev->intr_idle)))
 		mtp_request_free(req, dev->ep_intr);
 	dev->state = STATE_OFFLINE;
@@ -1465,6 +1519,7 @@ static int __mtp_setup(struct mtp_instance *fi_mtp)
 	atomic_set(&dev->open_excl, 0);
 	atomic_set(&dev->ioctl_excl, 0);
 	INIT_LIST_HEAD(&dev->tx_idle);
+	INIT_LIST_HEAD(&dev->rx_idle);
 	INIT_LIST_HEAD(&dev->intr_idle);
 
 	dev->wq = create_singlethread_workqueue("f_mtp");

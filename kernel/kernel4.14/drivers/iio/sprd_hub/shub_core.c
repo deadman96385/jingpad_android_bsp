@@ -794,17 +794,25 @@ static void shub_send_ap_status(struct shub_data *sensor, u8 status)
 
 static void shub_synctimestamp(struct shub_data *sensor)
 {
-	s64 k_timestamp;
+	long k_timestamp;
+	long local_time_ms;
+	char timestamp[sizeof(k_timestamp) + sizeof(local_time_ms)] = {0};
 
 	if (sensor->mcu_mode != SHUB_NORMAL)
 		return;
 
 	k_timestamp = ktime_to_ms(ktime_get_boottime());
-	shub_send_command(sensor,
-			  HANDLE_MAX,
-			  SHUB_SET_TIMESYNC_SUBTYPE,
-			  (char *)&k_timestamp,
-			  sizeof(k_timestamp));
+	local_time_ms = ktime_to_ms(ktime_get_real());
+	/* adjustment for timezone */
+	local_time_ms = local_time_ms - sys_tz.tz_minuteswest * 60000;
+
+	memcpy(timestamp, (char *)&k_timestamp, sizeof(k_timestamp));
+	memcpy(timestamp + sizeof(k_timestamp), (char *)&local_time_ms,
+	       sizeof(local_time_ms));
+
+	shub_send_command(sensor, HANDLE_MAX,
+			  SHUB_SET_TIMESYNC_SUBTYPE, timestamp,
+			  sizeof(k_timestamp) + sizeof(local_time_ms));
 }
 
 static void shub_synctime_work(struct work_struct *work)
@@ -1177,7 +1185,6 @@ static int shub_download_calibration_data(struct shub_data *sensor)
 	char file_path[CALIB_PATH_MAX_LENG];
 	char *raw_cali_data =  NULL;
 	int cal_file_size = 0;
-	struct kstat stat;
 	int sensor_type = 0, j = 0;
 
 	for (sensor_type = 0; sensor_type < 9; sensor_type++) {
@@ -1201,15 +1208,14 @@ static int shub_download_calibration_data(struct shub_data *sensor)
 			continue;
 		}
 
-		err = vfs_stat(file_path, &stat);
-		if (err) {
-			dev_err(&sensor->sensor_pdev->dev,
-				"Failed to find file stat, err = %d\n", err);
-			if (pfile)
-				filp_close(pfile, NULL);
+		cal_file_size = get_file_size(pfile);
+		if (cal_file_size <= 0) {
+			dev_warn(&sensor->sensor_pdev->dev,
+				 "Unable to get file size:%s\n", file_path);
+			filp_close(pfile, NULL);
 			continue;
 		}
-		cal_file_size = (int)stat.size;
+
 		dev_info(&sensor->sensor_pdev->dev,
 			 "cal_file_size=%d\n", cal_file_size);
 		/* check data size */
@@ -1449,8 +1455,8 @@ static int set_als_calib_cmd(struct shub_data *sensor, u8 cmd, u8 id)
 			return err;
 		}
 		/*sleep for light senor collect data every 100ms*/
-		msleep(100);
-		pr_debug("shub_sipc_read: ptr[0] = %d\n", ptr[0]);
+		msleep(200);
+		pr_info("shub_sipc_read: ptr[0] = %d\n", ptr[0]);
 		light_sum += ptr[0];
 	}
 	average_als = light_sum / LIGHT_CALI_DATA_COUNT;
@@ -1564,9 +1570,39 @@ static ssize_t light_sensor_calibrator_show(struct device *dev,
 	kfree(raw_cali_data);
 	filp_close(pfile, NULL);
 
-	return sprintf(buf, "%d\n", status);
+	return sprintf(buf, "cali_data_coef:%d   status:%d\n",
+				cali_data_coef, status);
 }
 static DEVICE_ATTR_RW(light_sensor_calibrator);
+static ssize_t custom_para_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	u32 sensor_type, sensor_para[3];
+	struct shub_data *sensor = dev_get_drvdata(dev);
+
+	if (sensor->mcu_mode <= SHUB_OPDOWNLOAD) {
+		dev_info(&sensor->sensor_pdev->dev,
+			"custom_para_store: mcu_mode == %d!\n",
+			sensor->mcu_mode);
+	return -EAGAIN;
+	}
+
+	if (sscanf(buf, "%u %u %u %u\n", &sensor_type,
+		&sensor_para[0], &sensor_para[1], &sensor_para[2]) != 4)
+		return -EINVAL;
+
+	dev_info(&sensor->sensor_pdev->dev,
+	"%s: sensor_type=%u, para[0]=%u, para[1]=%u, para[2]=%u!\n",
+		__func__, sensor_type,
+		sensor_para[0], sensor_para[1], sensor_para[2]);
+
+	shub_send_command(sensor, sensor_type, SHUB_SET_CUSTOM_PARA,
+				(char *)sensor_para, sizeof(sensor_para));
+
+	return count;
+}
+static DEVICE_ATTR_WO(custom_para);
 
 static ssize_t calibrator_cmd_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
@@ -2048,6 +2084,7 @@ static struct attribute *sensorhub_attrs[] = {
 	&dev_attr_calibrator_data.attr,
 	&dev_attr_light_sensor_calibrator.attr,
 	&dev_attr_version.attr,
+	&dev_attr_custom_para.attr,
 	&dev_attr_raw_data_acc.attr,
 	&dev_attr_raw_data_mag.attr,
 	&dev_attr_raw_data_gyro.attr,

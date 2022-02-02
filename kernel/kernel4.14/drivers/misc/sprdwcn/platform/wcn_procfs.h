@@ -17,4 +17,5 @@ void wakeup_loopcheck_int(void);
 void loopcheck_ready_clear(void);
 void loopcheck_ready_set(void);
 void mdbg_assert_interface(char *str);
+int notify_at_cmd_finish(void *buf, unsigned char len);
 #endif

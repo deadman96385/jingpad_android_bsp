@@ -57,10 +57,17 @@ static struct syscore_ops poweroff_syscore_ops = {
 	.shutdown = sc27xx_poweroff_shutdown,
 };
 
+extern int sprd_adi_write_for_poweroff(u32 reg, u32 val);
 static void sc27xx_poweroff_do_poweroff(void)
 {
-	regmap_write(regmap, pdata->sc27xx_slp_ctrl_reg, pdata->sc27xx_ldo_xtl_en);
-	regmap_write(regmap, pdata->sc27xx_poweroff_reg, SC27XX_PWR_OFF_EN);
+	//regmap_write(regmap, pdata->sc27xx_slp_ctrl_reg, pdata->sc27xx_ldo_xtl_en);
+	//regmap_write(regmap, pdata->sc27xx_poweroff_reg, SC27XX_PWR_OFF_EN);
+
+	/*
+	 * use regmap_write maybe write fail! should use adi interface.
+	 * slp_ctrl_reg isn't necessary.
+	 * */
+	sprd_adi_write_for_poweroff(pdata->sc27xx_poweroff_reg, SC27XX_PWR_OFF_EN);
 }
 
 static const struct sc27xx_poweroff_data sc2720_data = {

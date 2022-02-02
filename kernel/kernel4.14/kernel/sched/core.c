@@ -5642,6 +5642,7 @@ static void sched_update_group_capacities(int cpu)
 {
 	struct sched_domain *sd;
 
+	mutex_lock(&sched_domains_mutex);
 	rcu_read_lock();
 
 	for_each_domain(cpu, sd) {
@@ -5657,6 +5658,7 @@ static void sched_update_group_capacities(int cpu)
 	}
 
 	rcu_read_unlock();
+	mutex_unlock(&sched_domains_mutex);
 }
 
 static unsigned int cpu_isolation_vote[NR_CPUS];
@@ -5992,6 +5994,8 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf)
 #endif
 }
 #endif /* CONFIG_HOTPLUG_CPU */
+
+
 
 void set_rq_online(struct rq *rq)
 {

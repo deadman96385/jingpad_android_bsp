@@ -219,8 +219,15 @@ int sprd_cam_pw_off(void)
 			ret = -1;
 			goto err_pw_off;
 		}
-	}
+	} else if (atomic_read(&pw_info->users_pw) < 0)
+		atomic_set(&pw_info->users_pw, 0);
+
 	mutex_unlock(&pw_info->mlock);
+
+	pr_info("users_pw %d, cb %p, read_count %d\n",
+		atomic_read(&pw_info->users_pw),
+		__builtin_return_address(0), read_count);
+
 	return 0;
 
 err_pw_off:
@@ -296,6 +303,11 @@ int sprd_cam_pw_on(void)
 		}
 	}
 	mutex_unlock(&pw_info->mlock);
+
+	pr_info("users_pw %d, cb %p, read_count %d\n",
+		atomic_read(&pw_info->users_pw),
+		__builtin_return_address(0), read_count);
+
 	return 0;
 
 err_pw_on:
@@ -320,10 +332,6 @@ int sprd_cam_domain_eb(void)
 			__builtin_return_address(0), ret);
 		return -ENODEV;
 	}
-
-	pr_debug("users count %d, cb %p\n",
-		atomic_read(&pw_info->users_clk),
-		__builtin_return_address(0));
 
 	mutex_lock(&pw_info->mlock);
 	if (atomic_inc_return(&pw_info->users_clk) == 1) {
@@ -356,6 +364,10 @@ int sprd_cam_domain_eb(void)
 	}
 	mutex_unlock(&pw_info->mlock);
 
+	pr_info("users count %d, cb %p\n",
+		atomic_read(&pw_info->users_clk),
+		__builtin_return_address(0));
+
 	return 0;
 }
 EXPORT_SYMBOL(sprd_cam_domain_eb);
@@ -372,10 +384,6 @@ int sprd_cam_domain_disable(void)
 		return -ENODEV;
 	}
 
-	pr_debug("users count %d, cb %p\n",
-		atomic_read(&pw_info->users_clk),
-		__builtin_return_address(0));
-
 	mutex_lock(&pw_info->mlock);
 	if (atomic_dec_return(&pw_info->users_clk) == 0) {
 		clk_set_parent(pw_info->cam_ahb_clk,
@@ -384,8 +392,14 @@ int sprd_cam_domain_disable(void)
 		clk_disable_unprepare(pw_info->cam_clk_cphy_cfg_gate_eb);
 		clk_disable_unprepare(pw_info->cam_ckg_eb);
 		clk_disable_unprepare(pw_info->cam_mm_eb);
-	}
+	} else if (atomic_read(&pw_info->users_clk) < 0)
+		atomic_set(&pw_info->users_clk, 0);
+
 	mutex_unlock(&pw_info->mlock);
+
+	pr_info("users count %d, cb %p\n",
+		atomic_read(&pw_info->users_clk),
+		__builtin_return_address(0));
 
 	return 0;
 }

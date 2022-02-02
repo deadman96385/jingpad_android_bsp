@@ -23,6 +23,7 @@
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
+#include <linux/delay.h>
 
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
@@ -276,7 +277,7 @@ static irqreturn_t mbox_recv_irqhandle(int irq_num, void *dev)
 	pr_debug("mbox:%s,fifo_sts_1=0x%08x,  irq_status =0x%08x\n",
 		 __func__, fifo_sts_1, irq_status);
 
-	fifo_len = mbox_sensor_read_all_fifo_msg();
+	fifo_len = mbox_read_all_fifo_msg();
 
 	/* clear irq mask & irq after read all msg, if clear before read,
 	 * it will produce a irq again
@@ -358,7 +359,7 @@ static irqreturn_t mbox_sensor_recv_irqhandle(int irq_num, void *dev)
 	pr_debug("mbox:%s,fifo_sts_1=0x%08x,  irq_status =0x%08x\n",
 		 __func__, fifo_sts_1, irq_status);
 
-	fifo_len = mbox_read_all_fifo_msg();
+	fifo_len = mbox_sensor_read_all_fifo_msg();
 
 	/* clear irq mask & irq after read all msg, if clear before read,
 	 * it will produce a irq again
@@ -699,6 +700,7 @@ static int mbox_phy_send(u8 core_id, u64 msg)
 	u32 h_msg = (u32)(msg >> 32);
 	u32 fifo_sts_1, fifo_sts_2, block, recv_flag;
 	unsigned long recv_flag_cnt;
+	u32 delay_cnt = 1000;
 
 	pr_debug("mbox:%s, core_id=%d\n", __func__, (u32)core_id);
 
@@ -735,6 +737,10 @@ static int mbox_phy_send(u8 core_id, u64 msg)
 		 */
 		if (block & (1 << core_id))
 			goto block_exit;
+
+		udelay(1);
+		if (0 == --delay_cnt)
+			return -EBUSY;
 	}
 
 	if (mbox_chns[core_id].max_recv_flag_cnt < recv_flag_cnt)

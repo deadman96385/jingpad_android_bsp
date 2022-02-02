@@ -1240,6 +1240,10 @@ static int sd_setup_read_write_cmnd(struct scsi_cmnd *SCpnt)
 		SCpnt->cmnd[4] = (unsigned char) this_count;
 		SCpnt->cmnd[5] = 0;
 	}
+
+	if (SCpnt->cmnd[0] == WRITE_10 || SCpnt->cmnd[0] == WRITE_16)
+		SCpnt->cmnd[1] |= 0x8;
+
 	SCpnt->sdb.length = this_count * sdp->sector_size;
 
 	/*
@@ -2908,6 +2912,8 @@ static void sd_read_block_limits(struct scsi_disk *sdkp)
 
 	sdkp->max_xfer_blocks = get_unaligned_be32(&buffer[8]);
 	sdkp->opt_xfer_blocks = get_unaligned_be32(&buffer[12]);
+
+	sdkp->opt_xfer_blocks = 2;
 
 	if (buffer[3] == 0x3c) {
 		unsigned int lba_count, desc_count;

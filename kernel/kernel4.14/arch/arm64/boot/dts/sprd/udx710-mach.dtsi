@@ -20,7 +20,7 @@
 		ranges;
 
 		ddrbist_reserved: ddrbist-mem@80000000 {
-			reg = <0x0 0x80000000 0x0 0x00004000>;
+			reg = <0x0 0x80000000 0x0 0x00001000>;
 		};
 
 		sml_reserved: sml-mem@85300000 {
@@ -41,6 +41,15 @@
 
 		cp_reserved: cp-modem@88000000 {
 			reg = <0x0 0x88000000 0x0 0x15000000>;
+		};
+
+		cp_dump_reserved: cp-dump@9d000000 {
+			reg = <0x0 0x9d000000 0x0 0x01000000>;
+		};
+
+		uboot_reserved: sysdump-uboot@9f000000 {
+			compatible = "detour-mem";
+			reg = <0x0 0x9f000000 0x0 0x00fc0000>;
 		};
 	};
 
@@ -246,5 +255,6 @@
 
 &adi_bus {
 	sprd,hw-channels = <2 0x18cc>, <3 0x18cc>, <13 0x1854>, <15 0x1874>,
-			<17 0x1844>, <19 0x1844>, <30 0x1820>, <35 0x19b8>, <39 0x19ac>;
+			<17 0x1844>, <19 0x1844>, <30 0x1820>, <31 0x197c>,
+			<32 0x197c>, <33 0x1988>, <35 0x19b8>, <39 0x19ac>;
 };

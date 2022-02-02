@@ -135,6 +135,20 @@ static int sipa_dele_plat_drv_probe(struct platform_device *pdev_p)
 	pr_debug("ap_delegator_init!\n");
 #endif /* CONFIG_SPRD_SIPA_DELE_AP_IN_MINIAP */
 
+#ifdef CONFIG_SPRD_SIPA_DELE_THIRD_IN_MINIAP
+	create_params.prod_id = SIPA_RM_RES_PROD_AP;
+	create_params.cons_prod = SIPA_RM_RES_CONS_WWAN_DL;
+	create_params.cons_user = SIPA_RM_RES_CONS_WWAN_UL;
+	create_params.dst = SIPC_ID_AP;
+
+	ret = sipa_third_ap_delegator_init(&create_params);
+	if (ret) {
+		dev_err(dev, "ap_delegator_init failed: %d\n", ret);
+		return ret;
+	}
+	dev_dbg(dev, "third ap_delegator_init!\n");
+#endif /* CONFIG_SPRD_SIPA_DELE_AP_IN_MINIAP */
+
 #ifdef CONFIG_SPRD_SIPA_DELE_CP_IN_MINIAP
 	create_params.prod_id = SIPA_RM_RES_PROD_CP;
 	create_params.cons_prod = SIPA_RM_RES_CONS_WWAN_UL;

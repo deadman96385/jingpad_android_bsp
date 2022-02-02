@@ -109,14 +109,7 @@ static u32 sipa_hal_clear_internal_fifo(void __iomem *reg_base, u32 clr_bit)
 static u32 sipa_hal_set_flow_ctrl_to_src_blk(void __iomem *reg_base, u32 dst,
 					     u32 src)
 {
-	u32 ret = 0;
-	u32 *dst_ptr = NULL;
-
-	dst_ptr = (u32 *)((u64 *)(u64)dst);
-
-	ret = ipa_phy_set_flow_ctrl_to_src_blk(reg_base, dst_ptr, src);
-
-	return ret;
+	return ipa_phy_set_flow_ctrl_to_src_blk(reg_base, dst, src);
 }
 
 static u32 sipa_hal_enable_def_flowctrl_to_src_blk(void __iomem *reg_base)
@@ -136,14 +129,7 @@ static u32 sipa_hal_enable_def_flowctrl_to_src_blk(void __iomem *reg_base)
 static u32 sipa_hal_get_flow_ctrl_to_src_sts(void __iomem *reg_base,
 					     u32 dst, u32 src)
 {
-	u32 ret = 0;
-	u32 *dst_ptr = NULL;
-
-	dst_ptr = (u32 *)((u64 *)(u64)dst);
-
-	ret = ipa_phy_get_flow_ctrl_to_src_sts(reg_base, dst_ptr, src);
-
-	return ret;
+	return ipa_phy_get_flow_ctrl_to_src_sts(reg_base, dst, src);
 }
 
 static u32 sipa_hal_set_axi_mst_chn_priority(void __iomem *reg_base,
@@ -178,6 +164,12 @@ static u32 sipa_hal_set_force_to_ap_flag(void __iomem *reg_base,
 static u32 sipa_hal_set_wipa_ul_dma(void __iomem *reg_base, u32 enable)
 {
 	return ipa_phy_ctrl_wiap_ul_dma(reg_base, enable);
+}
+
+static bool sipa_hal_ctrl_pcie_dl_dma(void __iomem *reg_base,
+				      bool enable)
+{
+	return ipa_phy_ctrl_pcie_dl_dma(reg_base, enable);
 }
 
 static u32 sipa_hal_enable_to_pcie_no_mac(void __iomem *reg_base, bool enable)
@@ -300,28 +292,22 @@ static void ipa_phy_set_ul_tx_intr(void __iomem *reg_base,
 }
 
 static void sipa_hal_enable_pcie_intr_write_reg_mode(void __iomem *reg_base,
-						     bool enable)
+						     bool enable,
+						     const u64 *reg,
+						     const u32 *pattern)
 {
 	ipa_phy_enable_pcie_mem_intr(reg_base, enable);
 	if (!enable)
 		return;
 
-	ipa_phy_set_dl_tx_intr(reg_base,
-			       SIPA_PCIE_INTR_ADDR_LOW,
-			       SIPA_PCIE_INTR_ADDR_HIGH,
-			       SIPA_PCIE_DL_TX_INTR_PATTERN);
-	ipa_phy_set_dl_rx_intr(reg_base,
-			       SIPA_PCIE_INTR_ADDR_LOW,
-			       SIPA_PCIE_INTR_ADDR_HIGH,
-			       SIPA_PCIE_DL_RX_INTR_PATTERN);
-	ipa_phy_set_ul_rx_intr(reg_base,
-			       SIPA_PCIE_INTR_ADDR_LOW,
-			       SIPA_PCIE_INTR_ADDR_HIGH,
-			       SIPA_PCIE_UL_RX_INTR_PATTERN);
-	ipa_phy_set_ul_tx_intr(reg_base,
-			       SIPA_PCIE_INTR_ADDR_LOW,
-			       SIPA_PCIE_INTR_ADDR_HIGH,
-			       SIPA_PCIE_UL_TX_INTR_PATTERN);
+	ipa_phy_set_dl_tx_intr(reg_base, lower_32_bits(reg[0]),
+			       upper_32_bits(reg[0]), pattern[0]);
+	ipa_phy_set_dl_rx_intr(reg_base, lower_32_bits(reg[1]),
+			       upper_32_bits(reg[1]), pattern[1]);
+	ipa_phy_set_ul_tx_intr(reg_base, lower_32_bits(reg[2]),
+			       upper_32_bits(reg[2]), pattern[2]);
+	ipa_phy_set_ul_rx_intr(reg_base, lower_32_bits(reg[3]),
+			       upper_32_bits(reg[3]), pattern[3]);
 }
 
 u32 sipa_glb_ops_init(
@@ -387,6 +373,7 @@ u32 sipa_glb_ops_init(
 		sipa_hal_check_resume_status;
 	ops->get_pause_status			=
 		sipa_hal_check_pause_status;
+	ops->ctrl_pcie_dl_dma = sipa_hal_ctrl_pcie_dl_dma;
 
 	return TRUE;
 }

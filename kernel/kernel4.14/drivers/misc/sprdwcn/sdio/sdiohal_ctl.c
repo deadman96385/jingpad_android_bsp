@@ -211,7 +211,7 @@ static int sdiohal_throughput_tx_alloc(void)
 
 	for (i = 0; i < TP_TX_BUF_CNT; i++) {
 		tp_tx_buf[i] = kzalloc(TP_TX_BUF_LEN + PUB_HEAD_RSV,
-			       GFP_KERNEL);
+				       GFP_KERNEL);
 		if (!tp_tx_buf[i]) {
 			WCN_ERR("%s kzalloc tp_tx_buf fail\n",
 				__func__);

@@ -27,10 +27,14 @@
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/usb/phy.h>
+#include <linux/usb/sprd_usbm.h>
 #include <linux/mfd/syscon.h>
 #include <linux/power/sc2730-usb-charger.h>
 #include <dt-bindings/soc/sprd,roc1-mask.h>
 #include <dt-bindings/soc/sprd,roc1-regs.h>
+
+#define TUNEHSAMP_3_9MA		(GENMASK(26, 25))
+#define TFREGRES_TUNE_VALUE	(0xe << 19)
 
 #define PHY_REG_BASE			(phy->base)
 
@@ -101,15 +105,19 @@ static inline void sprd_ssphy_reset_core(struct sprd_ssphy *phy)
 {
 	u32 reg, msk;
 
+	dev_info(phy->phy.dev, "[%s]enter sprd_usbm_hsphy_get_onoff(%d)\n", __func__, sprd_usbm_hsphy_get_onoff());
+
 	/* Purpose: To soft-reset USB control */
 	reg = msk = MASK_IPA_AHB_USB_SOFT_RST | MASK_IPA_AHB_PAM_U3_SOFT_RST;
 	regmap_update_bits(phy->ipa_ahb, REG_IPA_AHB_IPA_RST, msk, reg);
 
-	/* Reset PHY */
-	reg = msk = MASK_AON_APB_OTG_PHY_SOFT_RST |
-			 MASK_AON_APB_OTG_UTMI_SOFT_RST;
-	regmap_update_bits(phy->aon_apb, REG_AON_APB_APB_RST1,
-		msk, reg);
+	if (!sprd_usbm_hsphy_get_onoff()) {
+		/* Reset PHY */
+		reg = msk = MASK_AON_APB_OTG_PHY_SOFT_RST |
+				MASK_AON_APB_OTG_UTMI_SOFT_RST;
+		regmap_update_bits(phy->aon_apb, REG_AON_APB_APB_RST1,
+			msk, reg);
+	}
 	/*
 	 *Reset signal should hold on for a while
 	 *to issue resret process reliable.
@@ -136,6 +144,8 @@ static int sprd_ssphy_set_vbus(struct usb_phy *x, int on)
 	struct sprd_ssphy *phy = container_of(x, struct sprd_ssphy, phy);
 	u32 reg, msk;
 	int ret = 0;
+
+	dev_info(x->dev, "[%s]enter on(%d)\n", __func__, on);
 
 	if (on) {
 		/* set USB connector type is A-type*/
@@ -165,29 +175,31 @@ static int sprd_ssphy_set_vbus(struct usb_phy *x, int on)
 			REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, reg);
 		phy->is_host = true;
 	} else {
-		reg = msk = MASK_AON_APB_USB2_PHY_IDDIG;
-		ret |= regmap_update_bits(phy->aon_apb,
-			REG_AON_APB_OTG_PHY_CTRL, msk, reg);
+		if (!sprd_usbm_hsphy_get_onoff()) {
+			reg = msk = MASK_AON_APB_USB2_PHY_IDDIG;
+			ret |= regmap_update_bits(phy->aon_apb,
+				REG_AON_APB_OTG_PHY_CTRL, msk, reg);
 
-		msk = MASK_ANLG_PHY_TOP_DBG_SEL_ANALOG_USB20_USB20_DMPULLDOWN |
-			MASK_ANLG_PHY_TOP_DBG_SEL_ANALOG_USB20_USB20_DPPULLDOWN;
-		ret |= regmap_update_bits(phy->anatop,
-			REG_ANLG_PHY_TOP_ANALOG_USB20_REG_SEL_CFG_0,
-			msk, msk);
+			msk = MASK_ANLG_PHY_TOP_DBG_SEL_ANALOG_USB20_USB20_DMPULLDOWN |
+				MASK_ANLG_PHY_TOP_DBG_SEL_ANALOG_USB20_USB20_DPPULLDOWN;
+			ret |= regmap_update_bits(phy->anatop,
+				REG_ANLG_PHY_TOP_ANALOG_USB20_REG_SEL_CFG_0,
+				msk, msk);
 
-		/* the pull down resistance on D-/D+ enable */
-		msk = MASK_ANLG_PHY_TOP_ANALOG_USB20_USB20_DMPULLDOWN |
-			MASK_ANLG_PHY_TOP_ANALOG_USB20_USB20_DPPULLDOWN;
-		ret |= regmap_update_bits(phy->anatop,
-			REG_ANLG_PHY_TOP_ANALOG_USB20_USB20_UTMI_CTL2_TOP,
-			msk, 0);
+			/* the pull down resistance on D-/D+ enable */
+			msk = MASK_ANLG_PHY_TOP_ANALOG_USB20_USB20_DMPULLDOWN |
+				MASK_ANLG_PHY_TOP_ANALOG_USB20_USB20_DPPULLDOWN;
+			ret |= regmap_update_bits(phy->anatop,
+				REG_ANLG_PHY_TOP_ANALOG_USB20_USB20_UTMI_CTL2_TOP,
+				msk, 0);
 
-		ret |= regmap_read(phy->ana_g3,
-			REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, &reg);
-		msk = MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_RESERVED;
-		reg &= ~msk;
-		ret |= regmap_write(phy->ana_g3,
-			REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, reg);
+			ret |= regmap_read(phy->ana_g3,
+				REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, &reg);
+			msk = MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_RESERVED;
+			reg &= ~msk;
+			ret |= regmap_write(phy->ana_g3,
+				REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, reg);
+		}
 		phy->is_host = false;
 	}
 
@@ -197,13 +209,15 @@ static int sprd_ssphy_set_vbus(struct usb_phy *x, int on)
 static int sprd_ssphy_init(struct usb_phy *x)
 {
 	struct sprd_ssphy *phy = container_of(x, struct sprd_ssphy, phy);
-	u32	reg, msk;
-	int	ret;
+	u32	reg, msk, value;
+	int	ret = 0;
 
 	if (atomic_read(&phy->inited)) {
 		dev_info(x->dev, "%s is already inited!\n", __func__);
 		return 0;
 	}
+
+	dev_info(x->dev, "[%s]enter\n", __func__);
 
 	/*
 	 * Due to chip design, some chips may turn on vddusb by default,
@@ -215,7 +229,23 @@ static int sprd_ssphy_init(struct usb_phy *x)
 			return ret;
 	}
 
+	sprd_usbm_ssphy_set_onoff(1);
+
+	/* enable otg utmi and analog */
+	reg = msk = MASK_AON_APB_OTG_UTMI_EB;
+	ret |= regmap_update_bits(phy->aon_apb, REG_AON_APB_APB_EB1,
+				 msk, reg);
+
+	reg = msk = MASK_AON_APB_CGM_OTG_REF_EN | MASK_AON_APB_CGM_DPHY_REF_EN;
+	ret |= regmap_update_bits(phy->aon_apb, REG_AON_APB_CGM_REG1,
+				 msk, reg);
+
 	/* USB2/USB3 PHY power on */
+	reg = msk = MASK_PMU_APB_USB2_PHY_PWRON_REG |
+		MASK_PMU_APB_USB3_PHY_PWRON_REG;
+	ret |= regmap_update_bits(phy->pmu_apb,
+				  REG_PMU_APB_ANALOG_PHY_PWRON_CFG, msk, reg);
+
 	reg = msk = MASK_PMU_APB_USB3_PHY_PD_REG | MASK_PMU_APB_USB2_PHY_PD_REG;
 	ret |= regmap_update_bits(phy->pmu_apb, REG_PMU_APB_ANALOG_PHY_PD_CFG,
 			 msk, 0);
@@ -275,6 +305,36 @@ static int sprd_ssphy_init(struct usb_phy *x)
 			 REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1,
 			 msk, reg);
 
+	msk = MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_TUNEHSAMP;
+	ret |= regmap_read(phy->ana_g3,
+			   REG_ANLG_PHY_G3_ANALOG_USB20_USB20_TRIMMING, &reg);
+	reg &= ~msk;
+	reg |= TUNEHSAMP_3_9MA | MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_TUNEDSC;
+	ret |= regmap_write(phy->ana_g3,
+			    REG_ANLG_PHY_G3_ANALOG_USB20_USB20_TRIMMING, reg);
+
+	msk = MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_TFREGRES;
+	ret |= regmap_read(phy->ana_g3,
+			   REG_ANLG_PHY_G3_ANALOG_USB20_USB20_TRIMMING, &reg);
+	reg &= ~msk;
+	reg |= TFREGRES_TUNE_VALUE;
+	ret |= regmap_write(phy->ana_g3,
+			    REG_ANLG_PHY_G3_ANALOG_USB20_USB20_TRIMMING, reg);
+
+	/* Configure USB30 PHY register */
+	value = readl_relaxed(phy->base + REG_ANALOG_USB30_CFGA_ANA_CFG7);
+	value &= ~MASK_ANALOG_USB30_CFGA_ANA_CFG7_CFG_DFE_ANA_EN;
+	writel_relaxed(value, phy->base + REG_ANALOG_USB30_CFGA_ANA_CFG7);
+
+	/* Prevent the suspend current from exceeding 2.5mA */
+	value = readl_relaxed(phy->base + REG_ANALOG_USB30_CFGA_ANA_CFG13);
+	value &= ~MASK_ANALOG_USB30_CFGA_ANA_CFG13_CFG_TX_LDO_IDC;
+	writel_relaxed(value, phy->base + REG_ANALOG_USB30_CFGA_ANA_CFG13);
+
+	value = readl_relaxed(phy->base + REG_ANALOG_USB30_CFGA_DIG_CFG3);
+	value |= MASK_ANALOG_USB30_CFGA_DIG_CFG3_CFG_PIPE_TXDEEMPH_OVRD;
+	writel_relaxed(value, phy->base + REG_ANALOG_USB30_CFGA_DIG_CFG3);
+
 	/* Reset PHY */
 	sprd_ssphy_reset_core(phy);
 
@@ -293,31 +353,50 @@ static void sprd_ssphy_shutdown(struct usb_phy *x)
 		dev_dbg(x->dev, "%s is already shut down\n", __func__);
 		return;
 	}
-	/* vbus invalid */
-	msk = MASK_AON_APB_OTG_VBUS_VALID_PHYREG;
-	regmap_update_bits(phy->aon_apb, REG_AON_APB_OTG_PHY_TEST, msk, 0);
 
-	msk = MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_VBUSVLDEXT;
-	regmap_update_bits(phy->ana_g3,
-			 REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, msk, 0);
+	dev_info(x->dev, "[%s]enter usbm_event_is_active(%d), usbm_hsphy_get_onoff(%d)\n",
+				__func__, sprd_usbm_event_is_active(), sprd_usbm_hsphy_get_onoff());
 
-	/* dwc3 vbus invalid */
-	reg = msk = MASK_IPA_AHB_UTMISRP_BVALID_REG
-		 | MASK_IPA_AHB_OTG_VBUS_VALID_PHYREG;
-	regmap_update_bits(phy->ipa_ahb, REG_IPA_AHB_USB_CTL0, msk, 0);
+	sprd_usbm_ssphy_set_onoff(0);
+	if (!sprd_usbm_hsphy_get_onoff()) {
+		/* vbus invalid */
+		msk = MASK_AON_APB_OTG_VBUS_VALID_PHYREG;
+		regmap_update_bits(phy->aon_apb, REG_AON_APB_OTG_PHY_TEST, msk, 0);
 
-	reg = msk = MASK_IPA_AHB_OTG_VBUS_VALID_PHYREG_SEL;
-	regmap_update_bits(phy->ipa_ahb, REG_IPA_AHB_USB_CTL0, msk, reg);
+		msk = MASK_ANLG_PHY_G3_ANALOG_USB20_USB20_VBUSVLDEXT;
+		regmap_update_bits(phy->ana_g3,
+				REG_ANLG_PHY_G3_ANALOG_USB20_USB20_UTMI_CTL1, msk, 0);
 
-	/* USB2/USB3 PHY power off */
-	reg = msk = MASK_PMU_APB_USB3_PHY_PD_REG | MASK_PMU_APB_USB2_PHY_PD_REG;
-	regmap_update_bits(phy->pmu_apb, REG_PMU_APB_ANALOG_PHY_PD_CFG,
-			 msk, reg);
+		/* dwc3 vbus invalid */
+		reg = msk = MASK_IPA_AHB_UTMISRP_BVALID_REG
+			| MASK_IPA_AHB_OTG_VBUS_VALID_PHYREG;
+		regmap_update_bits(phy->ipa_ahb, REG_IPA_AHB_USB_CTL0, msk, 0);
+
+		reg = msk = MASK_IPA_AHB_OTG_VBUS_VALID_PHYREG_SEL;
+		regmap_update_bits(phy->ipa_ahb, REG_IPA_AHB_USB_CTL0, msk, reg);
+
+		/* USB2/USB3 PHY power off */
+		reg = msk = MASK_PMU_APB_USB2_PHY_PWRON_REG |
+			MASK_PMU_APB_USB3_PHY_PWRON_REG;
+		regmap_update_bits(phy->pmu_apb, REG_PMU_APB_ANALOG_PHY_PWRON_CFG,
+				msk, 0);
+		reg = msk = MASK_PMU_APB_USB3_PHY_PD_REG | MASK_PMU_APB_USB2_PHY_PD_REG;
+		regmap_update_bits(phy->pmu_apb, REG_PMU_APB_ANALOG_PHY_PD_CFG,
+				msk, reg);
+
+		/* disable otg utmi and analog */
+		reg = msk = MASK_AON_APB_OTG_UTMI_EB;
+		regmap_update_bits(phy->aon_apb, REG_AON_APB_APB_EB1, msk, 0);
+
+		/* disable usb cgm ref */
+		reg = msk = MASK_AON_APB_CGM_OTG_REF_EN | MASK_AON_APB_CGM_DPHY_REF_EN;
+		regmap_update_bits(phy->aon_apb, REG_AON_APB_CGM_REG1, msk, 0);
+	}
 
 	/*
-	 * Due to chip design, some chips may turn on vddusb by default,
-	 * We MUST avoid turning it off twice.
-	 */
+	* Due to chip design, some chips may turn on vddusb by default,
+	* We MUST avoid turning it off twice.
+	*/
 	if (phy->vdd)
 		regulator_disable(phy->vdd);
 
@@ -442,6 +521,12 @@ static int sprd_ssphy_vbus_notify(struct notifier_block *nb,
 	struct usb_phy *usb_phy = container_of(nb, struct usb_phy, vbus_nb);
 	struct sprd_ssphy *phy = container_of(usb_phy, struct sprd_ssphy, phy);
 
+	dev_info(usb_phy->dev, "[%s]enter phy->is_host(%d) event(%ld)\n", __func__, (int)phy->is_host, event);
+
+	if (sprd_usbm_event_is_active()) {
+		dev_info(usb_phy->dev, "is_active\n");
+		return 0;
+	}
 	if (phy->is_host) {
 		dev_info(usb_phy->dev, "USB PHY is host mode\n");
 		return 0;
@@ -482,6 +567,8 @@ static int sprd_ssphy_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret;
 	u32 msk, reg;
+
+	dev_info(&pdev->dev, "[%s]enter\n", __func__);
 
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
@@ -609,6 +696,9 @@ static int sprd_ssphy_probe(struct platform_device *pdev)
 
 	if (extcon_get_state(phy->phy.edev, EXTCON_USB) > 0)
 		usb_phy_set_charger_state(&phy->phy, USB_CHARGER_PRESENT);
+
+	dev_info(&pdev->dev, "[%s]done\n", __func__);
+
 	return 0;
 }
 

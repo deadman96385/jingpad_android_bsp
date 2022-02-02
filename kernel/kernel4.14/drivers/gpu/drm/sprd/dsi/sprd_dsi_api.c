@@ -148,6 +148,7 @@ int sprd_dsi_init(struct sprd_dsi *dsi)
 	dsi_hal_rx_vcid(dsi, 0);
 
 	div = DIV_ROUND_UP(ctx->byte_clk, ctx->esc_clk);
+    pr_info("escape clolk ctx->esc_clk = %d, ctx->byte_clk = %d\n", ctx->esc_clk,ctx->byte_clk);
 	dsi_hal_tx_escape_division(dsi, div);
 	pr_info("escape clock divider = %d\n", div);
 
@@ -158,6 +159,8 @@ int sprd_dsi_init(struct sprd_dsi *dsi)
 	data_lp2hs = ns_to_cycle(ctx->data_lp2hs, ctx->byte_clk);
 	clk_hs2lp = ns_to_cycle(ctx->clk_hs2lp, ctx->byte_clk);
 	clk_lp2hs = ns_to_cycle(ctx->clk_lp2hs, ctx->byte_clk);
+
+	pr_info("escape clock divider ctx->data_hs2lp = %d,ctx->data_lp2hs = %d, ctx->clk_hs2lp = %d,ctx->clk_lp2hs = %d\n", ctx->data_hs2lp,ctx->data_lp2hs,ctx->clk_hs2lp,ctx->clk_hs2lp);
 	dsi_hal_datalane_hs2lp_config(dsi, data_hs2lp);
 	dsi_hal_datalane_lp2hs_config(dsi, data_lp2hs);
 	dsi_hal_clklane_hs2lp_config(dsi, clk_hs2lp);

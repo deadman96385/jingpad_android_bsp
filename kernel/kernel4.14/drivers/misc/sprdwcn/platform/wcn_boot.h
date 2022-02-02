@@ -1,6 +1,7 @@
 #ifndef _WCN_BOOT
 #define _WCN_BOOT
 
+#include <linux/platform_device.h>
 #include <misc/marlin_platform.h>
 
 #include "rf/rf.h"
@@ -15,6 +16,13 @@ struct wcn_sync_info_t {
 	unsigned short tsx_dac_data;
 	unsigned short rsved;
 } __packed;
+
+struct wcn_sysfs_info {
+	void *p;
+	unsigned char len;
+	struct mutex	mutex;
+	struct completion cmd_completion;
+};
 
 struct tsx_data {
 	u32 flag; /* cali flag ref */
@@ -97,6 +105,9 @@ struct marlin_device {
 	struct tsx_cali tsxcali;
 	char *btwf_path;
 	char *gnss_path;
+	struct device *dev;
+	struct platform_device	*pdev;
+	struct wcn_sysfs_info sysfs_info;
 };
 
 struct wifi_calibration {

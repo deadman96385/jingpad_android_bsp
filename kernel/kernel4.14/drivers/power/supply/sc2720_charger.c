@@ -173,8 +173,10 @@ static int sc2720_charger_hw_init(struct sc2720_charger_info *info)
 	struct power_supply_battery_info bat_info = { };
 	u32 voltage_max_microvolt;
 	int ret;
+	int bat_id = 0;
 
-	ret = power_supply_get_battery_info(info->psy_usb, &bat_info);
+	bat_id = get_battery_id();
+	ret = power_supply_get_battery_info(info->psy_usb, &bat_info, bat_id);
 	if (ret) {
 		dev_warn(info->dev, "no battery information is supplied\n");
 		info->cur.sdp_cur = 500000;

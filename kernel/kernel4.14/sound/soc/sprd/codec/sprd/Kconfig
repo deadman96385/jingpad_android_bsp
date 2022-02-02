@@ -3,6 +3,10 @@ menu "SPRD Codec"
 source "sound/soc/sprd/codec/sprd/sc2730/Kconfig"
 source "sound/soc/sprd/codec/sprd/sc2721/Kconfig"
 source "sound/soc/sprd/codec/sprd/ucp1301/Kconfig"
+source "sound/soc/sprd/codec/sprd/aw87519_l/Kconfig"
+source "sound/soc/sprd/codec/sprd/aw87xxx/Kconfig"
+source "sound/soc/sprd/codec/sprd/as6480/Kconfig"
+source "sound/soc/sprd/codec/sprd/ocp96011/Kconfig"
 
 config SND_SOC_SPRD_CODEC_EAR_WITH_IN_SPK
 	bool "Earpiece with in Speaker"

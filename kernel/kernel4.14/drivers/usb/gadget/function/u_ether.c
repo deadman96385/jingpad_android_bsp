@@ -23,12 +23,14 @@
 #include <linux/if_vlan.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
-#include <linux/kthread.h>
-#include <uapi/linux/sched/types.h>
 
 #ifdef CONFIG_SPRD_SIPA
 #include <linux/interrupt.h>
 #include <linux/sipa.h>
+#include <linux/ip.h>
+#include <linux/ipv6.h>
+#include <linux/if_arp.h>
+#include <linux/if_ether.h>
 #endif
 
 #include "rndis.h"
@@ -60,8 +62,8 @@
  * frame sizes. Set the max size to 15k+52 to prevent allocating 32k
  * blocks and still have efficient handling. */
 #define GETHER_MAX_ETH_FRAME_LEN 15412
-#define UETHER_TASK_PRIO 80
 
+static struct workqueue_struct	*uether_wq;
 static struct workqueue_struct	*uether_tx_wq;
 static int tx_start_threshold = 1500;
 static int tx_stop_threshold = 2000;
@@ -125,12 +127,13 @@ struct eth_dev {
 						struct sk_buff_head *list);
 
 	struct work_struct	work;
-	struct task_struct	*rx_thread;
+	struct work_struct	rx_work;
 	struct work_struct	tx_work;
 
 #ifdef CONFIG_SPRD_SIPA
 	int state;
 	atomic_t rx_busy;
+	atomic_t rx_evt;
 	enum sipa_nic_id nic_id;
 	struct napi_struct napi;/* Napi instance */
 	/* Record data_transfer statistics */
@@ -180,7 +183,8 @@ static void uether_debugfs_exit(struct eth_dev *dev);
 
 static u64 gro_enable;
 static struct dentry *root;
-
+static struct dentry *sipa_usb_stats_dfile;
+static struct dentry *sipa_usb_gro_dfile;
 #endif
 
 /*
@@ -443,7 +447,11 @@ clean:
 	spin_unlock(&dev->req_lock);
 
 	if (queue)
-		wake_up_process(dev->rx_thread);
+#if defined(CONFIG_X86)
+		queue_work_on(2, uether_wq, &dev->rx_work);
+#else
+		queue_work(uether_wq, &dev->rx_work);
+#endif
 }
 
 static int prealloc_sg(struct list_head *list, struct usb_ep *ep, u32 n,
@@ -479,17 +487,22 @@ static int prealloc_sg(struct list_head *list, struct usb_ep *ep, u32 n,
 			goto extra;
 		sg_ctx = kmalloc(sizeof(*sg_ctx), GFP_ATOMIC);
 		if (!sg_ctx)
-			goto extra;
+			goto extra1;
 		req->context = sg_ctx;
 		req->buf = kzalloc(DL_MAX_PKTS_PER_XFER * hlen,
 					GFP_ATOMIC);
 		if (!req->buf)
-			goto extra;
+			goto extra2;
 	}
 	return 0;
 
+extra2:
+	kfree(req->context);
+
+extra1:
+	kfree(req->sg);
+
 extra:
-	/* free extras */
 	for (;;) {
 		struct list_head	*next;
 
@@ -504,12 +517,10 @@ extra:
 
 		if (!sg_supported)
 			continue;
-		if (!req->sg)
-			kfree(req->sg);
-		if (!req->context)
-			kfree(req->context);
-		if (!req->buf)
-			kfree(req->buf);
+
+		kfree(req->buf);
+		kfree(req->context);
+		kfree(req->sg);
 	}
 	return -ENOMEM;
 }
@@ -559,18 +570,9 @@ static int alloc_requests(struct eth_dev *dev, struct gether *link, unsigned n)
 	int	pad_len = 4;
 
 	spin_lock(&dev->req_lock);
-
-	if (!strcmp(link->func.name, "cdc_network")) {
-		status = prealloc(&dev->tx_reqs, link->in_ep, n);
-	} else if (!strcmp(link->func.name, "rndis")) {
-		status = prealloc_sg(&dev->tx_reqs, link->in_ep, n * tx_qmult,
+	status = prealloc_sg(&dev->tx_reqs, link->in_ep, n * tx_qmult,
 				dev->sg_enabled,
 				dev->header_len + pad_len);
-	} else {
-		pr_err("Function name error\n");
-		goto fail;
-	}
-
 	if (status < 0)
 		goto fail;
 	status = prealloc(&dev->rx_reqs, link->out_ep, n);
@@ -616,51 +618,36 @@ static void rx_fill(struct eth_dev *dev, gfp_t gfp_flags)
 	spin_unlock_irqrestore(&dev->req_lock, flags);
 }
 
-static int process_rx_w(void *data)
+static void process_rx_w(struct work_struct *work)
 {
-	struct eth_dev	*dev = (struct eth_dev *)data;
-	struct sched_param param;
+	struct eth_dev	*dev = container_of(work, struct eth_dev, rx_work);
 	struct sk_buff	*skb;
 	int		status = 0;
 
-	param.sched_priority = UETHER_TASK_PRIO;
-	sched_setscheduler(current, SCHED_FIFO, &param);
+	if (!dev->port_usb)
+		return;
 
-	while (!kthread_should_stop()) {
-		skb = skb_dequeue(&dev->rx_frames);
-		if (!skb) {
-			set_current_state(TASK_INTERRUPTIBLE);
-			schedule_timeout(HZ/5);
-			set_current_state(TASK_RUNNING);
+	while ((skb = skb_dequeue(&dev->rx_frames))) {
+		if (status < 0
+			|| ETH_HLEN > skb->len
+			|| skb->len > ETH_FRAME_LEN) {
+			dev->net->stats.rx_errors++;
+			dev->net->stats.rx_length_errors++;
+			DBG(dev, "rx length %d\n", skb->len);
+			dev_kfree_skb_any(skb);
 			continue;
 		}
-		if (!dev->port_usb)
-			continue;
+		skb->protocol = eth_type_trans(skb, dev->net);
+		dev->net->stats.rx_packets++;
+		dev->net->stats.rx_bytes += skb->len;
 
-		do {
-			if (status < 0 || ETH_HLEN > skb->len
-			    || skb->len > ETH_FRAME_LEN) {
-				dev->net->stats.rx_errors++;
-				dev->net->stats.rx_length_errors++;
-				DBG(dev, "rx length %d\n", skb->len);
-				dev_kfree_skb_any(skb);
-				status = 0;
-				continue;
-			}
-
-			skb->protocol = eth_type_trans(skb, dev->net);
-			dev->net->stats.rx_packets++;
-			dev->net->stats.rx_bytes += skb->len;
-
-			local_bh_disable();
-			status = netif_receive_skb(skb);
-			local_bh_enable();
-		} while ((skb = skb_dequeue(&dev->rx_frames)));
-
-		if (netif_running(dev->net))
-			rx_fill(dev, GFP_KERNEL);
+		local_bh_disable();
+		status = netif_receive_skb(skb);
+		local_bh_enable();
 	}
-	return 0;
+
+	if (netif_running(dev->net))
+		rx_fill(dev, GFP_KERNEL);
 }
 
 static void eth_work(struct work_struct *work)
@@ -1357,10 +1344,42 @@ static inline void sipa_usb_tx_stats_update(
 
 static void sipa_usb_prepare_skb(struct eth_dev *dev, struct sk_buff *skb)
 {
+	struct iphdr *iph;
+	struct ipv6hdr *ipv6h;
+	struct ethhdr *ethh;
 	struct net_device *net = dev->net;
+	unsigned int real_len = 0;
+	unsigned int payload_len = 0;
+	bool ip_arp = true;
+
+	skb_reset_mac_header(skb);
+	ethh = eth_hdr(skb);
 
 	skb->protocol = eth_type_trans(skb, net);
-	skb_set_network_header(skb, ETH_HLEN);
+	skb_reset_network_header(skb);
+
+	switch (ntohs(ethh->h_proto)) {
+	case ETH_P_IP:
+		iph = ip_hdr(skb);
+		real_len = ntohs(iph->tot_len);
+		break;
+	case ETH_P_IPV6:
+		ipv6h = ipv6_hdr(skb);
+		payload_len = ntohs(ipv6h->payload_len);
+		real_len = payload_len + sizeof(struct ipv6hdr);
+		break;
+	case ETH_P_ARP:
+		real_len = arp_hdr_len(net);
+		break;
+	default:
+		ip_arp = false;
+		pr_debug("skb %p is neither v4 nor v6 nor arp\n", skb);
+		break;
+	}
+
+	/* resize the skb->len to a real one */
+	if (ip_arp)
+		skb_trim(skb, real_len);
 
 	/* TODO chechsum ... */
 	skb->ip_summed = CHECKSUM_NONE;
@@ -1382,6 +1401,7 @@ static int sipa_usb_rx(struct eth_dev *dev, int budget)
 
 	dt_stats = &dev->dt_stats;
 	net = dev->net;
+	atomic_set(&dev->rx_evt, 0);
 	while (skb_cnt < budget) {
 		ret = sipa_nic_rx(dev->nic_id, &skb);
 
@@ -1393,7 +1413,7 @@ static int sipa_usb_rx(struct eth_dev *dev, int budget)
 				dt_stats->rx_fail++;
 				break;
 			case -ENODATA:
-				DBG(dev, "sipa usb no more skb to recv");
+				atomic_set(&dev->rx_busy, 0);
 				break;
 			}
 			break;
@@ -1423,10 +1443,9 @@ static int sipa_usb_rx(struct eth_dev *dev, int budget)
 
 static int sipa_usb_rx_poll_handler(struct napi_struct *napi, int budget)
 {
-	int pkts;
+	int tmp = 0, pkts;
 	struct eth_dev *dev = container_of(napi, struct eth_dev, napi);
 
-	pkts = sipa_usb_rx(dev, budget);
 	/* If the number of pkt is more than weight(64),
 	 * we cannot read them all with a single poll.
 	 * When the return value of poll func equals to weight(64),
@@ -1434,11 +1453,51 @@ static int sipa_usb_rx_poll_handler(struct napi_struct *napi, int budget)
 	 * __raise_softirq_irqoff.(See napi_poll for details)
 	 * So do not do napi_complete in that case.
 	 */
-	if (pkts < budget) {
+READ_AGAIN:
+	/* For example:
+	 * pkts = 60, tmp = 60, budget = 4
+	 * if rx_evt is true, we goto READ_AGAIN,
+	 * pkts = 4, tmp = 64, budget = 0,
+	 * then we goto out, return 64 to napi,
+	 * In that case, we force napi to do polling again.
+	 */
+	pkts = sipa_usb_rx(dev, budget);
+	tmp += pkts;
+	budget -= pkts;
+	/*
+	 * If budget is 0 here, means we has not finished reading yet,
+	 * so we should return a weight-number(64) to napi to ask it
+	 * do another polling.
+	 */
+	if (!budget)
+		goto out;
+
+	/* Due to a cuncurrency issue, we have to do napi_complete
+	 * cautiously. If a socket is in the process of napi polling,
+	 * a SIPA_RECEIVE is arriving to trigger another socket to do receiving,
+	 * we must record it because it will be blocked by rx_busy
+	 * at the first beginning.
+	 * Since this SIPA_RECEIVE notification is a one-shot behaviour
+	 * in sipa_nic. if we chose to ignore this event, we may lose
+	 * the chance to receive forever.
+	 */
+	if (atomic_read(&dev->rx_evt))
+		goto READ_AGAIN;
+
+	/* If the number of budget is more than 0, it means the pkts
+	 * we received is smaller than napi weight(64).
+	 * Then we are okay to do napi_complete.
+	 */
+	if (budget) {
 		napi_complete(napi);
-		atomic_dec(&dev->rx_busy);
+		if (atomic_read(&dev->rx_evt) || atomic_read(&dev->rx_busy)) {
+			atomic_set(&dev->rx_evt, 0);
+			napi_schedule(&dev->napi);
+		}
 	}
-	return pkts;
+
+out:
+	return tmp;
 }
 
 static void sipa_usb_rx_handler (void *priv)
@@ -1452,6 +1511,7 @@ static void sipa_usb_rx_handler (void *priv)
 
 	/* If the poll handler has been done, trigger to schedule*/
 	if (!atomic_cmpxchg(&dev->rx_busy, 0, 1)) {
+		atomic_set(&dev->rx_evt, 0);
 		napi_schedule(&dev->napi);
 		/*
 		 * Trigger a NET_RX_SOFTIRQ softirq directly
@@ -1479,7 +1539,7 @@ static void sipa_usb_notify_cb(void *priv, enum sipa_evt_type evt,
 
 	switch (evt) {
 	case SIPA_RECEIVE:
-		DBG(dev, "sipa_usb SIPA_RECEIVE evt received\n");
+		atomic_set(&dev->rx_evt, 1);
 		sipa_usb_rx_handler(priv);
 		break;
 	case SIPA_LEAVE_FLOWCTRL:
@@ -1518,6 +1578,8 @@ static int sipa_usb_open(struct net_device *net)
 
 	dev->nic_id = ret;
 	dev->state = DEV_ON;
+
+	sipa_rm_enable_usb_tether();
 
 	/* for lowpower */
 	sipa_rm_set_usb_eth_up();
@@ -1561,20 +1623,10 @@ static int sipa_usb_close(struct net_device *net)
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->port_usb) {
 		struct gether	*link = dev->port_usb;
-		const struct usb_endpoint_descriptor *in;
-		const struct usb_endpoint_descriptor *out;
-		if (link->close)
+
+		if (link->close) {
 			link->close(link);
-		in = link->in_ep->desc;
-		out = link->out_ep->desc;
-		usb_ep_disable(link->in_ep);
-		usb_ep_disable(link->out_ep);
-		if (netif_carrier_ok(net)) {
-			DBG(dev, "host still using in/out endpoints\n");
-			link->in_ep->desc = in;
-			link->out_ep->desc = out;
-			usb_ep_enable(link->in_ep);
-			usb_ep_enable(link->out_ep);
+			INFO(dev, "sipa_usb done link close\n");
 		}
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -1650,6 +1702,9 @@ static int sipa_usb_debug_show(struct seq_file *m, void *v)
 	pdata = dev->pdata;
 	stats = &dev->dt_stats;
 
+	if (!pdata || !stats)
+		return -EINVAL;
+
 	seq_puts(m, "*************************************************\n");
 	seq_printf(m, "DEVICE: %s, term_type %d, netid %d, state %s\n",
 		   pdata->name, pdata->term_type, pdata->netid,
@@ -1661,6 +1716,7 @@ static int sipa_usb_debug_show(struct seq_file *m, void *v)
 	seq_printf(m, "rx_fail=%u\n",
 		   stats->rx_fail);
 	seq_printf(m, "rx_busy=%d\n", atomic_read(&dev->rx_busy));
+	seq_printf(m, "rx_evt=%d\n", atomic_read(&dev->rx_evt));
 
 	seq_puts(m, "\nTX statistics:\n");
 	seq_printf(m, "tx_sum=%u, tx_cnt=%u\n",
@@ -1703,31 +1759,44 @@ DEFINE_SIMPLE_ATTRIBUTE(fops_gro_enable,
 			debugfs_gro_enable_set,
 			"%llu\n");
 
-static int sipa_usb_debugfs_mknod(void *root, void *data)
+static void sipa_usb_debugfs_exit(struct eth_dev *dev)
 {
-	struct eth_dev *dev = (struct eth_dev *)data;
+	debugfs_remove(sipa_usb_gro_dfile);
+	debugfs_remove(sipa_usb_stats_dfile);
+	sipa_usb_gro_dfile = NULL;
+	sipa_usb_stats_dfile = NULL;
+}
 
+static int sipa_usb_debugfs_mknod(struct eth_dev *dev)
+{
 	if (!dev)
 		return -ENODEV;
 
 	if (!root)
 		return -ENXIO;
 
-	debugfs_create_file("sipa_usb",
-			    0444,
-			    (struct dentry *)root,
-			    data,
-			    &sipa_usb_debug_fops);
+	debugfs_remove(sipa_usb_stats_dfile);
+	sipa_usb_stats_dfile = debugfs_create_file(
+			"sipa_usb_stats",
+			0444,
+			root,
+			dev,
+			&sipa_usb_debug_fops);
+	if (!sipa_usb_stats_dfile)
+		ERROR(dev, "fail to create stats dfile");
 
-	debugfs_create_file("gro_enable",
-			    0600,
-			    (struct dentry *)root,
-			    &gro_enable,
-			    &fops_gro_enable);
+	debugfs_remove(sipa_usb_gro_dfile);
+	sipa_usb_gro_dfile = debugfs_create_file(
+			"gro_enable",
+			0600,
+			root,
+			&gro_enable,
+			&fops_gro_enable);
+	if (!sipa_usb_gro_dfile)
+		ERROR(dev, "sipa_usb fail to create gro dfile");
 
 	return 0;
 }
-
 #endif
 
 /**
@@ -1760,6 +1829,7 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g,
 	spin_lock_init(&dev->lock);
 	spin_lock_init(&dev->req_lock);
 	INIT_WORK(&dev->work, eth_work);
+	INIT_WORK(&dev->rx_work, process_rx_w);
 	INIT_LIST_HEAD(&dev->tx_reqs);
 	INIT_LIST_HEAD(&dev->rx_reqs);
 
@@ -1844,16 +1914,19 @@ struct net_device *gether_setup_name_default(const char *netname)
 	dev->net = net;
 	dev->pdata = pdata;
 	atomic_set(&dev->rx_busy, 0);
+	atomic_set(&dev->rx_evt, 0);
 	net->watchdog_timeo = 1 * HZ;
 	net->irq = 0;
 	net->dma = 0;
 	netif_napi_add(net, &dev->napi,
 		       sipa_usb_rx_poll_handler,
 		       SIPA_USB_NAPI_WEIGHT);
+	sipa_usb_debugfs_mknod(dev);
 #endif
 	spin_lock_init(&dev->lock);
 	spin_lock_init(&dev->req_lock);
 	INIT_WORK(&dev->work, eth_work);
+	INIT_WORK(&dev->rx_work, process_rx_w);
 	INIT_WORK(&dev->tx_work, process_tx_w);
 	INIT_LIST_HEAD(&dev->tx_reqs);
 	INIT_LIST_HEAD(&dev->rx_reqs);
@@ -1896,19 +1969,11 @@ int gether_register_netdev(struct net_device *net)
 		return -EINVAL;
 	dev = netdev_priv(net);
 	g = dev->gadget;
-
-	dev->rx_thread = kthread_create(process_rx_w, dev, "uether_rx");
-	if (IS_ERR(dev->rx_thread)) {
-		ERROR(dev, "failed to create uether_rx\n");
-		return PTR_ERR(dev->rx_thread);
-	}
-	wake_up_process(dev->rx_thread);
-
 	status = register_netdev(net);
+
 #ifdef CONFIG_SPRD_SIPA
 	if (status < 0) {
 		ERROR(dev, "sipa_usb register usb0 dev failed (%d)\n", status);
-		kthread_stop(dev->rx_thread);
 		netif_napi_del(&dev->napi);
 		free_netdev(net);
 		return status;
@@ -1916,7 +1981,6 @@ int gether_register_netdev(struct net_device *net)
 
 	netif_carrier_off(net);
 	dev->state = DEV_OFF;
-	sipa_usb_debugfs_mknod(root, (void *)dev);
 #else
 	if (status < 0) {
 		dev_dbg(&g->dev, "register_netdev failed, %d\n", status);
@@ -2079,8 +2143,9 @@ void gether_cleanup(struct eth_dev *dev)
 #ifdef CONFIG_SPRD_SIPA
 	netif_napi_del(&dev->napi);
 	kfree(dev->pdata);
+	sipa_usb_debugfs_exit(dev);
 #endif
-	kthread_stop(dev->rx_thread);
+
 	uether_debugfs_exit(dev);
 	unregister_netdev(dev->net);
 	flush_work(&dev->work);
@@ -2146,24 +2211,19 @@ struct net_device *gether_connect(struct gether *link)
 	 * req->buf which is allocated later
 	 */
 	if (!dev->sg_enabled) {
-		if (!strcmp(link->func.name, "rndis")) {
-			/* size of rndis_packet_msg_type */
-			link->header = kzalloc(
-					sizeof(struct rndis_packet_msg_type),
-					GFP_ATOMIC);
-			if (!link->header) {
-				pr_err("RNDIS header memory allocation failed.\n");
-				result = -ENOMEM;
-				return ERR_PTR(result);
-			}
+		/* size of rndis_packet_msg_type */
+		link->header = kzalloc(sizeof(struct rndis_packet_msg_type),
+				       GFP_ATOMIC);
+		if (!link->header) {
+			pr_err("RNDIS header memory allocation failed.\n");
+			result = -ENOMEM;
+			return ERR_PTR(result);
 		}
 	}
-
 #ifdef CONFIG_USB_PAM
 	link->in_ep->uether = true;
 	link->out_ep->uether = true;
 #endif
-
 	link->in_ep->driver_data = dev;
 	result = usb_ep_enable(link->in_ep);
 	if (result != 0) {
@@ -2228,8 +2288,7 @@ fail0:
 	/* caller is responsible for cleanup on error */
 	if (result < 0) {
 		if (!dev->sg_enabled)
-			if (!strcmp(link->func.name, "rndis"))
-				kfree(link->header);
+			kfree(link->header);
 		return ERR_PTR(result);
 	}
 	return dev->net;
@@ -2416,9 +2475,20 @@ static void __init sipa_usb_debugfs_init(void)
 
 static int __init gether_init(void)
 {
+#if defined(CONFIG_X86)
+	uether_wq  = create_workqueue("uether");
+#else
+	uether_wq  = create_singlethread_workqueue("uether");
+#endif
+	if (!uether_wq) {
+		pr_err("%s: Unable to create workqueue: uether\n", __func__);
+		return -ENOMEM;
+	}
+
 	uether_tx_wq = alloc_workqueue("uether_tx",
 				WQ_CPU_INTENSIVE | WQ_UNBOUND, 1);
 	if (!uether_tx_wq) {
+		destroy_workqueue(uether_wq);
 		pr_err("%s: Unable to create workqueue: uether\n", __func__);
 		return -ENOMEM;
 	}
@@ -2433,6 +2503,8 @@ module_init(gether_init);
 static void __exit gether_exit(void)
 {
 	destroy_workqueue(uether_tx_wq);
+	destroy_workqueue(uether_wq);
+
 }
 module_exit(gether_exit);
 MODULE_LICENSE("GPL");

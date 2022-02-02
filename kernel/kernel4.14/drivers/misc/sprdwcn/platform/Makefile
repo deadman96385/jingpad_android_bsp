@@ -7,6 +7,7 @@ MARLINOFILES += gnss/gnss_dump.o
 #end
 MARLINOFILES += wcn_boot.o
 marlin-$(CONFIG_WCN_PCIE) += pcie_boot.o
+marlin-$(CONFIG_WCN_ROMCODED) += romcode_download.o
 MARLINOFILES += wcn_dump.o
 marlin-$(CONFIG_WCN_SWD) += wcn_swd_dap.o
 MARLINOFILES += bufring.o
@@ -19,12 +20,17 @@ MARLINOFILES += wcn_misc.o
 MARLINOFILES += wcn_parn_parser.o
 MARLINOFILES += rdc_debug.o
 MARLINOFILES += wcn_log.o
+MARLINOFILES += sysfs.o
 MARLINOFILES += wcn_procfs.o
 marlin-$(CONFIG_SDIOHAL) += mem_pd_mgr.o
 marlin-$(CONFIG_WCN_UTILS) += \
 		wcn_debugfs.o
 
 marlin-objs += $(MARLINOFILES)
+
+ifeq ($(TARGET_BUILD_VARIANT),user)
+ccflags-y += -DCONFIG_WCN_USER
+endif
 
 #WCN_PLATFORM
 obj-$(CONFIG_WCN_PLATFORM) := wcn_platform.o

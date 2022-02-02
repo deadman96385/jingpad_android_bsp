@@ -328,6 +328,31 @@
 		sprd,rx-blknum = <128>;
 	};
 
+	sbridge_pipe: sbridge@0 {
+		compatible = "sprd,sbuf_bridge";
+		sprd,channel_a = <5 4>;
+		sprd,channel_b = <0 4>;
+		/* spipe0, spipe2, spipe4, spipe6, spipe7 */
+		sprd,mask = <0xd5>;
+		sprd,priority = <87>;
+	};
+
+	sbridge_tty: sbridge@1 {
+		compatible = "sprd,sbuf_bridge";
+		sprd,channel_a = <5 6>;
+		sprd,channel_b = <0 6>;
+		sprd,mask = <0x0>;
+		sprd,priority = <88>;
+	};
+
+	sbridge_nv: sbridge@2 {
+		compatible = "sprd,sbuf_bridge";
+		sprd,channel_a = <5 40>;
+		sprd,channel_b = <0 40>;
+		sprd,mask = <0x0>;
+		sprd,priority = <89>;
+	};
+
 	crypto {
 		compatible = "sprd,crypto_modem_verify";
 	};

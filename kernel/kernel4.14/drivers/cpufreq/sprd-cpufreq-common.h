@@ -58,6 +58,9 @@
 #define ONLINE				1
 #define OFFLINE				0
 
+#define	ON_BOOST			0
+#define OUT_BOOST			1
+
 struct sprd_cpufreq_group {
 	unsigned long freq;
 	unsigned long volt;
@@ -104,6 +107,7 @@ struct sprd_cpufreq_driver_data {
 	int temp_now;
 	int temp_bottom;
 	unsigned long temp_fall_time;
+	bool cpu_boost_disable;
 	/*cpufreq points to hotplug notify*/
 	int (*cpufreq_online)(unsigned int cpu);
 	int (*cpufreq_offline)(unsigned int cpu);

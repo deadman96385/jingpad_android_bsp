@@ -38,7 +38,6 @@
 		eth5 = &sipa_eth5;
 		eth6 = &sipa_eth6;
 		eth7 = &sipa_eth7;
-		eth8 = &sipa_eth8;
 		thm-sensor15 = &cluster0_sensor;
 		thm-sensor16 = &cluster1_sensor;
 		thm-sensor17 = &soc_sensor;
@@ -326,13 +325,15 @@
 					"clk_mm_ahb_parent",
 					"mm_mtx_eb",
 					"clk_mm_mtx",
-					"clk_mm_mtx_parent";
+					"clk_mm_mtx_parent",
+					"clk_isppll";
 				clocks = <&aonapb_gate CLK_MM_EB>,
 					<&mm_gate CLK_MM_CKG_EB>,
 					<&mm_clk CLK_MM_AHB>,
 					<&g12_pll CLK_TWPLL_153M6>,
 					<&mm_gate CLK_ISP_AHB_EB>,
 					<&mm_clk CLK_MM_MTX>,
+					<&g12_pll CLK_TWPLL_512M>,
 					<&g12_pll CLK_ISPPLL_468M>;
 				/*mm_qos_threshold = <&mm_qos_threshold>;*/
 			};
@@ -541,6 +542,7 @@
 					"isp_clk_307m2",
 					"isp_clk_384m",
 					"isp_clk_468m",
+					"isp_clk_512m",
 					"isp_clk_parent";
 				clocks = <&mm_gate CLK_MM_ISP_EB>,
 					<&mm_gate CLK_ISP_AHB_EB>,
@@ -549,7 +551,14 @@
 					<&g12_pll CLK_TWPLL_307M2>,
 					<&g12_pll CLK_TWPLL_384M>,
 					<&g12_pll CLK_ISPPLL_468M>,
-					<&g12_pll CLK_ISPPLL_468M>;
+					<&g12_pll CLK_TWPLL_512M>,
+					<&g12_pll CLK_TWPLL_512M>;
+				syscons = <&mm_ahb_regs REG_MM_AHB_AHB_RST
+					MASK_MM_AHB_ISP_SOFT_RST>,
+					<&mm_ahb_regs REG_MM_AHB_AHB_RST
+					MASK_MM_AHB_ISP_AHB_SOFT_RST>;
+				syscon-names = "reset",
+						"isp_ahb_reset";
 				sprd,cam-ahb-syscon = <&mm_ahb_regs>;
 				sprd,isp-count = <1>;
 				iommus = <&iommu_isp>;
@@ -557,7 +566,7 @@
 				status = "disabled";
 			};
 
-			iommu_isp: iommu@62000000 {
+			iommu_isp: iommu@620ff000 {
 				compatible = "sprd,iommuexroc1-isp";
 				reg = <0 0x62000000 0 0xffc00>,
 				      <0 0x620ffc00 0 0x400>;
@@ -700,7 +709,7 @@
 				status = "disabled";
 			};
 
-			iommu_jpg: iommu@62700000 {
+			iommu_jpg: iommu@62700300 {
 				compatible = "sprd,iommuexroc1-jpg";
 				reg = <0x0 0x62700000 0x0 0x800>,
 				      <0x0 0x62700300 0x0 0x80>;
@@ -727,12 +736,12 @@
 				status = "disabled";
 			};
 
-			iommu_cpp: iommu@62800000 {
+			iommu_cpp: iommu@62800200 {
 				compatible = "sprd,iommuexroc1-cpp";
 				reg = <0 0x62800000 0 0x200>,
 					<0 0x62800200 0 0x60>;
 				iova-base = <0x20000000>;
-				iova-size = <0x8000000>;
+				iova-size = <0x10000000>;
 				reg_name = "mmu_interrupt_reg","mmu_reg",
 					"iova pool";
 				status = "disabled";
@@ -740,7 +749,7 @@
 			};
 
 			dcam: dcam@62900000 {
-				compatible = "sprd,dcam";
+				compatible = "sprd,roc1-cam";
 				reg = <0 0x62900000 0 0x1000>,
 					<0 0x62901000 0 0x1000>,
 					<0 0x62902000 0 0x1000>,
@@ -761,13 +770,14 @@
 					"dcam_clk_256m",
 					"dcam_clk_307m2",
 					"dcam_clk_384m",
+					"dcam_clk_468m",
 					"dcam_clk_parent",
 					"dcam_axi_eb",
 					"dcam_axi_clk",
-					"dcam_axi_clk_192m",
 					"dcam_axi_clk_256m",
 					"dcam_axi_clk_307m2",
 					"dcam_axi_clk_384m",
+					"dcam_axi_clk_468m",
 					"dcam_axi_clk_parent";
 				clocks = <&mm_gate CLK_MM_DCAM_EB>,
 					<&mm_clk CLK_DCAM_IF>,
@@ -775,24 +785,37 @@
 					<&g12_pll CLK_TWPLL_256M>,
 					<&g12_pll CLK_TWPLL_307M2>,
 					<&g12_pll CLK_TWPLL_384M>,
-					<&g12_pll CLK_TWPLL_384M>,
+					<&g12_pll CLK_ISPPLL_468M>,
+					<&g12_pll CLK_ISPPLL_468M>,
 					<&mm_gate CLK_DCAM_AXI_EB>,
 					<&mm_clk CLK_DCAM_AXI>,
-					<&g12_pll CLK_TWPLL_192M>,
 					<&g12_pll CLK_TWPLL_256M>,
 					<&g12_pll CLK_TWPLL_307M2>,
 					<&g12_pll CLK_TWPLL_384M>,
-					<&g12_pll CLK_TWPLL_384M>;
+					<&g12_pll CLK_ISPPLL_468M>,
+					<&g12_pll CLK_ISPPLL_468M>;
+				syscons = <&mm_ahb_regs REG_MM_AHB_AHB_RST
+					MASK_MM_AHB_DCAM_ALL_SOFT_RST>,
+					<&mm_ahb_regs REG_MM_AHB_AHB_RST
+					MASK_MM_AHB_DCAM0_SOFT_RST>,
+					<&mm_ahb_regs REG_MM_AHB_AHB_RST
+					MASK_MM_AHB_DCAM1_SOFT_RST>,
+					<&mm_ahb_regs REG_MM_AHB_AHB_RST
+					MASK_MM_AHB_DCAM2_SOFT_RST>;
+				syscon-names = "dcam_all_reset",
+						"dcam0_reset",
+						"dcam1_reset",
+						"dcam2_reset";
 				sprd,cam-ahb-syscon = <&mm_ahb_regs>;
 				sprd,isp = <&isp>;
 				sprd,dcam-count = <3>;
-				sprd,project-id = <1>;
+				sprd,project-id = <2>;
 				iommus = <&iommu_dcam>;
 				/*dcam_qos = <&dcam_qos>;*/
 				status = "disabled";
 			};
 
-			iommu_dcam: iommu@62900000 {
+			iommu_dcam: iommu@6290f000 {
 				compatible = "sprd,iommuexroc1-dcam";
 				reg = <0 0x62900000 0 0xc000>,
 				      <0 0x6290c000 0 0x60>;
@@ -834,12 +857,12 @@
 				compatible = "sprd,pam-ipa";
 				reg = <0 0x21140000 0 0x100>;
 				reg-names = "pam-ipa-base";
-				power-domains = <&pd_ipa_sys>;
-				vpower-supply = <&vddipa>;
 				syscons = <&ipa_ahb_regs
 					  REG_IPA_AHB_IPA_EB
 					  MASK_IPA_AHB_PAM_IPA_EB>;
 				syscon-names = "enable";
+
+				power-domains = <&pd_ipa_sys>;
 
 				sprd,cp-ul-intr-to-ap = <0>;
 				sprd,cp-ul-threshold = <1>;
@@ -864,8 +887,6 @@
 				reg-names = "glb-base", "iram-base";
 				interrupts = <GIC_SPI 138 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-names = "local_ipa_irq";
-				power-domains = <&pd_ipa_sys>;
-				vpower-supply = <&vddipa>;
 
 				syscons = <&ipa_ahb_regs
 					  REG_IPA_AHB_IPA_EB
@@ -874,6 +895,8 @@
 					  REG_PMU_APB_IPA_FORCE_WAKEUP_CFG
 					  MASK_PMU_APB_IPA_FORCE_WAKEUP>;
 				syscon-names = "enable", "wakeup";
+
+				power-domains = <&pd_ipa_sys>;
 
 				sprd,sipa-bypass-mode = <0>;
 				sprd,need-through-pcie;
@@ -1032,6 +1055,7 @@
 					snps,disconnect_event_quirk;
 					snps,usb3_slow_suspend;
 					snps,host_suspend_capable;
+					snps,dis-del-phy-power-chg-quirk;
 				};
 			};
 
@@ -1043,11 +1067,15 @@
 				      <0 0x20f00000 0 0x100000>;
 				reg-names = "pamu3_glb_regs",
 					    "dwc3_core_regs";
+				syscons = <&ipa_ahb_regs
+					REG_IPA_AHB_IPA_RST
+					MASK_IPA_AHB_PAM_U3_SOFT_RST>;
+				syscon-names = "reset";
 			};
 
-			ssphy: ssphy@40400000 {
+			ssphy: ssphy@323bc000 {
 				compatible = "sprd,roc1-ssphy";
-				reg = <0 0x40400000 0 0x100000>;
+				reg = <0 0x323bc000 0 0x4000>;
 				reg-names = "phy_glb_regs";
 				sprd,syscon-aon_apb = <&aon_apb_regs>;
 				sprd,syscon-ipa-ahb = <&ipa_ahb_regs>;
@@ -1121,6 +1149,7 @@
 				syscon-names = "enable", "power";
 				sprd,ip = "sprd,megacores-sharkl5";
 				sprd,soc = "roc1";
+                sprd,mipi-drive-capability = <7>;
 
 				/* output port */
 				port@0 {
@@ -1666,6 +1695,21 @@
 					reg = <0x6a 0x4>;
 					bits = <0 8>;
 				};
+
+				lit_bin: lit-bin@79{
+					reg = <0x79 0x1>;
+					bits = <0 4>;
+				};
+
+				big_bin: big-bin@79{
+					reg = <0x79 0x1>;
+					bits = <4 4>;
+				};
+
+				scu_bin: scu-bin@7b{
+					reg = <0x7b 0x1>;
+					bits = <4 4>;
+				};
 			};
 
 			topdvfs_controller: topdvfsctrl@322A0000 {
@@ -1677,22 +1721,18 @@
 				device-dcdc-cells = <&dcdc_mm>, <&dcdc_modem>;
 				dcdc_cpu0: dcdc-cpu0{
 					dcdc-dvfs-enable = <0x90 0 1>;
-					dcdc-judge-vol-sw = <0x150 15 0x7 6>;
+					dcdc-judge-vol-sw = <0x150 15 0x7 0>;
 					dcdc-subsys-tune-enable = <0x300 2 1>;
 					dcdc-supply-mode-cfg = <&dvfs_dcdc_cpu0_supply>;
-					syscons = <&pmu_apb_regs REG_PMU_APB_DVFS_BLOCK_SHUTDOWN_CFG
-						MASK_PMU_APB_DCDC_CPU0_DVFS_BLOCK_SHUTDOWN_EN>;
-					syscon-names = "dvfs-blk-dcdc-sd";
-					dcdc-idle-voltage = <0x320 6 0x7 6>;
+					sync-dcdc-idle-voltage;
+					dcdc-idle-voltage = <0x320 6 0x7 5>;
 				};
 				dcdc_cpu1: dcdc-cpu1{
 					dcdc-dvfs-enable = <0xA0 0 1>;
-					dcdc-judge-vol-sw = <0x160 15 0x7 5>;
+					dcdc-judge-vol-sw = <0x160 15 0x7 0>;
 					dcdc-subsys-tune-enable = <0x300 1 1>;
 					dcdc-supply-mode-cfg = <&dvfs_dcdc_cpu1_supply>;
-					syscons = <&pmu_apb_regs REG_PMU_APB_DVFS_BLOCK_SHUTDOWN_CFG
-						MASK_PMU_APB_DCDC_CPU1_DVFS_BLOCK_SHUTDOWN_EN>;
-					syscon-names = "dvfs-blk-dcdc-sd";
+					sync-dcdc-idle-voltage;
 					dcdc-idle-voltage = <0x320 3 0x7 5>;
 				};
 				dcdc_mm: dcdc-mm {
@@ -1713,7 +1753,7 @@
 					};
 				};
 				dcdc_modem: dcdc-modem {
-					dcdc-dvfs-enable = <0x48 20 0>;
+					dcdc-dvfs-enable = <0x48 20 1>;
 					dcdc-judge-vol-sw = <0x48 1 0x7 2>;
 					dcdc-subsys-cells = <&pubcp_sys>,
 							<&wtlcp_sys>,
@@ -1725,7 +1765,7 @@
 						dcdc-subsys-tune-enable = <0x300 4 0>;
 					};
 					ap_sys: ap-sys {
-						dcdc-subsys-tune-enable = <0x300 5 0>;
+						dcdc-subsys-tune-enable = <0x300 5 1>;
 					};
 				};
 			};
@@ -1760,23 +1800,100 @@
 							<&lit_core1_dev>,
 							<&lit_core2_dev>,
 							<&lit_core3_dev>;
-					lit-core-dvfs-tbl = <
+					lit-core-dvfs-tbl = < /* od */
+							/* sel div gear scu periph gic mpll */
 							0 0 0 0 0 0 0
 							2 1 0 1 1 1 0
-							1 0 2 2 2 2 0
-							3 0 2 3 2 3 0
-							3 0 2 4 3 4 1
-							2 0 2 5 4 4 0
-							3 0 6 6 4 4 2
-							3 0 6 7 4 4 3
-							3 0 6 8 4 5 4
-							3 0 6 9 5 5 5
-							3 0 6 9 5 5 5
-							3 0 6 9 5 5 5
-							3 0 6 9 5 5 5
-							3 0 6 9 5 5 5
-							3 0 6 9 5 5 5
-							3 0 6 9 5 5 5
+							1 0 0 1 1 1 0
+							3 0 1 2 1 1 0
+							3 0 2 3 2 2 1
+							2 0 3 4 2 2 0
+							3 0 4 5 2 3 2
+							3 0 5 6 2 3 3
+							3 0 6 7 2 3 4
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							>;
+					lit-core-dvfs-tbl-1 = <
+							/* sel div gear scu periph gic mpll */
+							0 0 0 0 0 0 0
+							2 1 0 1 1 1 0
+							1 0 0 1 1 1 0
+							3 0 0 2 1 1 0
+							3 0 0 3 2 2 1
+							2 0 1 4 2 2 0
+							3 0 2 5 2 3 2
+							3 0 3 6 2 3 3
+							3 0 4 7 2 3 4
+							3 0 5 8 2 3 5
+							3 0 5 8 2 3 5
+							3 0 5 8 2 3 5
+							3 0 5 8 2 3 5
+							3 0 5 8 2 3 5
+							3 0 5 8 2 3 5
+							3 0 5 8 2 3 5
+							>;
+					lit-core-dvfs-tbl-2 = <
+							/* sel div gear scu periph gic mpll */
+							0 0 0 0 0 0 0
+							2 1 0 1 1 1 0
+							1 0 0 1 1 1 0
+							3 0 0 2 1 1 0
+							3 0 1 3 2 2 1
+							2 0 2 4 2 2 0
+							3 0 3 5 2 3 2
+							3 0 4 6 2 3 3
+							3 0 5 7 2 3 4
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							>;
+					lit-core-dvfs-tbl-3 = <
+							/* sel div gear scu periph gic mpll */
+							0 0 0 0 0 0 0
+							2 1 0 1 1 1 0
+							1 0 0 1 1 1 0
+							3 0 0 2 1 1 0
+							3 0 1 3 2 2 1
+							2 0 2 4 2 2 0
+							3 0 3 5 2 3 2
+							3 0 4 6 2 3 3
+							3 0 5 7 2 3 4
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							3 0 6 8 2 3 5
+							>;
+					lit-core-dvfs-tbl-4 = <
+							/* sel div gear scu periph gic mpll */
+							0 0 0 0 0 0 0
+							2 1 0 1 1 1 0
+							1 0 0 1 1 1 0
+							3 0 1 2 1 1 0
+							3 0 2 3 2 2 1
+							2 0 3 4 2 2 0
+							3 0 4 5 2 3 2
+							3 0 5 6 2 3 3
+							3 0 6 7 2 3 4
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
+							3 0 7 8 2 3 5
 							>;
 					lit_core0_dev: lit-core0-dev {
 						device-name = "cpu0";
@@ -1823,23 +1940,100 @@
 							<&big_core1_dev>,
 							<&big_core2_dev>,
 							<&big_core3_dev>;
-					big-core-dvfs-tbl = <
+					big-core-dvfs-tbl = < /* od */
+							/* sel div gear scu periph cpu0 mpll gic */
 							0 0 0 0 0 0 0 0
-							1 0 0 3 3 0 0 4
-							3 0 1 5 4 0 0 4
-							2 0 5 6 4 0 0 4
-							3 0 5 7 4 0 1 5
-							3 0 5 8 4 0 2 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
-							3 0 5 9 5 0 3 5
+							1 0 0 3 2 0 0 2
+							3 0 1 5 2 0 0 3
+							3 0 2 7 2 0 1 3
+							3 0 3 8 2 0 2 3
+							3 0 4 8 2 0 3 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							>;
+					big-core-dvfs-tbl-1 = <
+							/* sel div gear scu periph cpu0 mpll gic */
+							0 0 0 0 0 0 0 0
+							1 0 0 3 2 0 0 2
+							3 0 1 5 2 0 0 3
+							3 0 2 7 2 0 1 3
+							3 0 3 8 2 0 2 3
+							3 0 4 8 2 0 3 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							>;
+					big-core-dvfs-tbl-2 = <
+							/* sel div gear scu periph cpu0 mpll gic */
+							0 0 0 0 0 0 0 0
+							1 0 0 3 2 0 0 2
+							3 0 1 5 2 0 0 3
+							3 0 2 7 2 0 1 3
+							3 0 3 8 2 0 2 3
+							3 0 4 8 2 0 3 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							>;
+					big-core-dvfs-tbl-3 = <
+							/* sel div gear scu periph cpu0 mpll gic */
+							0 0 0 0 0 0 0 0
+							1 0 0 3 2 0 0 2
+							3 0 1 5 2 0 0 3
+							3 0 2 7 2 0 1 3
+							3 0 3 8 2 0 2 3
+							3 0 4 8 2 0 3 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							>;
+					big-core-dvfs-tbl-4 = <
+							/* sel div gear scu periph cpu0 mpll gic */
+							0 0 0 0 0 0 0 0
+							1 0 0 3 2 0 0 2
+							3 0 1 5 2 0 0 3
+							3 0 2 7 2 0 1 3
+							3 0 3 8 2 0 2 3
+							3 0 4 8 2 0 3 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
+							3 0 5 8 2 0 4 3
 							>;
 					big_core0_dev: big-core0-dev {
 						device-name = "cpu4";
@@ -1883,22 +2077,99 @@
 					column-entry-mask = <0x7 0x7 0x7 0x7 0x7>;
 					cluster-devices = <&scu_dev>, <&ace_dev>;
 					scu-dvfs-tbl = <
+							/* sel div gear ace mpll */
 							0 0 0 0 0
 							4 0 0 1 0
-							4 0 2 1 1
+							4 0 1 1 1
 							1 0 2 1 0
-							4 0 2 1 2
-							4 0 2 1 3
+							4 0 3 1 2
+							4 0 4 1 3
+							4 0 5 1 3
 							4 0 6 1 4
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							>;
+					scu-dvfs-tbl-1 = <
+							/* sel div gear ace mpll */
+							0 0 0 0 0
+							4 0 0 1 0
+							4 0 0 1 1
+							1 0 0 1 0
+							4 0 1 1 2
+							4 0 2 1 3
+							4 0 3 1 3
+							4 0 4 1 4
+							4 0 5 1 5
+							4 0 5 1 5
+							4 0 5 1 5
+							4 0 5 1 5
+							4 0 5 1 5
+							4 0 5 1 5
+							4 0 5 1 5
+							4 0 5 1 5
+							>;
+					scu-dvfs-tbl-2 = <
+							/* sel div gear ace mpll */
+							0 0 0 0 0
+							4 0 0 1 0
+							4 0 0 1 1
+							1 0 1 1 0
+							4 0 2 1 2
+							4 0 3 1 3
+							4 0 4 1 3
+							4 0 5 1 4
 							4 0 6 1 5
-							4 0 6 1 6
-							4 0 6 1 6
-							4 0 6 1 6
-							4 0 6 1 6
-							4 0 6 1 6
-							4 0 6 1 6
-							4 0 6 1 6
-							4 0 6 1 6
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							>;
+					scu-dvfs-tbl-3 = <
+							/* sel div gear ace mpll */
+							0 0 0 0 0
+							4 0 0 1 0
+							4 0 0 1 1
+							1 0 1 1 0
+							4 0 2 1 2
+							4 0 3 1 3
+							4 0 4 1 3
+							4 0 5 1 4
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							4 0 6 1 5
+							>;
+					scu-dvfs-tbl-4 = <
+							/* sel div gear ace mpll */
+							0 0 0 0 0
+							4 0 0 1 0
+							4 0 1 1 1
+							1 0 2 1 0
+							4 0 3 1 2
+							4 0 4 1 3
+							4 0 5 1 3
+							4 0 6 1 4
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
+							4 0 7 1 5
 							>;
 					scu_dev: scu-dev {
 						device-name = "scu";
@@ -1927,14 +2198,59 @@
 					column-entry-mask = <0x3 0x7 0x7>;
 					cluster-devices = <&periph_dev>;
 					periph-dvfs-tbl = <
+							/* sel div vol */
 							0 0 0
 							1 0 0
 							2 1 2
-							3 1 2
-							2 0 2
-							2 0 2
-							2 0 2
-							2 0 2
+							2 1 2
+							2 1 2
+							2 1 2
+							2 1 2
+							2 1 2
+							>;
+					periph-dvfs-tbl-1 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 0
+							2 1 0
+							2 1 0
+							2 1 0
+							2 1 0
+							2 1 0
+							>;
+					periph-dvfs-tbl-2 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 1
+							2 1 1
+							2 1 1
+							2 1 1
+							2 1 1
+							2 1 1
+							>;
+					periph-dvfs-tbl-3 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 1
+							2 1 1
+							2 1 1
+							2 1 1
+							2 1 1
+							2 1 1
+							>;
+					periph-dvfs-tbl-4 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 2
+							2 1 2
+							2 1 2
+							2 1 2
+							2 1 2
+							2 1 2
 							>;
 					periph_dev: periph-dev {
 						device-name = "periph";
@@ -1958,14 +2274,59 @@
 					column-entry-mask = <0x3 0x7 0x7>;
 					cluster-devices = <&gic_dev>;
 					gic-dvfs-tbl = <
+							/* sel div vol */
 							0 0 0
 							1 0 0
 							2 1 2
+							3 1 4
+							3 1 4
+							3 1 4
+							3 1 4
+							3 1 4
+							>;
+					gic-dvfs-tbl-1 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 0
 							3 1 2
-							2 0 2
-							3 0 6
-							3 0 6
-							3 0 6
+							3 1 2
+							3 1 2
+							3 1 2
+							3 1 2
+							>;
+					gic-dvfs-tbl-2 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 1
+							3 1 3
+							3 1 3
+							3 1 3
+							3 1 3
+							3 1 3
+							>;
+					gic-dvfs-tbl-3 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 1
+							3 1 3
+							3 1 3
+							3 1 3
+							3 1 3
+							3 1 3
+							>;
+					gic-dvfs-tbl-4 = <
+							/* sel div vol */
+							0 0 0
+							1 0 0
+							2 1 2
+							3 1 4
+							3 1 4
+							3 1 4
+							3 1 4
+							3 1 4
 							>;
 					gic_dev: gic-dev {
 						device-name = "gic";
@@ -1998,11 +2359,11 @@
 				};
 
 				apcpu_cpu0: apcpu-cpu0 {
-					subsys-dcdc-vol-sw = <0x20 4 0x7 6>;
+					subsys-dcdc-vol-sw = <0x20 4 0x7 0>;
 					subsys-dvfs-state = <0x44 0 7>;
 				};
 				apcpu_cpu1: apcpu-cpu1 {
-					subsys-dcdc-vol-sw = <0x24 4 0x7 5>;
+					subsys-dcdc-vol-sw = <0x24 4 0x7 0>;
 					subsys-dvfs-state = <0x4C 0 7>;
 				};
 			};
@@ -2062,7 +2423,7 @@
 			};
 
 			watchdog@322f0000 {
-				compatible = "sprd,sharkl5-wdt";
+				compatible = "sprd,wdt-r2p0-fiq";
 				reg = <0 0x322f0000 0 0x10000>;
 				interrupts = <GIC_SPI 79 IRQ_TYPE_LEVEL_HIGH>;
 				timeout-sec = <12>;
@@ -2111,6 +2472,66 @@
 				vbc_iis_to_aon_usb: vbc-iis-inf-sys@1 {
 					pins = "ROC1_VBC_IIS_INF_SYS_SEL";
 					sprd,control = <0x1>;
+				};
+
+				vbc_iism0_1: iis-matrix-cfg-inf1@d {
+					pins = "ROC1_IIS_INF1_SYS_SEL";
+					sprd,control = <0xd>;
+				};
+
+				vbc_iism0_3: iis-matrix-cfg-inf3@c {
+					pins = "ROC1_IIS_INF3_SYS_SEL";
+					sprd,control = <0xc>;
+				};
+
+				vbc_iis0_3: iis-matrix-cfg-inf3@7 {
+					pins = "ROC1_IIS_INF3_SYS_SEL";
+					sprd,control = <0x7>;
+				};
+
+				vbc_iis1_3: iis-matrix-cfg-inf3@8 {
+					pins = "ROC1_IIS_INF3_SYS_SEL";
+					sprd,control = <0x8>;
+				};
+
+				vbc_iis2_3: iis-matrix-cfg-inf3@9 {
+					pins = "ROC1_IIS_INF3_SYS_SEL";
+					sprd,control = <0x9>;
+				};
+
+				vbc_iis3_3: iis-matrix-cfg-inf3@a {
+					pins = "ROC1_IIS_INF3_SYS_SEL";
+					sprd,control = <0xa>;
+				};
+
+				ap_iis0_3: iis-matrix-cfg-inf3@0 {
+					pins = "ROC1_IIS_INF3_SYS_SEL";
+					sprd,control = <0x0>;
+				};
+
+				vbc_iis0_1: iis-matrix-cfg-inf1@7 {
+					pins = "ROC1_IIS_INF1_SYS_SEL";
+					sprd,control = <0x7>;
+				};
+
+				vbc_iis1_1: iis-matrix-cfg-inf1@8 {
+					pins = "ROC1_IIS_INF1_SYS_SEL";
+					sprd,control = <0x8>;
+				};
+
+				vbc_iis2_1: iis-matrix-cfg-inf1@9 {
+					pins = "ROC1_IIS_INF1_SYS_SEL";
+					sprd,control = <0x9>;
+				};
+
+				vbc_iis3_1: iis-matrix-cfg-inf1@a {
+					pins = "ROC1_IIS_INF1_SYS_SEL";
+					sprd,control = <0xa>;
+				};
+
+				ap_iis0_1: iis-matrix-cfg-inf1@0 {
+					pins = "ROC1_IIS_INF1_SYS_SEL";
+					sprd,control = <0x0>;
 				};
 			};
 
@@ -2189,7 +2610,6 @@
 				REG_PMU_APB_PD_AI_SYS_CFG
 				MASK_PMU_APB_PD_AI_SYS_FORCE_SHUTDOWN>;
 				syscon-names = "cfg";
-				#power-domain-cells = <0>;
 			};
 
 			pd_ai_powervr: power-vr {
@@ -2198,8 +2618,7 @@
 				REG_PMU_APB_PD_AI_POWERVR_CFG
 				MASK_PMU_APB_PD_AI_POWERVR_FORCE_SHUTDOWN>;
 				syscon-names = "cfg";
-				power-domains = <&pd_ai_sys>;
-				#power-domain-cells = <0>;
+				sprd,pd-ai = <&pd_ai_sys>;
 			};
 
 			pd_ai_cambricon: cambricon-1h {
@@ -2208,8 +2627,7 @@
 				REG_PMU_APB_PD_AI_CAMBRICON_CFG
 				MASK_PMU_APB_PD_AI_CAMBRICON_FORCE_SHUTDOWN>;
 				syscon-names = "cfg";
-				power-domains = <&pd_ai_sys>;
-				#power-domain-cells = <0>;
+				sprd,pd-ai = <&pd_ai_sys>;
 			};
 
 			pd_ipa_sys: sipa-sys {
@@ -2275,10 +2693,6 @@
 					<&ext_26m>;
 				clock-names = "ipa_core", "ipa_core_source",
 					      "ipa_core_default";
-
-				vddipa:vdd-ipa {
-					regulator-name = "IPA_SYS_VPOWER";
-				};
 			};
 		};
 
@@ -2529,6 +2943,39 @@
 				status = "disabled";
 			};
 
+			ufs: ufs@71900000 {
+				compatible  = "sprd,ufshc";
+				vcc-supply = <&vddemmccore>;
+				vcc-fixed-regulator;
+				freq-table-hz = <0 0>,
+						<0 0>,
+						<0 0>,
+						<0 0>,
+						<0 0>,
+						<0 0>;
+				#clock-cells = <1>;
+				reg = <0 0x71900000 0 0x10000>,
+				      <0 0x71a00000 0 0x10000>,
+				      <0 0x71800000 0 0x10000>,
+				      <0 0x32510000 0 0x10000>,
+				      <0 0x323b8000 0 0x4000>,
+				      <0 0x323b4000 0 0x4000>;
+				reg-names = "ufshci_reg",
+					    "ufsutp_reg",
+					    "unipro_reg",
+					    "ufs_ao_reg",
+					    "mphy_reg",
+					    "analog_reg";
+				syscons = <&ap_apb_regs REG_AP_APB_APB_RST (MASK_AP_APB_UFS_UTP_SOFT_RST | MASK_AP_APB_UFS_HCI_SOFT_RST | MASK_AP_APB_UFS_UNIPRO_SOFT_RST | MASK_AP_APB_UFS_SOFT_RST)>,
+					  <&anlg_phy_g1_regs REG_ANLG_PHY_G1_ANALOG_MIPI_MPHY_1T1R_MPHY_APB_REG MASK_ANLG_PHY_G1_ANALOG_MIPI_MPHY_1T1R_MPHY_APB_PRESETN>,
+					  <&aon_apb_regs REG_AON_APB_APB_RST1 MASK_AON_APB_UFS_AO_SOFT_RST>;
+				syscon-names = "ap_apb_ufs_rst",
+					       "anlg_mphy_ufs_rst",
+					       "aon_apb_ufs_rst";
+				interrupts = <GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>;
+				status = "disabled";
+			};
+
 			apsys_dvfs: apsys-dvfs@71700000 {
 				compatible = "sprd,hwdvfs-apsys-roc1";
 				reg = <0x0 0x71700000 0x0 0x15c>;
@@ -2625,11 +3072,25 @@
 				pinctrl-names =
 				/* iis interface 0 */
 				"vbc_iis3_0", "vbc_iism0_0",
-				"vbc_iis_to_pad", "vbc_iis_to_aon_usb";
+				"vbc_iis_to_pad", "vbc_iis_to_aon_usb", "vbc_iism0_1", "vbc_iism0_3",
+				"vbc_iis0_3", "vbc_iis1_3", "vbc_iis2_3", "vbc_iis3_3", "ap_iis0_3",
+				"vbc_iis0_1", "vbc_iis1_1", "vbc_iis2_1", "vbc_iis3_1", "ap_iis0_1";
 				pinctrl-0 = <&vbc_iis3_0>;
 				pinctrl-1 = <&vbc_iism0_0>;
 				pinctrl-2 = <&vbc_iis_to_pad>;
 				pinctrl-3 = <&vbc_iis_to_aon_usb>;
+				pinctrl-4 = <&vbc_iism0_1>;
+				pinctrl-5 = <&vbc_iism0_3>;
+				pinctrl-6 = <&vbc_iis0_3>;
+				pinctrl-7 = <&vbc_iis1_3>;
+				pinctrl-8 = <&vbc_iis2_3>;
+				pinctrl-9 = <&vbc_iis3_3>;
+				pinctrl-10 = <&ap_iis0_3>;
+				pinctrl-11 = <&vbc_iis0_1>;
+				pinctrl-12 = <&vbc_iis1_1>;
+				pinctrl-13 = <&vbc_iis2_1>;
+				pinctrl-14 = <&vbc_iis3_1>;
+				pinctrl-15 = <&ap_iis0_1>;
 			};
 
 			mcdt@33490000{
@@ -2697,9 +3158,8 @@
 				reg = <0 0x6fc00000 0 0x10000>;
 				interrupts = <GIC_SPI 132 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-names = "ai_powervr";
-				power-domains = <&pd_ai_powervr>,
+				sprd,pd-ai = <&pd_ai_powervr>,
 					<&pd_ai_cambricon>;
-				#power-domain-cells = <1>;
 				syscon-names = "reset";
 				syscons = <&ai_apb_regs REG_AI_APB_APB_RST
 					MASK_AI_APB_POWERVR_SOFT_RST>;
@@ -2730,9 +3190,8 @@
 					<GIC_SPI 134 IRQ_TYPE_LEVEL_HIGH>;
 				interrupt-names = "ai_cambricon", "ai_mmu";
 				iommus = <&iommu_ai>;
-				power-domains = <&pd_ai_cambricon>,
+				sprd,pd-ai = <&pd_ai_cambricon>,
 					<&pd_ai_powervr>;
-				#power-domain-cells = <1>;
 				syscon-names = "reset";
 				syscons = <&ai_apb_regs
 					REG_AI_APB_AI_CAMBRICON_SOFT_RST
@@ -2770,7 +3229,8 @@
 			&agcp_dma 11 &agcp_dma 12
 			&agcp_dma 13 &agcp_dma 14
 			&agcp_dma 15 &agcp_dma 16
-			&agcp_dma 9 &agcp_dma 9>;
+			&agcp_dma 9 &agcp_dma 9
+			&agcp_dma 11 &agcp_dma 14>;
 		dma-names =
 			"normal_p_l", "normal_p_r",
 			"normal_c_l", "normal_c_r",
@@ -2781,7 +3241,9 @@
 			"loop_c", "loop_p",
 			"voip_c", "voip_p",
 			/* dspfmcap_c and dspbtscocap_c same as dspcap_c */
-			"dspfmcap_c", "dspbtscocap_c";
+			"dspfmcap_c", "dspbtscocap_c",
+			/* recognise_c same as voice_c, voice_pcm_p same as loop_p */
+			"recognise_c", "voice_pcm_p";
 	};
 
 	sprd_compr: sprd-compr-audio {
@@ -3083,12 +3545,6 @@
 		compatible = "sprd,sipa_eth";
 		sprd,netid = <8>;
 		sprd,term-type = <0x6>;
-	};
-
-	sipa_eth8: sipa-wifi {
-		compatible = "sprd,sipa_eth";
-		sprd,netid = <0>;
-		sprd,term-type = <0x2>;
 	};
 
 	isp_dvfs: isp-dvfs {

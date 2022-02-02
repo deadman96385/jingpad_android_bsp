@@ -76,6 +76,9 @@ void mdbg_assert_interface(char *str)
 {
 	int len = MDBG_ASSERT_SIZE;
 
+	if (unlikely(marlin_get_download_status() != true))
+		return;
+
 	if (strlen(str) <= MDBG_ASSERT_SIZE)
 		len = strlen(str);
 	strncpy(mdbg_proc->assert.buf, str, len);
@@ -95,30 +98,42 @@ void mdbg_assert_interface(char *str)
 }
 EXPORT_SYMBOL_GPL(mdbg_assert_interface);
 
+#ifdef CONFIG_SDIOHAL
+/* this function get data length from buf head */
+static unsigned int mdbg_mbuf_get_datalength(struct mbuf_t *mbuf)
+{
+	struct bus_puh_t *puh;
+
+	puh = (struct bus_puh_t *)mbuf->buf;
+
+	return puh->len;
+}
+#else
+/* this function get data length from mbuf->len */
+static unsigned int mdbg_mbuf_get_datalength(struct mbuf_t *mbuf)
+{
+	return mbuf->len;
+}
+#endif
+
 static int mdbg_assert_read(int channel, struct mbuf_t *head,
 		     struct mbuf_t *tail, int num)
 {
-#ifndef CONFIG_WCN_PCIE
-	struct bus_puh_t *puh = NULL;
+	unsigned int data_length;
 
-	puh = (struct bus_puh_t *)head->buf;
-	if (puh->len > MDBG_ASSERT_SIZE) {
+	data_length = mdbg_mbuf_get_datalength(head);
+	if (data_length > MDBG_ASSERT_SIZE) {
 		WCN_ERR("assert data len:%d,beyond max read:%d",
-			puh->len, MDBG_ASSERT_SIZE);
+			data_length, MDBG_ASSERT_SIZE);
 		sprdwcn_bus_push_list(channel, head, tail, num);
 		return -1;
 	}
 
-	memcpy(mdbg_proc->assert.buf, head->buf + PUB_HEAD_RSV, puh->len);
-	mdbg_proc->assert.rcv_len = puh->len;
-	WCN_INFO("%s:%s,puh->len %d\n", __func__,
-		(char *)(mdbg_proc->assert.buf), puh->len);
-#else
-	memcpy(mdbg_proc->assert.buf, head->buf, head->len);
-	mdbg_proc->assert.rcv_len = head->len;
-	WCN_INFO("%s:%s,len=%d\n", __func__,
-		(char *)(mdbg_proc->assert.buf), head->len);
-#endif
+	memcpy(mdbg_proc->assert.buf, head->buf + PUB_HEAD_RSV, data_length);
+	mdbg_proc->assert.rcv_len = data_length;
+	WCN_INFO("mdbg_assert_read:%s,data length %d\n",
+		(char *)(mdbg_proc->assert.buf), data_length);
+
 	mdbg_proc->fail_count++;
 	complete(&mdbg_proc->assert.completed);
 	wake_up_interruptible(&mdbg_proc->assert.rxwait);
@@ -131,26 +146,21 @@ EXPORT_SYMBOL_GPL(mdbg_assert_read);
 static int mdbg_loopcheck_read(int channel, struct mbuf_t *head,
 			struct mbuf_t *tail, int num)
 {
-#ifndef CONFIG_WCN_PCIE
-	struct bus_puh_t *puh = NULL;
+	unsigned int data_length;
 
-	puh = (struct bus_puh_t *)head->buf;
-	if (puh->len > MDBG_LOOPCHECK_SIZE) {
+	data_length = mdbg_mbuf_get_datalength(head);
+	if (data_length > MDBG_LOOPCHECK_SIZE) {
 		WCN_ERR("The loopcheck data len:%d,beyond max read:%d",
-			puh->len, MDBG_LOOPCHECK_SIZE);
+			data_length, MDBG_LOOPCHECK_SIZE);
 		sprdwcn_bus_push_list(channel, head, tail, num);
 		return -1;
 	}
 
 	memset(mdbg_proc->loopcheck.buf, 0, MDBG_LOOPCHECK_SIZE);
-	memcpy(mdbg_proc->loopcheck.buf, head->buf + PUB_HEAD_RSV, puh->len);
-	mdbg_proc->loopcheck.rcv_len = puh->len;
-#else
-	memset(mdbg_proc->loopcheck.buf, 0, MDBG_LOOPCHECK_SIZE);
-	memcpy(mdbg_proc->loopcheck.buf, head->buf, head->len);
-	mdbg_proc->loopcheck.rcv_len = head->len;
-#endif
-	WCN_INFO("%s:%s\n", __func__,
+	memcpy(mdbg_proc->loopcheck.buf, head->buf + PUB_HEAD_RSV, data_length);
+	mdbg_proc->loopcheck.rcv_len = data_length;
+
+	WCN_INFO("mdbg_loopcheck_read:%s\n",
 		(char *)(mdbg_proc->loopcheck.buf));
 	mdbg_proc->fail_count = 0;
 	complete(&mdbg_proc->loopcheck.completed);
@@ -163,35 +173,25 @@ EXPORT_SYMBOL_GPL(mdbg_loopcheck_read);
 static int mdbg_at_cmd_read(int channel, struct mbuf_t *head,
 		     struct mbuf_t *tail, int num)
 {
-#ifndef CONFIG_WCN_PCIE
-	struct bus_puh_t *puh = NULL;
+	unsigned int data_length;
 
-	puh = (struct bus_puh_t *)head->buf;
-	if (puh->len > MDBG_AT_CMD_SIZE) {
+	data_length = mdbg_mbuf_get_datalength(head);
+	if (data_length > MDBG_AT_CMD_SIZE) {
 		WCN_ERR("The at cmd data len:%d,beyond max read:%d",
-			puh->len, MDBG_AT_CMD_SIZE);
+			data_length, MDBG_AT_CMD_SIZE);
 		sprdwcn_bus_push_list(channel, head, tail, num);
 		return -1;
 	}
 
 	memset(mdbg_proc->at_cmd.buf, 0, MDBG_AT_CMD_SIZE);
-	memcpy(mdbg_proc->at_cmd.buf, head->buf + PUB_HEAD_RSV, puh->len);
-	mdbg_proc->at_cmd.rcv_len = puh->len;
+	memcpy(mdbg_proc->at_cmd.buf, head->buf + PUB_HEAD_RSV, data_length);
+	mdbg_proc->at_cmd.rcv_len = data_length;
 	WCN_INFO("at cmd read:%s\n",
 		(char *)(mdbg_proc->at_cmd.buf));
 	complete(&mdbg_proc->at_cmd.completed);
+	notify_at_cmd_finish(mdbg_proc->at_cmd.buf, mdbg_proc->at_cmd.rcv_len);
 	sprdwcn_bus_push_list(channel, head, tail, num);
 
-#else
-		memset(mdbg_proc->at_cmd.buf, 0, MDBG_AT_CMD_SIZE);
-		memcpy(mdbg_proc->at_cmd.buf, head->buf, head->len);
-		mdbg_proc->at_cmd.rcv_len = head->len;
-		WCN_INFO("WCND at cmd read:%s\n",
-			(char *)(mdbg_proc->at_cmd.buf));
-		complete(&mdbg_proc->at_cmd.completed);
-		sprdwcn_bus_push_list(channel, head, tail, num);
-
-#endif
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mdbg_at_cmd_read);
@@ -842,7 +842,8 @@ static ssize_t mdbg_proc_write(struct file *filp,
 		return -1;
 	}
 	/* make sure don't send at cmd to pcie when chip has power off */
-	if ((strncmp(mdbg_proc->write_buf, "at+loopcheck", 12) == 0)) {
+	if ((strncmp(mdbg_proc->write_buf, "at+", 3) == 0) ||
+	    (strncmp(mdbg_proc->write_buf, "AT+", 3) == 0)) {
 		if (atomic_inc_return(&pcie_dev->xmit_cnt) >=
 			BUS_REMOVE_CARD_VAL) {
 			atomic_dec(&pcie_dev->xmit_cnt);
@@ -850,6 +851,11 @@ static ssize_t mdbg_proc_write(struct file *filp,
 			return count;
 		}
 	}
+
+	wcn_set_tx_complete_status(0);
+
+	if (unlikely(marlin_get_download_status() != true))
+		return -EIO;
 
 	ret = sprdwcn_bus_list_alloc(0, &head, &tail, &num);
 	if (ret || head == NULL || tail == NULL) {
@@ -864,12 +870,14 @@ static ssize_t mdbg_proc_write(struct file *filp,
 		at_buf_flag = 1;
 	}
 	mbuf = head;
+	mutex_lock(&mdbg_proc->mutex);
 	mbuf->buf = (unsigned char *)(at_dm.vir);
 	mbuf->phy = (unsigned long)(at_dm.phy);
 	mbuf->len = at_dm.size;
 	memset(mbuf->buf, 0x0, mbuf->len);
 	memcpy(mbuf->buf, mdbg_proc->write_buf, count);
 	mbuf->next = NULL;
+	mutex_unlock(&mdbg_proc->mutex);
 	WCN_DBG("mbuf->buf:%s\n", mbuf->buf);
 
 	ret = sprdwcn_bus_push_list(0, head, tail, num);

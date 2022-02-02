@@ -21,6 +21,7 @@
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 #include <linux/ip.h>
+#include <linux/ipv6.h>
 #include <linux/udp.h>
 #include <linux/if_arp.h>
 #include <linux/platform_device.h>
@@ -30,6 +31,12 @@
 #include <linux/seq_file.h>
 #include <linux/of_device.h>
 #include <linux/interrupt.h>
+#include <linux/spinlock.h>
+#include <net/tcp.h>
+#include <net/udp.h>
+#include <net/ip.h>
+#include <net/ipv6.h>
+#include <net/ip6_checksum.h>
 #include "sipa_eth.h"
 
 /* Device status */
@@ -38,10 +45,14 @@
 
 #define SIPA_ETH_NAPI_WEIGHT 64
 #define SIPA_ETH_IFACE_PREF "sipa_eth"
+#define SIPA_ETH_VPCIE_PREF "vpcie"
+#define SIPA_ETH_VPCIE_IDX 8
 
+static unsigned long queue_lock_flags;
+static spinlock_t queue_lock; /* spin-lock for queue status protection */
 static struct dentry *root;
 static int sipa_eth_debugfs_mknod(void *root, void *data);
-
+static void sipa_eth_rx_handler (void *priv);
 static u64 gro_enable;
 
 static inline void sipa_eth_dt_stats_init(struct sipa_eth_dtrans_stats *stats)
@@ -63,17 +74,125 @@ static inline void sipa_eth_tx_stats_update(
 	stats->tx_cnt++;
 }
 
+static void sipa_eth_rx_csum(struct sk_buff *skb, unsigned int real_len)
+{
+	struct iphdr *iph;
+	struct ipv6hdr *ipv6h;
+	bool csum_ready = false;
+
+	if (!(ntohs(skb->protocol) == ETH_P_IP ||
+	      ntohs(skb->protocol) == ETH_P_IPV6))
+		return;
+
+	/*
+	 * Downlink skb with csum 0, we need the IP stack help to
+	 * calculate csum
+	 */
+	if (!skb->csum) {
+		skb->ip_summed = CHECKSUM_NONE;
+		return;
+	}
+
+	switch (ntohs(skb->protocol)) {
+	case ETH_P_IP:
+		iph = ip_hdr(skb);
+		if (iph->protocol == IPPROTO_TCP) {
+			if (!tcp_v4_check(real_len - ip_hdrlen(skb),
+					  iph->saddr, iph->daddr,
+					  skb->csum))
+				csum_ready = true;
+			else
+				pr_debug("ipv4 rx tcp chechsum fail\n");
+		} else if (iph->protocol == IPPROTO_UDP) {
+			if (!udp_v4_check(real_len - ip_hdrlen(skb),
+					  iph->saddr, iph->daddr,
+					  skb->csum))
+				csum_ready = true;
+			else
+				pr_debug("ipv4 rx udp chechsum fail\n");
+		}
+		break;
+	case ETH_P_IPV6:
+		ipv6h = ipv6_hdr(skb);
+		if (ipv6_ext_hdr(ipv6h->nexthdr)) {
+			skb->ip_summed = CHECKSUM_NONE;
+			return;
+		}
+
+		if (ipv6h->nexthdr == NEXTHDR_TCP) {
+			if (!tcp_v6_check(htons(ipv6h->payload_len),
+					  &ipv6h->saddr, &ipv6h->daddr,
+					  skb->csum))
+				csum_ready = true;
+			else
+				pr_debug("ipv6 rx tcp chechsum fail\n");
+		} else if (ipv6h->nexthdr == NEXTHDR_UDP) {
+			if (!udp_v6_check(htons(ipv6h->payload_len),
+					  &ipv6h->saddr, &ipv6h->daddr,
+					  skb->csum))
+				csum_ready = true;
+			else
+				pr_debug("ipv6 rx tcp chechsum fail\n");
+		}
+		break;
+	}
+
+	if (csum_ready)
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+	else
+		skb->ip_summed = CHECKSUM_NONE;
+}
+
 static void sipa_eth_prepare_skb(struct SIPA_ETH *sipa_eth, struct sk_buff *skb)
 {
 	struct iphdr *iph;
+	struct ipv6hdr *ipv6h;
 	struct ethhdr *peth;
 	struct net_device *dev;
 	struct sipa_eth_init_data *pdata = sipa_eth->pdata;
+	unsigned int real_len = 0;
+	unsigned int payload_len;
+	bool ip_arp = true;
+	bool v4v6 = false;
 
 	dev = sipa_eth->netdev;
 
-	/* eth is rawip */
+	if (!strncmp(dev->name, SIPA_ETH_VPCIE_PREF, strlen(SIPA_ETH_VPCIE_PREF))) {
+		skb->protocol = eth_type_trans(skb, dev);
+		skb_reset_network_header(skb);
+
+		/* It is a workaround for asic design defect,
+		 * the skb length is fixed to 1600 bytes received from IPA,
+		 * so we have to figure out the real len for each pkt.
+		 * Currently we support v4,v6,arp protocols only.
+		 * Vpcie0 has type APHDR_ETHER, so we need examine arp.
+		 */
+		switch (ntohs(skb->protocol)) {
+		case ETH_P_IP:
+			iph = ip_hdr(skb);
+			real_len = ntohs(iph->tot_len);
+			break;
+		case ETH_P_IPV6:
+			ipv6h = ipv6_hdr(skb);
+			payload_len = ntohs(ipv6h->payload_len);
+			real_len = payload_len + sizeof(struct ipv6hdr);
+			break;
+		case ETH_P_ARP:
+			real_len = arp_hdr_len(dev);
+			break;
+		default:
+			ip_arp = false;
+			pr_info("skb %p, vpcie just support v4/v6/arp\n", skb);
+			break;
+		}
+
+		if (ip_arp)
+			skb_trim(skb, real_len);
+
+		goto out;
+	}
 	/*
+	 * sipa_eth is rawip
 	 * The purpose of adding a fake mac header is
 	 * to prevent a "out-of order" issue
 	 * when doing napi_gro_receive.
@@ -102,16 +221,31 @@ static void sipa_eth_prepare_skb(struct SIPA_ETH *sipa_eth, struct sk_buff *skb)
 
 	skb_set_network_header(skb, ETH_HLEN);
 	iph = ip_hdr(skb);
-	if (iph->version == 4)
+	if (iph->version == 4) {
 		skb->protocol = htons(ETH_P_IP);
-	else
-		skb->protocol = htons(ETH_P_IPV6);
+		real_len = ntohs(iph->tot_len);
+		v4v6 = true;
+	} else {
+		ipv6h = ipv6_hdr(skb);
+		if (ipv6h->version == 6) {
+			skb->protocol = htons(ETH_P_IPV6);
+			payload_len = ntohs(ipv6h->payload_len);
+			real_len = payload_len + sizeof(struct ipv6hdr);
+			v4v6 = true;
+		} else {
+			pr_warn("skb %p is neither v4 nor v6\n", skb);
+		}
+	}
+	sipa_eth_rx_csum(skb, real_len);
 
 	peth->h_proto = skb->protocol;
 	skb_pull_inline(skb, ETH_HLEN);
 
-	/* TODO chechsum ... */
-	skb->ip_summed = CHECKSUM_NONE;
+	/* resize the skb->len to a real one */
+	if (v4v6)
+		skb_trim(skb, real_len);
+
+out:
 	skb->dev = dev;
 }
 
@@ -131,7 +265,7 @@ static int sipa_eth_rx(struct SIPA_ETH *sipa_eth, int budget)
 	}
 
 	dev = sipa_eth->netdev;
-
+	atomic_set(&sipa_eth->rx_evt, 0);
 	while (skb_cnt < budget) {
 		ret = sipa_nic_rx(sipa_eth->nic_id, &skb);
 
@@ -143,7 +277,7 @@ static int sipa_eth_rx(struct SIPA_ETH *sipa_eth, int budget)
 				dt_stats->rx_fail++;
 				break;
 			case -ENODATA:
-				pr_debug("no more skb to recv");
+				atomic_set(&sipa_eth->rx_busy, 0);
 				break;
 			}
 			break;
@@ -174,9 +308,7 @@ static int sipa_eth_rx(struct SIPA_ETH *sipa_eth, int budget)
 static int sipa_eth_rx_poll_handler(struct napi_struct *napi, int budget)
 {
 	struct SIPA_ETH *sipa_eth = container_of(napi, struct SIPA_ETH, napi);
-	int pkts;
-
-	pkts = sipa_eth_rx(sipa_eth, budget);
+	int tmp = 0, pkts;
 
 	/* If the number of pkt is more than weight(64),
 	 * we cannot read them all with a single poll.
@@ -185,11 +317,59 @@ static int sipa_eth_rx_poll_handler(struct napi_struct *napi, int budget)
 	 * __raise_softirq_irqoff.(See napi_poll for details)
 	 * So do not do napi_complete in that case.
 	 */
-	if (pkts < budget) {
+READ_AGAIN:
+	/* For example:
+	 * pkts = 60, tmp = 60, budget = 4
+	 * if rx_evt is true, we goto READ_AGAIN,
+	 * pkts = 4, tmp = 64, budget = 0,
+	 * then we goto out, return 64 to napi,
+	 * In that case, we force napi to do polling again.
+	 */
+	pkts = sipa_eth_rx(sipa_eth, budget);
+	tmp += pkts;
+	budget -= pkts;
+	/*
+	 * If budget is 0 here, means we has not finished reading yet,
+	 * so we should return a weight-number(64) to napi to ask it
+	 * do another polling.
+	 */
+	if (!budget)
+		goto out;
+
+	/* Due to a cuncurrency issue, we have to do napi_complete
+	 * cautiously. If a socket is in the process of napi polling,
+	 * a SIPA_RECEIVE is arriving to trigger another socket to do receiving,
+	 * we must record it because it will be blocked by rx_busy
+	 * at the first beginning.
+	 * Since this SIPA_RECEIVE notification is a one-shot behaviour
+	 * in sipa_nic. if we chose to ignore this event, we may lose
+	 * the chance to receive forever.
+	 */
+	if (atomic_read(&sipa_eth->rx_evt))
+		goto READ_AGAIN;
+
+	/* If the number of budget is more than 0, it means the pkts
+	 * we received is smaller than napi weight(64).
+	 * Then we are okay to do napi_complete.
+	 */
+	if (budget) {
 		napi_complete(napi);
-		atomic_dec(&sipa_eth->rx_busy);
+		/* Test in a lab,  ten threads of TCP streams,
+		 * TPUT reaches to 1Gbps, another edge case occurs,
+		 * rx_busy might be 0, and rx_evt might be 1,
+		 * after we do napi_complete.
+		 * So do rx_handler manually to prevent
+		 * sipa_eth from stopping receiving pkts.
+		 */
+		if (atomic_read(&sipa_eth->rx_evt) || atomic_read(&sipa_eth->rx_busy)) {
+			pr_debug("rx evt recv after napi complete");
+			atomic_set(&sipa_eth->rx_evt, 0);
+			napi_schedule(&sipa_eth->napi);
+		}
 	}
-	return pkts;
+
+out:
+	return tmp;
 }
 
 static void sipa_eth_rx_handler (void *priv)
@@ -202,6 +382,7 @@ static void sipa_eth_rx_handler (void *priv)
 	}
 
 	if (!atomic_cmpxchg(&sipa_eth->rx_busy, 0, 1)) {
+		atomic_set(&sipa_eth->rx_evt, 0);
 		napi_schedule(&sipa_eth->napi);
 		/* Trigger a NET_RX_SOFTIRQ softirq directly,
 		 * or there will be a delay
@@ -218,23 +399,30 @@ static void sipa_eth_flowctrl_handler(void *priv, int flowctrl)
 	if (flowctrl) {
 		netif_stop_queue(dev);
 	} else if (netif_queue_stopped(dev)) {
+		spin_lock_irqsave(&queue_lock, queue_lock_flags);
 		netif_wake_queue(dev);
+		spin_unlock_irqrestore(&queue_lock, queue_lock_flags);
+		pr_info("wakeup queue on dev %s\n", dev->name);
 	}
 }
 
 static void sipa_eth_notify_cb(void *priv, enum sipa_evt_type evt,
 			       unsigned long data)
 {
+	struct SIPA_ETH *sipa_eth = (struct SIPA_ETH *)priv;
+
 	switch (evt) {
 	case SIPA_RECEIVE:
+		pr_debug("dev %s recv SIPA_RECEIVE\n", sipa_eth->netdev->name);
+		atomic_set(&sipa_eth->rx_evt, 1);
 		sipa_eth_rx_handler(priv);
 		break;
 	case SIPA_LEAVE_FLOWCTRL:
-		pr_info("SIPA LEAVE FLOWCTRL\n");
+		pr_info("dev %s SIPA LEAVE FLOWCTRL\n", sipa_eth->netdev->name);
 		sipa_eth_flowctrl_handler(priv, 0);
 		break;
 	case SIPA_ENTER_FLOWCTRL:
-		pr_info("SIPA ENTER FLOWCTRL\n");
+		pr_info("dev %s SIPA ENTER FLOWCTRL\n", sipa_eth->netdev->name);
 		sipa_eth_flowctrl_handler(priv, 1);
 		break;
 	default:
@@ -249,6 +437,7 @@ static int sipa_eth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct sipa_eth_dtrans_stats *dt_stats;
 	int ret = 0;
 	int netid;
+	struct ethhdr *peth;
 
 	dt_stats = &sipa_eth->dt_stats;
 	if (sipa_eth->state != DEV_ON) {
@@ -260,20 +449,43 @@ static int sipa_eth_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	netid = pdata->netid;
+	peth = eth_hdr(skb);
 	/* eth is rawip, so pull 14 bytes */
 	if (!pdata->mac_h)
 		skb_pull_inline(skb, ETH_HLEN);
 
+	/* calculate uplink ipv6 pkt with extension header */
+	if (ntohs(peth->h_proto) == ETH_P_IPV6) {
+		struct ipv6hdr *ipv6h = ipv6_hdr(skb);
+
+		if (ipv6_ext_hdr(ipv6h->nexthdr)) {
+			if (skb->ip_summed == CHECKSUM_PARTIAL)
+				skb_checksum_help(skb);
+		}
+	}
+
 	ret = sipa_nic_tx(sipa_eth->nic_id, pdata->term_type, netid, skb);
 	if (unlikely(ret != 0)) {
-		pr_err("fail to send skb, ret %d\n", ret);
 		if (ret == -EAGAIN || ret == -EINPROGRESS) {
+			/*
+			 * resume skb, otherwise
+			 * we may pull this skb ETH_HLEN-bytes twice
+			 */
+			if (!pdata->mac_h)
+				skb_push(skb, ETH_HLEN);
 			dt_stats->tx_fail++;
 			sipa_eth->stats.tx_errors++;
-			netif_stop_queue(dev);
+			spin_lock_irqsave(&queue_lock, queue_lock_flags);
+			if (sipa_nic_check_flow_ctrl(sipa_eth->nic_id)) {
+				netif_stop_queue(dev);
+				pr_info("stop queue on dev %s\n", dev->name);
+			}
+			spin_unlock_irqrestore(&queue_lock, queue_lock_flags);
 			sipa_nic_trigger_flow_ctrl_work(sipa_eth->nic_id, ret);
 			return NETDEV_TX_BUSY;
 		}
+		pr_err("fail to send skb, dev 0x%p eth 0x%p nic_id %d, ret %d\n",
+		       dev, sipa_eth, sipa_eth->nic_id, ret);
 		goto err;
 	}
 
@@ -297,8 +509,9 @@ static int sipa_eth_open(struct net_device *dev)
 	struct sipa_eth_init_data *pdata = sipa_eth->pdata;
 	int ret = 0;
 
-	pr_info("open %s netid %d term_type %d mac_h %d\n",
-		dev->name, pdata->netid, pdata->term_type, pdata->mac_h);
+	pr_info("dev 0x%p eth 0x%p open %s netid %d term %d mac_h %d\n",
+		dev, sipa_eth, dev->name, pdata->netid, pdata->term_type,
+		pdata->mac_h);
 	ret = sipa_nic_open(
 		pdata->term_type,
 		pdata->netid,
@@ -379,6 +592,10 @@ static int sipa_eth_parse_dt(
 		snprintf(pdata->name, IFNAMSIZ, "%s%d",
 			 SIPA_ETH_IFACE_PREF, id);
 		break;
+	case 8 ... 11:
+		snprintf(pdata->name, IFNAMSIZ, "%s%d",
+			 SIPA_ETH_VPCIE_PREF, id - SIPA_ETH_VPCIE_IDX);
+		break;
 	default:
 		pr_err("wrong alias id from dts, id %d\n", id);
 		return -EINVAL;
@@ -415,7 +632,12 @@ static void s_setup(struct net_device *dev)
 	 * avoid mdns to be send
 	 * also disable arp
 	 */
-	dev->flags &= ~(IFF_BROADCAST | IFF_MULTICAST | IFF_NOARP);
+	if (!strncmp(dev->name,
+		     SIPA_ETH_IFACE_PREF,
+		     strlen(SIPA_ETH_IFACE_PREF))) {
+		dev->flags |= IFF_NOARP;
+		dev->flags &= ~(IFF_BROADCAST | IFF_MULTICAST);
+	}
 }
 
 static int sipa_eth_probe(struct platform_device *pdev)
@@ -453,13 +675,17 @@ static int sipa_eth_probe(struct platform_device *pdev)
 	 * this will casue ipv6 fail in some test environment.
 	 * So set the sipa_eth net_device's type to ARPHRD_RAWIP here.
 	 */
-	netdev->type = ARPHRD_RAWIP;
+	if (!strncmp(netdev->name, SIPA_ETH_IFACE_PREF, strlen(SIPA_ETH_IFACE_PREF)))
+		netdev->type = ARPHRD_RAWIP;
+	else
+		netdev->type = ARPHRD_ETHER;
 
 	sipa_eth = netdev_priv(netdev);
 	sipa_eth_dt_stats_init(&sipa_eth->dt_stats);
 	sipa_eth->netdev = netdev;
 	sipa_eth->pdata = pdata;
 	atomic_set(&sipa_eth->rx_busy, 0);
+	atomic_set(&sipa_eth->rx_evt, 0);
 	netdev->netdev_ops = &sipa_eth_ops;
 	netdev->watchdog_timeo = 1 * HZ;
 	netdev->irq = 0;
@@ -471,6 +697,9 @@ static int sipa_eth_probe(struct platform_device *pdev)
 		       &sipa_eth->napi,
 		       sipa_eth_rx_poll_handler,
 		       SIPA_ETH_NAPI_WEIGHT);
+	netdev->hw_features |= NETIF_F_RXCSUM | NETIF_F_IP_CSUM |
+		NETIF_F_IPV6_CSUM;
+	netdev->features = netdev->hw_features;
 
 	/* Register new Ethernet interface */
 	ret = register_netdev(netdev);
@@ -542,6 +771,8 @@ static int sipa_eth_debug_show(struct seq_file *m, void *v)
 		   stats->rx_fail);
 
 	seq_printf(m, "rx_busy=%d\n", atomic_read(&sipa_eth->rx_busy));
+	seq_printf(m, "rx_evt=%d\n", atomic_read(&sipa_eth->rx_evt));
+
 	seq_puts(m, "\nTX statistics:\n");
 	seq_printf(m, "tx_sum=%u, tx_cnt=%u\n",
 		   stats->tx_sum,
@@ -549,6 +780,8 @@ static int sipa_eth_debug_show(struct seq_file *m, void *v)
 	seq_printf(m, "tx_fail=%u\n",
 		   stats->tx_fail);
 
+	seq_printf(m, "flowctl=%s\n",
+		   netif_queue_stopped(sipa_eth->netdev) ? "true" : "false");
 	seq_puts(m, "*************************************************\n");
 
 	return 0;
@@ -586,6 +819,7 @@ DEFINE_SIMPLE_ATTRIBUTE(fops_gro_enable,
 static int sipa_eth_debugfs_mknod(void *root, void *data)
 {
 	struct SIPA_ETH *sipa_eth = (struct SIPA_ETH *)data;
+	struct dentry *subroot;
 
 	if (!sipa_eth)
 		return -ENODEV;
@@ -593,9 +827,13 @@ static int sipa_eth_debugfs_mknod(void *root, void *data)
 	if (!root)
 		return -ENXIO;
 
-	debugfs_create_file(SIPA_ETH_IFACE_PREF,
+	subroot = debugfs_create_dir(sipa_eth->netdev->name, (struct dentry *)root);
+	if (!subroot)
+		return -ENOMEM;
+
+	debugfs_create_file("stats",
 			    0444,
-			    (struct dentry *)root,
+			    subroot,
 			    data,
 			    &sipa_eth_debug_fops);
 
@@ -618,6 +856,7 @@ static void __init sipa_eth_debugfs_init(void)
 static int __init sipa_eth_init(void)
 {
 	sipa_eth_debugfs_init();
+	spin_lock_init(&queue_lock);
 	return platform_driver_register(&sipa_eth_driver);
 }
 

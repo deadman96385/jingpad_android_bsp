@@ -866,9 +866,10 @@ struct fdt_scan_status {
 
 const char *of_flat_dt_get_cpuinfo_hw(void)
 {
-	unsigned long dt_root = of_get_flat_dt_root();
+	//unsigned long dt_root = of_get_flat_dt_root();
 
-	return of_get_flat_dt_prop(dt_root, "cpuinfo_hardware", NULL);
+	//return of_get_flat_dt_prop(dt_root, "cpuinfo_hardware", NULL);
+	return "T7510";
 }
 
 const char * __init of_flat_dt_get_machine_name(void)

@@ -21,6 +21,9 @@
 
 #include "sprd-asoc-card-utils.h"
 #include "sprd-asoc-common.h"
+#ifdef CONFIG_SND_SOC_OCP96011
+#include "codec/sprd/ocp96011/OCP96011-i2c.h"
+#endif
 
 struct sprd_asoc_ext_hook_map {
 	const char *name;
@@ -122,6 +125,96 @@ static int ext_debug_sysfs_init(void)
 	return ret;
 }
 
+/* audio_sense begin */
+extern int sprd_headset_get_state(void);
+static int audio_sense = 0; 
+static int headset_state;                 	// 0:music; 1:voice
+//static int hook_state[BOARD_FUNC_MAX] = {0};   	// record each hook on/off status
+//static int hook_general_spk(int id, int on);
+
+int sprd_audio_sense_put(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol)
+{
+    struct soc_mixer_control *mc =
+        (struct soc_mixer_control *)kcontrol->private_value;
+    int max = mc->max;
+    unsigned int mask = (1 << fls(max)) - 1;
+	//int i = 0;
+    sp_asoc_pr_info("%s put 0x%lx\n",
+        __func__, ucontrol->value.integer.value[0]);
+    audio_sense = (ucontrol->value.integer.value[0] & mask);
+
+    if(headset_state && (audio_sense == 0)){
+	  ocp96011_swap_audio_sense();
+    }
+	 
+
+    return 0;
+}
+
+int sprd_audio_sense_get(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol)
+{
+    sp_asoc_pr_info("%s get %d\n",
+        __func__, audio_sense);
+    return 0;
+}
+/* audio_sense end */
+
+#ifdef CONFIG_SND_SOC_AW87XXX
+enum {
+    AW87XXX_OFF_MODE,
+    AW87XXX_MUSIC_MODE,
+    AW87XXX_VOICE_MODE,
+    AW87XXX_FM_MODE,
+    AW87XXX_RCV_MODE,
+    AW87XXX_MODE_MAX,
+};
+extern int aw87xxx_audio_scenne_load(uint8_t mode, int32_t channel);
+
+static int hook_spk_aw87xx(int id, int on)
+{
+     printk("%s id: %d, on: %d\n",
+           __func__, id, on);
+     headset_state = sprd_headset_get_state();
+
+     if(on)
+     {
+	 if(headset_state && audio_sense){
+	     	ocp96011_switch_to_usb();
+	 }
+         aw87xxx_audio_scenne_load(AW87XXX_MUSIC_MODE,0);
+         aw87xxx_audio_scenne_load(AW87XXX_MUSIC_MODE,1);
+     }
+     else                                                                 
+     {
+	 if(headset_state && audio_sense){
+	        ocp96011_swap_audio_sense();
+	 }
+         aw87xxx_audio_scenne_load(AW87XXX_OFF_MODE,0);
+         aw87xxx_audio_scenne_load(AW87XXX_OFF_MODE,1);
+     }
+     return HOOK_OK;
+
+}
+
+#elif defined CONFIG_SND_SOC_AW87XX_IIC_PA 
+
+extern int aw87xx_i2c_pa(bool on_off);
+
+static int hook_spk_aw87xx(int id, int on)
+{
+    pr_info("%s id: %d, on: %d\n", __func__, id, on);
+    aw87xx_i2c_pa(on);
+
+    return HOOK_OK;
+}
+
+#else
+
+
 static void hook_gpio_pulse_control(unsigned int gpio, unsigned int mode)
 {
 	int i = 1;
@@ -176,6 +269,7 @@ static int hook_spk_aw87xx(int id, int on)
 
 	return HOOK_OK;
 }
+#endif
 
 static int hook_rcv_switch_ctrl(int id, int on)
 {
@@ -225,6 +319,19 @@ static int sprd_asoc_card_parse_hook_spk(struct device *dev,
 	unsigned long gpio_flag;
 	unsigned int ext_ctrl_type, share_gpio, hook_sel, priv_data;
 	u32 *buf;
+	
+#ifdef CONFIG_SND_SOC_AW87XX_IIC_PA
+	pr_info("%s hook aw87xx i2c pa\n", __func__);
+	ext_hook->ext_ctrl[EXT_CTRL_SPK] = speaker_hook[EXT_CTRL_SPK].hook;
+	return 0;
+#endif
+	
+#ifdef CONFIG_SND_SOC_AW87XXX 
+    printk("%s hook i2c amp directly\n",
+            __func__);
+    ext_hook->ext_ctrl[EXT_CTRL_SPK] = speaker_hook[EXT_CTRL_SPK].hook;
+    return 0;                                                                    
+#endif
 
 	elem_cnt = of_property_count_u32_elems(np, prop_pa_info);
 	if (elem_cnt <= 0) {

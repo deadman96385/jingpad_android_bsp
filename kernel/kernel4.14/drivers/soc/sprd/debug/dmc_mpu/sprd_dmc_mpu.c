@@ -130,6 +130,8 @@
 
 #define SPRD_MPU_MON_ADDR(v)		((v) >> 6)
 #define SPRD_MPU_BASE_OFFSET		0X20000
+#define SPRD_MPU_DUMP_ADDR(v) \
+		((((v) & GENMASK(31, 8)) >> 1) | ((v) & GENMASK(6, 0)))
 
 struct sprd_dmpu_base {
 	void __iomem *base;
@@ -252,8 +254,10 @@ static void sprd_dmc_mpu_channel_dump_cfg(struct sprd_dmpu_core *core,
 {
 	struct sprd_dmpu_device *sprd_mpu = to_sprd_dmpu_device(core);
 	struct sprd_dmpu_info *mpu_info = core->mpu_info;
+	u32 dump_addr;
 
-	writel_relaxed(mpu_info[pub].dump_paddr - core->ddr_addr_offset,
+	dump_addr = mpu_info[pub].dump_paddr - core->ddr_addr_offset;
+	writel_relaxed(SPRD_MPU_DUMP_ADDR(dump_addr),
 		       sprd_mpu->addr[pub].base + SPRD_DMC_MPU_DUMP_ADDR);
 }
 

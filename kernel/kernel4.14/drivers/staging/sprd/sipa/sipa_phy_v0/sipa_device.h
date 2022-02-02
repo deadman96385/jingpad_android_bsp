@@ -58,7 +58,7 @@ ipa_get_pkt_from_rx_fifo(struct sipa_common_fifo_cfg_tag *fifo_cfg,
 	return num;
 }
 
-static inline u32
+static inline int
 ipa_put_pkt_to_rx_fifo(struct sipa_common_fifo_cfg_tag *fifo_cfg,
 		       u32 force_intr,
 		       struct sipa_node_description_tag *fill_node,
@@ -69,14 +69,14 @@ ipa_put_pkt_to_rx_fifo(struct sipa_common_fifo_cfg_tag *fifo_cfg,
 
 	if (fill_node == NULL) {
 		pr_err("fill node is NULL\n");
-		return FALSE;
+		return -EINVAL;
 	}
 
 	node = (struct sipa_node_description_tag *)
 		   fifo_cfg->rx_fifo.virtual_addr;
 
 	if (ipa_phy_get_rx_fifo_full_status(fifo_cfg->fifo_reg_base))
-		return FALSE;
+		return -ENOSPC;
 
 	left_cnt = ipa_phy_get_rx_fifo_total_depth(fifo_cfg->fifo_reg_base) -
 		ipa_phy_get_rx_fifo_filled_depth(fifo_cfg->fifo_reg_base);

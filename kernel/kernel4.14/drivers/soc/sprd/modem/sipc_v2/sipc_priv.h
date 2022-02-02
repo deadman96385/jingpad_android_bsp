@@ -16,6 +16,7 @@
 #include <linux/ktime.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
+#include <linux/soc/sprd/sprd_mpm.h>
 
 #ifdef CONFIG_SPRD_MAILBOX
 #include <linux/sprd_mailbox.h>
@@ -29,6 +30,10 @@
 #include <linux/pcie-epf-sprd.h>
 #endif
 
+#ifdef CONFIG_PCIE_SPRD
+#include "../include/sprd_pcie_resource.h"
+#endif
+
 enum {
 	SIPC_BASE_MBOX = 0,
 	SIPC_BASE_PCIE,
@@ -36,21 +41,22 @@ enum {
 	SIPC_BASE_NR
 };
 
-enum {
+enum smem_type {
 	SMEM_LOCAL = 0,
 	SMEM_PCIE
 };
 
 extern struct smsg_ipc *smsg_ipcs[];
-
 #define SMSG_CACHE_NR		256
 
 struct smsg_channel {
 	/* wait queue for recv-buffer */
 	wait_queue_head_t	rxwait;
 	struct mutex		rxlock;
-	struct wakeup_source	sipc_wake_lock;
-	char			wake_lock_name[16];
+	struct sprd_pms	*tx_pms;
+	struct sprd_pms	*rx_pms;
+	char		tx_name[16];
+	char		rx_name[16];
 
 	/* cached msgs for recv */
 	uintptr_t		wrptr[1];
@@ -61,23 +67,27 @@ struct smsg_channel {
 /* smsg ring-buffer between AP/CP ipc */
 struct smsg_ipc {
 	const char	*name;
+	struct sprd_pms	*sipc_pms;
+
 	u8	dst;
 	u8	client;	/* sipc is  client mode */
 	/* target core_id over mailbox */
 	u8	core_id;
 	u8	core_sensor_id;
 	u32	type; /* sipc type, mbox, ipi, pcie */
-	u32	smem_inited;
+
+#ifdef CONFIG_SPRD_PCIE_DOORBELL_WORKAROUND
+	void __iomem	*write_addr;
+#endif
+
 #ifdef CONFIG_SPRD_PCIE_EP_DEVICE
 	u32	ep_dev;
+	struct platform_device	*pcie_dev;
 #endif
 #ifdef CONFIG_PCIE_EPF_SPRD
 	u32	ep_fun;
 #endif
-	u32	suspend;
-	wait_queue_head_t	suspend_wait;
-	/* lock for suspend-list */
-	spinlock_t		suspend_pinlock;
+	u32	latency;
 
 	/* send-buffer info */
 	uintptr_t	txbuf_addr;
@@ -102,12 +112,11 @@ struct smsg_ipc {
 	void	*smem_vbase;
 	u32	smem_base;
 	u32	smem_size;
-	u32	smem_type;
+	enum smem_type	smem_type;
 	u32	dst_smem_base;
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
 	u32	high_offset;
-	u32	dst_high_offset;
-
-	struct task_struct	*thread;
+#endif
 	/* lock for send-buffer */
 	spinlock_t		txpinlock;
 	/* all fixed channels receivers */
@@ -151,4 +160,24 @@ void sipc_debug_putline(struct seq_file *m, char c, int n);
 #define MBOX_INVALID_CORE  0xff
 #endif
 
+/* sipc_smem_request_resource
+ * local smem no need request resource, just return 0.
+ */
+static inline int sipc_smem_request_resource(struct sprd_pms *pms,
+					     u8 dst, int timeout)
+{
+	if (smsg_ipcs[dst]->smem_type == SMEM_LOCAL)
+		return 0;
+
+	return sprd_pms_request_resource(pms, timeout);
+}
+
+/* sipc_smem_release_resource
+ * local smem no need release resource, do nothing.
+ */
+static inline void sipc_smem_release_resource(struct sprd_pms *pms, u8 dst)
+{
+	if (smsg_ipcs[dst]->smem_type != SMEM_LOCAL)
+		sprd_pms_release_resource(pms);
+}
 #endif

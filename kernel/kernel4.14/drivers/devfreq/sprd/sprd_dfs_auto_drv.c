@@ -61,6 +61,7 @@ enum dfs_master_cmd {
 	DFS_CMD_PARA_END	= 0x07FF,
 	DFS_CMD_SET_AXI_WLTC    = 0x0810,
 	DFS_CMD_SET_AXI_RLTC    = 0x0820,
+	DFS_CMD_VOL_VOTE	= 0x0900,
 	DFS_CMD_DEBUG		= 0x0FFF
 };
 
@@ -636,6 +637,20 @@ int set_underflow(unsigned int value, unsigned int sel)
 	mutex_unlock(&g_dfs_data->sync_mutex);
 	return err;
 }
+
+int dfs_vol_vote(unsigned int value)
+{
+	int err;
+	unsigned int data;
+
+	if (g_dfs_data == NULL)
+		return -ENOENT;
+	mutex_lock(&g_dfs_data->sync_mutex);
+	err = dfs_msg(&data, value, DFS_CMD_VOL_VOTE, 500);
+	mutex_unlock(&g_dfs_data->sync_mutex);
+	return err;
+}
+EXPORT_SYMBOL(dfs_vol_vote);
 
 static int dfs_freq_target(struct device *dev, unsigned long *freq,
 				u32 flags)

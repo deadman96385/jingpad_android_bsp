@@ -24,7 +24,9 @@
 #define SIPA_RECV_EVT (SIPA_HAL_INTR_BIT | \
 			SIPA_HAL_TX_FIFO_THRESHOLD_SW | SIPA_HAL_DELAY_TIMER)
 
-#define SIPA_RECV_WARN_EVT (SIPA_HAL_TXFIFO_FULL_INT | SIPA_HAL_TXFIFO_OVERFLOW)
+#define SIPA_RECV_WARN_EVT (SIPA_HAL_TXFIFO_FULL_INT | \
+			    SIPA_HAL_TXFIFO_OVERFLOW | \
+			    SIPA_HAL_ERRORCODE_IN_TX_FIFO)
 
 #define SIPA_WWAN_CONS_TIMER 100
 
@@ -110,10 +112,18 @@ struct ipa_register_map {
 	u32 size;
 };
 
+struct sipa_pcie_mem_intr_cfg {
+	bool eb;
+	u64 pcie_mem_intr_reg[4];
+	u32 pcie_mem_intr_pattern[4];
+};
+
 struct sipa_hw_data {
 	const u32 ahb_regnum;
 	const struct ipa_register_map *ahb_reg;
+	const struct sipa_pcie_mem_intr_cfg *pcie_cfg;
 	const bool standalone_subsys;
+	const u64 dma_mask;
 };
 
 struct sipa_plat_drv_cfg {
@@ -146,6 +156,7 @@ struct sipa_plat_drv_cfg {
 	int is_bypass;
 	bool tft_mode;
 	bool wiap_ul_dma;
+	bool pcie_dl_dma;
 	bool need_through_pcie;
 
 	u32 fifo_iram_size;
@@ -156,11 +167,11 @@ struct sipa_plat_drv_cfg {
 	phys_addr_t iram_phy;
 	resource_size_t iram_size;
 
+	const struct sipa_hw_data *hw_data;
 	u32 suspend_cnt;
 	u32 resume_cnt;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_root;
-	const void *debugfs_data;
 #endif
 	struct sipa_common_fifo_cfg common_fifo_cfg[SIPA_FIFO_MAX];
 };
@@ -183,6 +194,7 @@ struct sipa_endpoint {
 	void *send_priv; /* private data for sipa_notify_cb */
 	void *recv_priv;
 
+	bool inited;
 	bool connected;
 	bool suspended;
 };
@@ -231,6 +243,9 @@ struct sipa_skb_sender {
 	struct task_struct *free_thread;
 	struct task_struct *send_thread;
 
+	atomic_t check_suspend;
+	atomic_t check_flag;
+
 	bool init_flag;
 	u32 no_mem_cnt;
 	u32 no_free_cnt;
@@ -273,6 +288,7 @@ struct sipa_nic_cons_res {
 	bool release_in_progress;
 	bool need_request;
 	bool request_in_progress;
+	bool rm_flow_ctrl;
 	unsigned long jiffies;
 };
 
@@ -288,6 +304,7 @@ struct sipa_nic {
 	void *cb_priv;
 	atomic_t status;
 	bool flow_ctrl_status;
+	bool continue_notify;
 	struct sipa_nic_cons_res rm_res;
 };
 
@@ -306,7 +323,11 @@ struct sipa_skb_receiver {
 	struct task_struct *fill_thread;
 	struct task_struct *thread;
 
+	atomic_t need_sched;
+	atomic_t check_suspend;
+	atomic_t check_flag;
 	bool init_flag;
+	u32 need_sched_cnt;
 	u32 tx_danger_cnt;
 	u32 rx_danger_cnt;
 };
@@ -324,8 +345,7 @@ struct sipa_control {
 
 	/* ipa low power*/
 	bool power_flag;
-	struct delayed_work suspend_work;
-	struct delayed_work resume_work;
+	struct delayed_work power_work;
 	struct workqueue_struct *power_wq;
 
 	/* IPA NIC interface */
@@ -339,6 +359,7 @@ struct sipa_control {
 	struct completion usb_rm_comp;
 	struct sipa_rm_create_params ipa_rm;
 
+	atomic_t recv_cnt;
 	u32 suspend_stage;
 };
 
@@ -391,4 +412,7 @@ int sipa_receiver_prepare_suspend(struct sipa_skb_receiver *receiver);
 int sipa_receiver_prepare_resume(struct sipa_skb_receiver *receiver);
 
 void sipa_fill_free_node(struct sipa_skb_receiver *receiver, u32 cnt);
+
+void sipa_reinit_recv_array(struct sipa_skb_receiver *receiver);
+
 #endif /* _SIPA_PRIV_H_ */

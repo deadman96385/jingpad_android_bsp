@@ -43,6 +43,20 @@ struct sprd_hsphy {
 #define TUNEHSAMP_2_6MA		(3 << 25)
 #define TFREGRES_TUNE_VALUE	(0x14 << 19)
 
+static int sprd_hsphy_reset_done(struct usb_phy *x)
+{
+	struct sprd_hsphy *phy = container_of(x, struct sprd_hsphy, phy);
+	u32 reg, msk;
+
+	msk = MASK_AON_APB_OTG_PHY_SOFT_RST |
+					MASK_AON_APB_OTG_UTMI_SOFT_RST;
+	regmap_read(phy->hsphy_glb, REG_AON_APB_APB_RST1, &reg);
+	if (reg & msk)
+		return false;
+
+	return true;
+}
+
 static inline void sprd_hsphy_reset_core(struct sprd_hsphy *phy)
 {
 	u32 reg, msk;
@@ -54,7 +68,7 @@ static inline void sprd_hsphy_reset_core(struct sprd_hsphy *phy)
 	regmap_update_bits(phy->hsphy_glb, REG_AON_APB_APB_RST1,
 		msk, reg);
 	/* USB PHY reset need to delay 20ms~30ms */
-	usleep_range(20000, 30000);
+	usleep_range(2000, 3000);
 	regmap_update_bits(phy->hsphy_glb, REG_AON_APB_APB_RST1,
 		msk, 0);
 }
@@ -327,16 +341,15 @@ static int sprd_hsphy_vbus_notify(struct notifier_block *nb,
 		reg = msk = MASK_AON_APB_OTG_VBUS_VALID_PHYREG;
 		regmap_update_bits(phy->hsphy_glb,
 			REG_AON_APB_OTG_PHY_TEST, msk, reg);
-
 		reg = msk = MASK_ANLG_PHY_G2_ANALOG_USB20_USB20_VBUSVLDEXT;
 		regmap_update_bits(phy->ana_g2,
 			REG_ANLG_PHY_G2_ANALOG_USB20_USB20_UTMI_CTL1, msk, reg);
 		usb_phy_set_charger_state(usb_phy, USB_CHARGER_PRESENT);
 	} else {
-		/* usb vbus invalid */
+		/* usb vbus invalid*/
 		msk = MASK_AON_APB_OTG_VBUS_VALID_PHYREG;
-		regmap_update_bits(phy->hsphy_glb, REG_AON_APB_OTG_PHY_TEST,
-			msk, 0);
+		regmap_update_bits(phy->hsphy_glb,
+			REG_AON_APB_OTG_PHY_TEST, msk, 0);
 		msk = MASK_ANLG_PHY_G2_ANALOG_USB20_USB20_VBUSVLDEXT;
 		regmap_update_bits(phy->ana_g2,
 			REG_ANLG_PHY_G2_ANALOG_USB20_USB20_UTMI_CTL1, msk, 0);
@@ -449,6 +462,7 @@ static int sprd_hsphy_probe(struct platform_device *pdev)
 	phy->phy.type = USB_PHY_TYPE_USB2;
 	phy->phy.vbus_nb.notifier_call = sprd_hsphy_vbus_notify;
 	phy->phy.charger_detect = sprd_hsphy_charger_detect;
+	phy->phy.reset_done = sprd_hsphy_reset_done;
 	otg->usb_phy = &phy->phy;
 
 	platform_set_drvdata(pdev, phy);
@@ -488,7 +502,7 @@ static const struct of_device_id sprd_hsphy_match[] = {
 	{},
 };
 
-MODULE_DEVICE_TABLE(of, sprd_ssphy_match);
+MODULE_DEVICE_TABLE(of, sprd_hsphy_match);
 
 static struct platform_driver sprd_hsphy_driver = {
 	.probe = sprd_hsphy_probe,

@@ -84,6 +84,7 @@ drm:sprd:gsp:
 input:keyboard:
 leds:trigger:
 leds:sc27xx:
+tcpm:sc27xx_pd:
 input:sprd:
 input:touchscreen:
 iio:sprd:
@@ -101,6 +102,7 @@ asoc:sprd:include:
 asoc:sprd:
 misc:sprd_camera:
 scsi:ufs:sprd:
+scsi:ufs:
 fs:f2fs:
 fs:sdcardfs:
 fs:

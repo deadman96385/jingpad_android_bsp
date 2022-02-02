@@ -29,6 +29,10 @@
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_vma_manager.h>
 
+#ifdef CONFIG_ION_SPRD
+#include <linux/sprd_ion.h>
+#include "../../staging/android/ion/ion.h"
+#endif
 /**
  * DOC: cma helpers
  *
@@ -101,7 +105,12 @@ struct drm_gem_cma_object *drm_gem_cma_create(struct drm_device *drm,
 					      size_t size)
 {
 	struct drm_gem_cma_object *cma_obj;
+#ifdef CONFIG_ION_SPRD
+	struct dma_buf *dmabuf;
+	unsigned long paddr;
+#endif
 	int ret;
+
 
 	size = round_up(size, PAGE_SIZE);
 
@@ -114,8 +123,21 @@ struct drm_gem_cma_object *drm_gem_cma_create(struct drm_device *drm,
 	if (!cma_obj->vaddr) {
 		dev_err(drm->dev, "failed to allocate buffer with size %zu\n",
 			size);
+
+#ifdef CONFIG_ION_SPRD
+		dmabuf = ion_new_alloc(size, ION_HEAP_ID_MASK_FB, 0);
+		if (IS_ERR_OR_NULL(dmabuf)) {
+			DRM_ERROR("ion_new_alloc fbdev buffer fail\n");
+			ret = -ENOMEM;
+			goto error;
+		}
+		sprd_ion_get_phys_addr_by_db(dmabuf, &paddr, &size);
+		cma_obj->paddr = (dma_addr_t)paddr;
+		cma_obj->vaddr = sprd_ion_map_kernel(dmabuf, 0);
+#else
 		ret = -ENOMEM;
 		goto error;
+#endif
 	}
 
 	return cma_obj;

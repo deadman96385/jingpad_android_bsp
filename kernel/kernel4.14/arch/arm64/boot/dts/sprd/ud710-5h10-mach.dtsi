@@ -25,14 +25,14 @@
 
 			android_fst: fstab {
 				compatible = "android,fstab";
-				vendor {
+				fs_vendor: vendor {
 					compatible = "android,vendor";
 					dev = "/dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/vendor";
 					type = "ext4";
 					mnt_flags = "ro,barrier=1";
 					fsmgr_flags = "wait";
 				};
-				product {
+				fs_product: product {
 					compatible = "android,product";
 					dev = "/dev/block/platform/soc/soc:ap-apb/71400000.sdio/by-name/product";
 					type = "ext4";
@@ -272,9 +272,9 @@
 			/* e*10^2   f*10^2     g*10^2  h*10^2*/
 			<  791     (-1867)      1581      (-405)>;
 			sprd,efuse-switch = <0>;
-			sprd,hotplug-period = <0>;
-			sprd,min-cpufreq = <768000>;
-			sprd,min-cpunum = <3>;
+			sprd,hotplug-period = <10>;
+			sprd,min-cpufreq = <614400>;
+			sprd,min-cpunum = <4>;
 			sprd,core-base = <2778>;
 			sprd,cluster-base = <3920>;
 			sprd,dynamic-core =
@@ -319,7 +319,7 @@
 			/* e*10^2   f*10^2     g*10^2  h*10^2*/
 			<  791     (-1867)      1581      (-405)>;
 			sprd,efuse-switch = <0>;
-			sprd,hotplug-period = <0>;
+			sprd,hotplug-period = <10>;
 			sprd,min-cpufreq = <1228800>;
 			sprd,min-cpunum = <0>;
 			sprd,core-base = <9430>;

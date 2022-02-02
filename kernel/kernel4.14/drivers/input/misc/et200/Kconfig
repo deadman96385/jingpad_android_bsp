@@ -1,0 +1,10 @@
+config INPUT_ET200
+        tristate "Chipone Touchscreen test"
+        depends on SPI_MASTER
+        help
+          Say Y here if you have Chipone touch panel.
+
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called focal_spi_ts.

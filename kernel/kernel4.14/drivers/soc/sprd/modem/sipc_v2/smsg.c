@@ -16,21 +16,24 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
-#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/wait.h>
-
 #include <linux/syscore_ops.h>
 #include <linux/sipc.h>
+#include <uapi/linux/sched/types.h>
 
 #ifdef CONFIG_SPRD_MAILBOX
 #include <linux/sprd_mailbox.h>
 #endif
 
 #include "sipc_priv.h"
+
+#ifdef CONFIG_PCIE_SPRD
+#include "../include/sprd_pcie_resource.h"
+#endif
 
 #if defined(CONFIG_DEBUG_FS)
 #include "sipc_debugfs.h"
@@ -47,10 +50,12 @@
 #define SMSG_RXBUF_RDPTR	(SMSG_RINGHDR + 8)
 #define SMSG_RXBUF_WRPTR	(SMSG_RINGHDR + 12)
 
+#define SMSG_RESERVE_BASE	(SMSG_RINGHDR + SZ_1K)
+#define SMSG_PCIE_WRPTR		(SMSG_RESERVE_BASE + 0)
+#define SMSG_PCIE_IRQPTR	(SMSG_RESERVE_BASE + 4)
+
 #define SIPC_READL(addr)      readl((__force void __iomem *)(addr))
 #define SIPC_WRITEL(b, addr)  writel(b, (__force void __iomem *)(addr))
-
-#define HIGH_OFFSET_FLAG (0xFEFE)
 
 static u8 g_wakeup_flag;
 
@@ -87,16 +92,12 @@ void smsg_init_channel2index(void)
 
 static void get_channel_status(u8 dst, char *status, int size)
 {
-	u8 ch_index;
 	int i, len;
 	struct smsg_channel *ch;
 
 	len = strlen(status);
 	for (i = 0;  i < SMSG_VALID_CH_NR && len < size; i++) {
-		ch_index = channel2index[i];
-		if (ch_index == INVALID_CHANEL_INDEX)
-			continue;
-		ch = smsg_ipcs[dst]->channels[ch_index];
+		ch = smsg_ipcs[dst]->channels[i];
 		if (!ch)
 			continue;
 		if (SIPC_READL(ch->rdptr) < SIPC_READL(ch->wrptr))
@@ -147,14 +148,15 @@ static void smsg_die_process(struct smsg_ipc *ipc, struct smsg *msg)
 			sbuf_get_status(ipc->dst,
 					sipc_status,
 					sizeof(sipc_status));
-			panic("cpcrash: %s", sipc_status);
+			panic("cpcrash:dst=%d %s", ipc->dst, sipc_status);
 			while (1)
 				;
 		}
 	}
 }
 
-static void smsg_msg_process(struct smsg_ipc *ipc, struct smsg *msg)
+static void smsg_msg_process(struct smsg_ipc *ipc,
+			     struct smsg *msg, bool wake_lock)
 {
 	struct smsg_channel *ch = NULL;
 	u32 wr;
@@ -173,17 +175,8 @@ static void smsg_msg_process(struct smsg_ipc *ipc, struct smsg *msg)
 
 	if (msg->type >= SMSG_TYPE_NR) {
 		/* invalid msg */
-		pr_info("invalid smsg: channel=%d, type=%d, flag=0x%04x, value=0x%08x\n",
+		pr_err("invalid smsg: channel=%d, type=%d, flag=0x%04x, value=0x%08x\n",
 			msg->channel, msg->type, msg->flag, msg->value);
-		goto exit_msg_proc;
-	}
-
-	if (msg->type == SMSG_TYPE_HIGH_OFFSET &&
-		msg->flag == HIGH_OFFSET_FLAG) {
-		/* high offset msg */
-		ipc->high_offset = msg->value;
-		pr_info("smsg:  high_offset = 0x%x\n",
-			msg->value);
 		goto exit_msg_proc;
 	}
 
@@ -217,7 +210,9 @@ static void smsg_msg_process(struct smsg_ipc *ipc, struct smsg *msg)
 	}
 
 	wake_up_interruptible_all(&ch->rxwait);
-	__pm_wakeup_event(&ch->sipc_wake_lock, jiffies_to_msecs(HZ / 2));
+
+	if (wake_lock)
+		sprd_pms_request_wakelock_period(ch->rx_pms, 500);
 
 exit_msg_proc:
 	atomic_dec(&ipc->busy[ch_index]);
@@ -230,195 +225,134 @@ static irqreturn_t smsg_mbox_irq_handler(void *ptr, void *private)
 	struct smsg *msg;
 
 	msg = ptr;
-	smsg_msg_process(ipc, msg);
+	smsg_msg_process(ipc, msg, true);
 
 	return IRQ_HANDLED;
 }
-#endif
 
-static irqreturn_t smsg_irq_handler(int irq, void *private)
+static irqreturn_t smsg_mbox_sensor_irq_handler(void *ptr, void *private)
 {
 	struct smsg_ipc *ipc = (struct smsg_ipc *)private;
 	struct smsg *msg;
+
+	msg = ptr;
+	smsg_msg_process(ipc, msg, false);
+
+	return IRQ_HANDLED;
+}
+
+#endif
+
+static int sipc_process_all_msg(struct smsg_ipc *ipc)
+{
+	struct smsg *msg;
 	uintptr_t rxpos;
 
-	pr_debug("%s: %s, irq = %d\n", __func__, ipc->name, irq);
-
-	if (ipc->rxirq_status(ipc->dst))
-		ipc->rxirq_clear(ipc->dst);
-
-	if (!ipc->smem_inited) {
-		pr_info("%s: %s smem have not been inited!",
-			__func__, ipc->name);
-		return IRQ_HANDLED;
-	}
+	/* msg coming, means resource ok, don't wait */
+	sipc_smem_request_resource(ipc->sipc_pms, ipc->dst, 0);
 
 	while (SIPC_READL(ipc->rxbuf_wrptr) != SIPC_READL(ipc->rxbuf_rdptr)) {
 		rxpos = (SIPC_READL(ipc->rxbuf_rdptr) & (ipc->rxbuf_size - 1)) *
 			sizeof(struct smsg) + ipc->rxbuf_addr;
 		msg = (struct smsg *)rxpos;
-		pr_debug("irq get smsg: wrptr=%u, rdptr=%u, rxpos=0x%lx\n",
-			 SIPC_READL(ipc->rxbuf_wrptr),
-			 SIPC_READL(ipc->rxbuf_rdptr),
-			 rxpos);
 
-		smsg_msg_process(ipc, msg);
+		smsg_msg_process(ipc, msg, true);
 		/* update smsg rdptr */
 		SIPC_WRITEL(SIPC_READL(ipc->rxbuf_rdptr) + 1, ipc->rxbuf_rdptr);
 	}
 
-	return IRQ_HANDLED;
-}
-
-static int smsg_send_high_offset_thread(void *data)
-{
-	struct smsg msg;
-	struct smsg_ipc *ipc = (struct smsg_ipc *)data;
-
-	smsg_set(&msg,
-		 SMSG_CH_CTRL,
-		 SMSG_TYPE_HIGH_OFFSET,
-		 HIGH_OFFSET_FLAG,
-		 ipc->dst_high_offset);
-	smsg_send(ipc->dst, &msg, 0);
-
-	pr_info("smsg: send high offset(%d) to client!\n",
-		ipc->dst_high_offset);
-	ipc->thread = NULL;
+	sipc_smem_release_resource(ipc->sipc_pms, ipc->dst);
 
 	return 0;
 }
 
-static void smsg_send_high_offset(struct smsg_ipc *ipc)
-{
-	u8 dst = ipc->dst;
 
-	/* host sipc, if offset > 0, send high offset to dst */
-	if (!ipc->client && ipc->dst_high_offset && !ipc->thread) {
-		ipc->thread = kthread_create(smsg_send_high_offset_thread,
-					     ipc, "sipc-send-%d", dst);
-		if (!IS_ERR(ipc->thread))
-			wake_up_process(ipc->thread);
-	}
+static irqreturn_t smsg_irq_handler(int irq, void *private)
+{
+	struct smsg_ipc *ipc = (struct smsg_ipc *)private;
+
+	if (ipc->rxirq_status(ipc->dst))
+		ipc->rxirq_clear(ipc->dst);
+
+	sipc_process_all_msg(ipc);
+
+	return IRQ_HANDLED;
 }
 
-#if defined(CONFIG_SPRD_PCIE_EP_DEVICE) || defined(CONFIG_PCIE_EPF_SPRD)
-static void smsg_resume_work(struct smsg_ipc *ipc)
+static void smsg_ipc_init_smsg_irq_callback(struct smsg_ipc *ipc)
 {
-	unsigned long flags;
-
-	pr_debug("%s: %s\n", __func__, ipc->name);
-
-	spin_lock_irqsave(&ipc->suspend_pinlock, flags);
-	ipc->suspend = 0;
-	wake_up_interruptible_all(&ipc->suspend_wait);
-	spin_unlock_irqrestore(&ipc->suspend_pinlock, flags);
-	smsg_send_high_offset(ipc);
-}
-
-static void smsg_suspend_work(struct smsg_ipc *ipc)
-{
-	unsigned long flags;
-
-	pr_debug("%s: %s, task %s!\n", __func__, ipc->name, current->comm);
-
-	spin_lock_irqsave(&ipc->suspend_pinlock, flags);
-	ipc->suspend = 1;
-	spin_unlock_irqrestore(&ipc->suspend_pinlock, flags);
-}
-#endif
-
-#ifdef CONFIG_SPRD_PCIE_EP_DEVICE
-static void smsg_pcie_ep_dev_notify(int event, void *data)
-{
-	struct smsg_ipc *ipc = (struct smsg_ipc *)data;
-
-	pr_debug("%s: %s, event = %d\n", __func__, ipc->name, event);
-
-	if (event == PCIE_EP_PROBE)
-		smsg_resume_work(ipc);
-	else if (event == PCIE_EP_REMOVE)
-		smsg_suspend_work(ipc);
-}
-#endif
-
-#ifdef CONFIG_PCIE_EPF_SPRD
-static void smsg_pcie_epf_notify(int event, void *data)
-{
-	struct smsg_ipc *ipc = (struct smsg_ipc *)data;
-
-	pr_debug("%s: %s, event = %d\n", __func__, ipc->name, event);
-
-	if (event == SPRD_EPF_BIND) {
-		smsg_ipc_smem_init(ipc);
-		smsg_resume_work(ipc);
-	} else if (event == SPRD_EPF_UNBIND
-		 || event == SPRD_EPF_REMOVE)
-		smsg_suspend_work(ipc);
-}
-#endif
-
-static void smsg_ipc_init_irq_callback(struct smsg_ipc *ipc)
-{
-	int ret1 = 0, ret2 = 0;
-
 #ifdef CONFIG_SPRD_MAILBOX
 	if (ipc->type == SIPC_BASE_MBOX) {
-		ret1 = mbox_register_irq_handle(ipc->core_id,
+		mbox_register_irq_handle(ipc->core_id,
 			smsg_mbox_irq_handler, ipc);
 
 		if ((ipc->dst == SIPC_ID_PM_SYS) &&
 		    (ipc->core_sensor_id != MBOX_INVALID_CORE))
-			ret2 = mbox_register_irq_handle(ipc->core_sensor_id,
-							smsg_mbox_irq_handler,
-							ipc);
+			mbox_register_irq_handle(ipc->core_sensor_id,
+						 smsg_mbox_sensor_irq_handler,
+						 ipc);
 		return;
 	}
 #endif
 
-	if (ipc->type == SIPC_BASE_PCIE) {
 #ifdef CONFIG_SPRD_PCIE_EP_DEVICE
-		ipc->irq = PCIE_EP_SIPC_IRQ;
-		ret1 = sprd_ep_dev_register_irq_handler(ipc->ep_dev,
-			ipc->irq, smsg_irq_handler, ipc);
-		ret2 = sprd_ep_dev_register_notify(ipc->ep_dev,
-			smsg_pcie_ep_dev_notify, ipc);
+	if (ipc->type == SIPC_BASE_PCIE) {
+		sprd_ep_dev_register_irq_handler(ipc->ep_dev,
+			PCIE_MSI_SIPC_IRQ,
+			smsg_irq_handler, ipc);
+		return;
+	}
 #endif
 
 #ifdef CONFIG_PCIE_EPF_SPRD
-		sprd_pci_epf_set_irq_number(ipc->ep_fun, ipc->irq);
-		ret1 = sprd_pci_epf_register_irq_handler(ipc->ep_fun,
-				   SPRD_EPF_SIPC_IRQ,
-				   smsg_irq_handler, ipc);
-		ret2 = sprd_pci_epf_register_notify(ipc->ep_fun,
-			smsg_pcie_epf_notify, ipc);
+	if (ipc->type == SIPC_BASE_PCIE) {
+		sprd_pci_epf_register_irq_handler(ipc->ep_fun,
+				   PCIE_DBELL_SIPC_IRQ,
+				   smsg_irq_handler,
+				   ipc);
+#ifdef CONFIG_SPRD_PCIE_DOORBELL_WORKAROUND
+		sprd_pci_epf_set_write_addr(ipc->ep_fun, ipc->write_addr);
 #endif
-	} else if (ipc->type == SIPC_BASE_IPI) {
+		sprd_pci_epf_set_irq_addr(ipc->ep_fun,
+					  ipc->smem_vbase + SMSG_PCIE_IRQPTR);
+		return;
+	}
+#endif
+
+	if (ipc->type == SIPC_BASE_IPI) {
+		int ret;
+
 		/* explicitly call irq handler in case of missing irq on boot */
 		smsg_irq_handler(ipc->irq, ipc);
 
 		/* register IPI irq */
-		ret2 = ret1 = request_irq(ipc->irq,
+		ret = request_irq(ipc->irq,
 				   smsg_irq_handler,
 				   IRQF_NO_SUSPEND,
 				   ipc->name,
 				   ipc);
+		if (ret)
+			pr_info("%s: request irq err = %d!\n", ipc->name, ret);
 	}
-	pr_debug("%s:%s ret1=%d, ret2=%d\n", __func__, ipc->name, ret1, ret2);
 }
 
 static int smsg_ipc_smem_init(struct smsg_ipc *ipc)
 {
 	void __iomem *base, *p;
+	phys_addr_t offset = 0;
+	int ret;
 
-	if (ipc->smem_inited)
-		return 0;
+	pr_debug("%s: %s, smem_type = %d!\n",
+		__func__, ipc->name, ipc->smem_type);
 
-	ipc->smem_inited = 1;
-	pr_debug("%s: %s!\n", __func__, ipc->name);
-	smem_init(ipc->smem_base, ipc->smem_size, ipc->dst, ipc->smem_type);
+	ret = smem_init(ipc->smem_base, ipc->smem_size,
+			ipc->dst, ipc->smem_type);
+	if (ret) {
+		pr_err("%s: %s err = %d!\n", __func__, ipc->name, ret);
+		return ret;
+	}
 
-	if (ipc->type == SIPC_BASE_PCIE) {
+	if (ipc->type != SIPC_BASE_MBOX) {
 		ipc->ring_base = smem_alloc(ipc->dst, SZ_4K);
 		ipc->ring_size = SZ_4K;
 		pr_info("%s: ring_base = 0x%x, ring_size = 0x%x\n",
@@ -427,12 +361,19 @@ static int smsg_ipc_smem_init(struct smsg_ipc *ipc)
 				ipc->ring_size);
 	}
 
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+	offset = ipc->high_offset;
+	offset = offset << 32;
+#endif
+
 	if (ipc->ring_base) {
 		base = (void __iomem *)shmem_ram_vmap_nocache(ipc->dst,
-					ipc->ring_base + ipc->high_offset,
+					ipc->ring_base + offset,
 					ipc->ring_size);
 		if (!base) {
 			pr_err("%s: ioremap failed!\n", __func__);
+			smem_free(ipc->dst, ipc->ring_base, SZ_4K);
+			ipc->ring_base = 0;
 			return -ENOMEM;
 		}
 
@@ -492,24 +433,83 @@ static int smsg_ipc_smem_init(struct smsg_ipc *ipc)
 			ipc->rxbuf_wrptr = (uintptr_t)base +
 				SMSG_RXBUF_WRPTR;
 		}
+#ifdef CONFIG_SPRD_PCIE_DOORBELL_WORKAROUND
+		ipc->write_addr = base + SMSG_PCIE_WRPTR;
+#endif
 	}
 
-	smsg_send_high_offset(ipc);
+	/* after smem_init complete, regist msg irq */
+	smsg_ipc_init_smsg_irq_callback(ipc);
 
 	return 0;
+}
+
+#ifdef CONFIG_PCIE_EPF_SPRD
+static void smsg_pcie_first_ready(void *data)
+{
+	struct smsg_ipc *ipc = (struct smsg_ipc *)data;
+
+	if (ipc->smem_type == SMEM_PCIE)
+		smsg_ipc_smem_init(ipc);
+	else
+		pr_err("%s: pcie first ready, smem_type =%d!\n",
+			ipc->name, ipc->smem_type);
+}
+#endif
+
+static void smsg_ipc_mpm_init(struct smsg_ipc *ipc)
+{
+	/* create modem power manger instance for this sipc */
+	sprd_mpm_create(ipc->dst, ipc->name, ipc->latency);
+
+	/* init a power manager source */
+	ipc->sipc_pms = sprd_pms_create(ipc->dst, ipc->name, true);
+	if (!ipc->sipc_pms)
+		pr_warn("create pms %s failed!\n", ipc->name);
+
+	if (ipc->type == SIPC_BASE_PCIE) {
+		/* int mpm resource ops */
+		sprd_mpm_init_resource_ops(ipc->dst,
+			sprd_pcie_wait_resource,
+			sprd_pcie_request_resource,
+			sprd_pcie_release_resource);
+
+#ifdef CONFIG_SPRD_PCIE_EP_DEVICE
+		/* in pcie host side, init pcie host resource */
+		sprd_pcie_resource_host_init(ipc->dst,
+					     ipc->ep_dev, ipc->pcie_dev);
+#endif
+
+#ifdef CONFIG_PCIE_EPF_SPRD
+		/* in pcie ep side, init pcie client resource */
+		sprd_pcie_resource_client_init(ipc->dst, ipc->ep_fun);
+#endif
+	}
 }
 
 void smsg_ipc_create(struct smsg_ipc *ipc)
 {
 	pr_info("%s: %s\n", __func__, ipc->name);
 
-	smsg_ipc_init_irq_callback(ipc);
 	smsg_ipcs[ipc->dst] = ipc;
 
-	if (ipc->smem_type == SMEM_PCIE)
-		pr_info("%s: will init smem until pcie driver probe!",
-			ipc->name);
-	else
+	smsg_ipc_mpm_init(ipc);
+
+
+	if (ipc->type == SIPC_BASE_PCIE) {
+#ifdef CONFIG_PCIE_EPF_SPRD
+		/* set epf door bell irq number */
+		sprd_pci_epf_set_irq_number(ipc->ep_fun, ipc->irq);
+
+		/* register first pcie ready notify */
+		sprd_register_pcie_resource_first_ready(ipc->dst,
+							smsg_pcie_first_ready,
+							ipc);
+#endif
+	}
+
+	/* if SMEM_PCIE, must init after pcie ready */
+	if (ipc->smem_type != SMEM_PCIE)
 		smsg_ipc_smem_init(ipc);
 }
 
@@ -529,21 +529,19 @@ void smsg_ipc_destroy(struct smsg_ipc *ipc)
 #endif
 
 	if (ipc->type == SIPC_BASE_PCIE) {
+#ifdef CONFIG_PCIE_SPRD
 #ifdef CONFIG_SPRD_PCIE_EP_DEVICE
 		sprd_ep_dev_unregister_irq_handler(ipc->ep_dev, ipc->irq);
-		sprd_ep_dev_unregister_notify(ipc->ep_dev);
 #endif
 
 #ifdef CONFIG_PCIE_EPF_SPRD
-		free_irq(ipc->irq, ipc);
-		sprd_pci_epf_unregister_notify(ipc->ep_fun);
+		sprd_pci_epf_unregister_irq_handler(ipc->ep_fun, ipc->irq);
+#endif
+		sprd_pcie_resource_trash(ipc->dst);
 #endif
 	} else {
 		free_irq(ipc->irq, ipc);
 	}
-
-	if (!IS_ERR_OR_NULL(ipc->thread))
-		kthread_stop(ipc->thread);
 
 	smsg_ipcs[ipc->dst] = NULL;
 }
@@ -585,7 +583,7 @@ int smsg_ch_wake_unlock(u8 dst, u8 channel)
 	if (!ch)
 		return -ENODEV;
 
-	__pm_relax(&ch->sipc_wake_lock);
+	sprd_pms_release_wakelock(ch->rx_pms);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(smsg_ch_wake_unlock);
@@ -612,9 +610,15 @@ int smsg_ch_open(u8 dst, u8 channel, int timeout)
 	if (!ch)
 		return -ENOMEM;
 
-	sprintf(ch->wake_lock_name, "smsg-%d-%d", dst, channel);
-	wakeup_source_init(&ch->sipc_wake_lock,
-			   ch->wake_lock_name);
+	sprintf(ch->tx_name, "smsg-%d-%d-tx", dst, channel);
+	ch->tx_pms = sprd_pms_create(dst, ch->tx_name, true);
+	if (!ch->tx_pms)
+		pr_warn("create pms %s failed!\n", ch->tx_name);
+
+	sprintf(ch->rx_name, "smsg-%d-%d-rx", dst, channel);
+	ch->rx_pms = sprd_pms_create(dst, ch->rx_name, true);
+	if (!ch->rx_pms)
+		pr_warn("create pms %s failed!\n", ch->rx_name);
 
 	atomic_set(&ipc->busy[ch_index], 1);
 	init_waitqueue_head(&ch->rxwait);
@@ -636,7 +640,6 @@ int smsg_ch_open(u8 dst, u8 channel, int timeout)
 		while (atomic_read(&ipc->busy[ch_index]))
 			;
 
-		wakeup_source_trash(&ch->sipc_wake_lock);
 		kfree(ch);
 
 		return rval;
@@ -663,7 +666,6 @@ int smsg_ch_open(u8 dst, u8 channel, int timeout)
 			while (atomic_read(&ipc->busy[ch_index]))
 				;
 
-			wakeup_source_trash(&ch->sipc_wake_lock);
 			kfree(ch);
 			return rval;
 		}
@@ -748,29 +750,30 @@ int smsg_senddie(u8 dst)
 #endif
 
 	if (ipc->ring_base) {
-		if ((int)(SIPC_READL(ipc->txbuf_wrptr) -
-			SIPC_READL(ipc->txbuf_rdptr)) >= ipc->txbuf_size) {
-			pr_info("smsg_send: smsg txbuf is full!\n");
+		/* must wait resource before read or write share memory */
+		rval = sprd_pms_request_resource(ipc->sipc_pms, 0);
+		if (rval < 0)
+			return rval;
+
+		if (((int)(SIPC_READL(ipc->txbuf_wrptr) -
+				SIPC_READL(ipc->txbuf_rdptr)) >=
+				ipc->txbuf_size)) {
+			pr_info("%s: smsg txbuf is full!\n", __func__);
 			rval = -EBUSY;
-			goto send_failed;
+		} else {
+			/* calc txpos and write smsg */
+			txpos = (SIPC_READL(ipc->txbuf_wrptr) &
+				(ipc->txbuf_size - 1)) *
+				sizeof(struct smsg) + ipc->txbuf_addr;
+			memcpy((void *)txpos, &msg, sizeof(struct smsg));
+
+			/* update wrptr */
+			SIPC_WRITEL(SIPC_READL(ipc->txbuf_wrptr) + 1,
+				    ipc->txbuf_wrptr);
 		}
-
-		/* calc txpos and write smsg */
-		txpos = (SIPC_READL(ipc->txbuf_wrptr) & (ipc->txbuf_size - 1)) *
-			sizeof(struct smsg) + ipc->txbuf_addr;
-		memcpy((void *)txpos, &msg, sizeof(struct smsg));
-
-		pr_debug("write smsg: wrptr=%u, rdptr=%u, txpos=0x%lx\n",
-			 SIPC_READL(ipc->txbuf_wrptr),
-			 SIPC_READL(ipc->txbuf_rdptr),
-			 txpos);
-
-		/* update wrptr */
-		SIPC_WRITEL(SIPC_READL(ipc->txbuf_wrptr) + 1, ipc->txbuf_wrptr);
+		ipc->txirq_trigger(ipc->dst, *((u64 *)&msg));
+		sprd_pms_release_resource(ipc->sipc_pms);
 	}
-
-	ipc->txirq_trigger(ipc->dst, *((u64 *)&msg));
-send_failed:
 
 	return rval;
 }
@@ -779,6 +782,7 @@ EXPORT_SYMBOL_GPL(smsg_senddie);
 int smsg_send(u8 dst, struct smsg *msg, int timeout)
 {
 	struct smsg_ipc *ipc = smsg_ipcs[dst];
+	struct smsg_channel *ch;
 	uintptr_t txpos;
 	int rval = 0;
 	unsigned long flags;
@@ -805,50 +809,50 @@ int smsg_send(u8 dst, struct smsg *msg, int timeout)
 		return -EINVAL;
 	}
 
-	pr_debug("%s: dst=%d, channel=%d, timeout=%d, suspend=%d\n",
-		 __func__, dst, msg->channel, timeout, ipc->suspend);
+	ch = ipc->channels[ch_index];
 
-	if (ipc->suspend) {
-		rval = wait_event_interruptible(
-				ipc->suspend_wait,
-				!ipc->suspend);
-		if (rval) {
-			pr_info("%s:rval = %d!\n", __func__, rval);
-			return -EINVAL;
-		}
-	}
 	pr_debug("send smsg: channel=%d, type=%d, flag=0x%04x, value=0x%08x\n",
 		 msg->channel, msg->type, msg->flag, msg->value);
 
-	spin_lock_irqsave(&ipc->txpinlock, flags);
+	/*
+	 * Must wait resource before read or write share memory,
+	 * and must wait resource before trigger irq,
+	 * And it must before if (ipc->ring_base),
+	 * because it be inited as the same time as resource ready.
+	 */
+	rval = sprd_pms_request_resource(ch->tx_pms, timeout);
+	if (rval < 0)
+		return rval;
 
 	if (ipc->ring_base) {
+		spin_lock_irqsave(&ipc->txpinlock, flags);
 		if (((int)(SIPC_READL(ipc->txbuf_wrptr) -
 				SIPC_READL(ipc->txbuf_rdptr)) >=
 				ipc->txbuf_size)) {
-			pr_info("%s: smsg txbuf is full!\n", __func__);
+			pr_err("write smsg: txbuf full, wrptr=0x%x, rdptr=0x%x\n",
+				 SIPC_READL(ipc->txbuf_wrptr),
+				 SIPC_READL(ipc->txbuf_rdptr));
 			rval = -EBUSY;
-			goto send_failed;
+		} else {
+			/* calc txpos and write smsg */
+			txpos = (SIPC_READL(ipc->txbuf_wrptr) &
+				 (ipc->txbuf_size - 1)) *
+				sizeof(struct smsg) + ipc->txbuf_addr;
+			memcpy((void *)txpos, msg, sizeof(struct smsg));
+
+			/* update wrptr */
+			SIPC_WRITEL(SIPC_READL(ipc->txbuf_wrptr) + 1,
+				    ipc->txbuf_wrptr);
 		}
-
-		/* calc txpos and write smsg */
-		txpos = (SIPC_READL(ipc->txbuf_wrptr) & (ipc->txbuf_size - 1)) *
-			sizeof(struct smsg) + ipc->txbuf_addr;
-		memcpy((void *)txpos, msg, sizeof(struct smsg));
-
-		pr_debug("write smsg: wrptr=0x%x, rdptr=0x%x, txpos=0x%lx\n",
-			 SIPC_READL(ipc->txbuf_wrptr),
-			 SIPC_READL(ipc->txbuf_rdptr),
-			 txpos);
-
-		/* update wrptr */
-		SIPC_WRITEL(SIPC_READL(ipc->txbuf_wrptr) + 1, ipc->txbuf_wrptr);
+		spin_unlock_irqrestore(&ipc->txpinlock, flags);
+	} else if (ipc->type != SIPC_BASE_MBOX) {
+		pr_err("send smsg:ring_base is NULL");
+		sprd_pms_release_resource(ch->tx_pms);
+		return -EINVAL;
 	}
 
 	ipc->txirq_trigger(ipc->dst, *(u64 *)msg);
-
-send_failed:
-	spin_unlock_irqrestore(&ipc->txpinlock, flags);
+	sprd_pms_release_resource(ch->tx_pms);
 
 	return rval;
 }
@@ -992,7 +996,7 @@ static int smsg_debug_show(struct seq_file *m, void *private)
 	struct smsg_ipc *ipc = NULL;
 	struct smsg_channel *ch;
 
-	int i, j, cnt, ch_index;
+	int i, j, cnt;
 
 	for (i = 0; i < SIPC_ID_NR; i++) {
 		ipc = smsg_ipcs[i];
@@ -1004,6 +1008,14 @@ static int smsg_debug_show(struct seq_file *m, void *private)
 		seq_printf(m, "dst: 0x%0x, irq: 0x%0x\n",
 			   ipc->dst, ipc->irq);
 		if (ipc->ring_base) {
+			/*
+			 * must wait resource before
+			 * read or write share memory.
+			 */
+			if (sipc_smem_request_resource(ipc->sipc_pms,
+						       ipc->dst, 1000) < 0)
+				continue;
+
 			seq_printf(m, "txbufAddr: 0x%p, txbufsize: 0x%x, txbufrdptr: [0x%p]=%d, txbufwrptr: [0x%p]=%d\n",
 				   (void *)ipc->txbuf_addr,
 				   ipc->txbuf_size,
@@ -1018,6 +1030,9 @@ static int smsg_debug_show(struct seq_file *m, void *private)
 				   SIPC_READL(ipc->rxbuf_rdptr),
 				   (void *)ipc->rxbuf_wrptr,
 				   SIPC_READL(ipc->rxbuf_wrptr));
+
+			/* release resource */
+			sipc_smem_release_resource(ipc->sipc_pms, ipc->dst);
 		}
 		sipc_debug_putline(m, '-', 80);
 		seq_puts(m, "1. all channel state list:\n");
@@ -1035,8 +1050,7 @@ static int smsg_debug_show(struct seq_file *m, void *private)
 
 		cnt = 1;
 		for (j = 0;  j < SMSG_VALID_CH_NR; j++) {
-			ch_index = channel2index[i];
-			ch = ipc->channels[ch_index];
+			ch = ipc->channels[j];
 			if (!ch)
 				continue;
 

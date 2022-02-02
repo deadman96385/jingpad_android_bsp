@@ -16,10 +16,23 @@
 
 #include <linux/interrupt.h>
 
+/* host receive msi irq */
 enum {
-	PCIE_EP_SIPC_IRQ = 0,
-	PCIE_EP_OTHER_IRQ,
-	PCIE_EP_MAX_IRQ
+	PCIE_MSI_SIPC_IRQ = 0,
+	PCIE_MSI_REQUEST_RES,
+	PCIE_MSI_EP_READY_FOR_RESCAN,
+	PCIE_MSI_RELEASE_RES,
+	PCIE_MSI_SCANNED_RESPOND,
+	PCIE_MSI_REMOVE_RESPOND,
+	PCIE_MSI_MAX_IRQ
+};
+
+/* host send doorbell irq */
+enum {
+	PCIE_DBELL_SIPC_IRQ = 0,
+	PCIE_DBEL_EP_SCANNED,
+	PCIE_DBEL_EP_REMOVING,
+	PCIE_DBEL_IRQ_MAX
 };
 
 enum {
@@ -30,7 +43,8 @@ enum {
 
 enum {
 	PCIE_EP_PROBE = 0,
-	PCIE_EP_REMOVE
+	PCIE_EP_REMOVE,
+	PCIE_EP_PROBE_BEFORE_SPLIT_BAR
 };
 
 #ifdef CONFIG_SPRD_SIPA
@@ -50,12 +64,25 @@ int sprd_ep_dev_register_irq_handler(int ep,
 				     int irq,
 				     irq_handler_t handler,
 				     void *data);
-int sprd_ep_dev_raise_irq(int ep, int irq);
 int sprd_ep_dev_unregister_irq_handler(int ep, int irq);
+int sprd_ep_dev_register_irq_handler_ex(int ep,
+					int from_irq,
+					int to_irq,
+					irq_handler_t handler,
+					void *data);
+int sprd_ep_dev_unregister_irq_handler_ex(int ep,
+					  int from_irq,
+					  int to_irq);
+
+int sprd_ep_dev_raise_irq(int ep, int irq);
+int sprd_ep_dev_raise_irq_ex(int ep, u32 value);
+int sprd_ep_dev_clear_doolbell_irq(int ep, int irq);
+
 void __iomem *sprd_ep_map_memory(int ep,
-				 phys_addr_t cpu_addr,
+				 phys_addr_t target_addr,
 				 size_t size);
 void sprd_ep_unmap_memory(int ep, const void __iomem *bar_addr);
+phys_addr_t sprd_ep_virtophy(int ep, const void __iomem *vir);
 
 #ifdef CONFIG_SPRD_SIPA
 phys_addr_t sprd_ep_ipa_map(int type, phys_addr_t target_addr, size_t size);

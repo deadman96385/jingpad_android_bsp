@@ -727,7 +727,7 @@ try_again:
 				retries = 0;
 				goto try_again;
 			} else {
-				goto remove;
+				goto err;
 			}
 		}
 #ifdef CONFIG_MMC_EMBEDDED_SDIO

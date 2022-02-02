@@ -19,6 +19,7 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
+#include <linux/file.h>
 #include <linux/usb.h>
 #include <linux/crc32.h>
 #include <linux/signal.h>
@@ -128,6 +129,8 @@
 #define INT_EP_GPIO_2			(2)
 #define INT_EP_GPIO_1			(1)
 #define INT_EP_GPIO_0			(0)
+
+#define LAN78XX_MAC_ADDR_PATH "/mnt/vendor/uethermac.txt"
 
 static const char lan78xx_gstrings[][ETH_GSTRING_LEN] = {
 	"RX FCS Errors",
@@ -1629,6 +1632,54 @@ static int lan78xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
 	return phy_mii_ioctl(netdev->phydev, rq, cmd);
 }
 
+static void lan78xx_str2mac(const char *mac_addr, u8 *mac)
+{
+	unsigned int m[ETH_ALEN];
+
+	if (sscanf(mac_addr, "%02x-%02x-%02x-%02x-%02x-%02x",
+		   &m[0], &m[1], &m[2], &m[3], &m[4], &m[5]) != ETH_ALEN) {
+		pr_err("failed to parse mac address '%s'", mac_addr);
+		memset(m, 0, sizeof(m));
+	}
+	mac[0] = (u8)m[0];
+	mac[1] = (u8)m[1];
+	mac[2] = (u8)m[2];
+	mac[3] = (u8)m[3];
+	mac[4] = (u8)m[4];
+	mac[5] = (u8)m[5];
+}
+
+static int lan78xx_get_mac_from_file(u8 *addr)
+{
+	struct file *fp;
+	u8 buf[64] = { 0 };
+	loff_t pos = 0;
+	ssize_t ret;
+
+	fp = filp_open(LAN78XX_MAC_ADDR_PATH, O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+		pr_err("%s open error\n", LAN78XX_MAC_ADDR_PATH);
+		return PTR_ERR(fp);
+	}
+
+	ret = kernel_read(fp, buf, sizeof(buf), &pos);
+	if (ret < 0) {
+		pr_err("%s read error\n", LAN78XX_MAC_ADDR_PATH);
+		return ret;
+	}
+	fput(fp);
+
+	lan78xx_str2mac(buf, addr);
+	pr_debug("file mac:%x-%x-%x-%x-%x-%x\n",
+		 addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+	if (!is_valid_ether_addr(addr)) {
+		pr_err("%s invalid MAC address (%pM)\n", __func__, addr);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static void lan78xx_init_mac_address(struct lan78xx_net *dev)
 {
 	u32 addr_lo, addr_hi;
@@ -1658,7 +1709,7 @@ static void lan78xx_init_mac_address(struct lan78xx_net *dev)
 			/* eeprom values are valid so use them */
 			netif_dbg(dev, ifup, dev->net,
 				  "MAC address read from EEPROM");
-		} else {
+		} else if (lan78xx_get_mac_from_file(addr)) {
 			/* generate random MAC */
 			random_ether_addr(addr);
 			netif_dbg(dev, ifup, dev->net,

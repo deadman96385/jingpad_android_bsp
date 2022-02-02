@@ -11,9 +11,12 @@
 		sprd,width-mm = <68>;
 		sprd,height-mm = <121>;
 
-		sprd,esd-check-mode = <3>;
+		sprd,esd-check-mode = <0>;
+		sprd,esd-check-enable = <1>;
+		sprd,esd-check-register = <0x0A>;
+		sprd,esd-check-value = <0x1C>;
 
-		sprd,reset-on-sequence = <1 5>, <0 5>, <1 20>;
+		sprd,reset-on-sequence = <1 5>, <0 5>, <1 120>;
 		sprd,reset-off-sequence = <0 5>;
 
 		sprd,use-dcs-write;
@@ -60,12 +63,12 @@
 			39 00 00 04 F1 00 00 00
 			15 00 00 02 35 00
 			05 14 00 01 29
-			05 64 00 01 11
+			05 96 00 01 11
 			];
 
 		sprd,sleep-in-command = [
 			13 0A 00 01 28
-			13 78 00 01 10
+			13 14 00 01 10
 			];
 		sprd,sleep-out-command = [
 			13 78 00 01 11
@@ -77,12 +80,12 @@
 				clock-frequency = <153600000>;
 				hactive = <1080>;
 				vactive = <2160>;
-				hback-porch = <21>;
-				hfront-porch = <52>;
-				vback-porch = <33>;
-				vfront-porch = <3>;
-				hsync-len = <3>;
-				vsync-len = <6>;
+				hback-porch = <20>;
+				hfront-porch = <65>;
+				vback-porch = <28>;
+				vfront-porch = <2>;
+				hsync-len = <2>;
+				vsync-len = <4>;
 			};
 		};
 	};

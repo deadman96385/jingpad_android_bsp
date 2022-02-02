@@ -32,6 +32,7 @@
 #include <linux/wait.h>
 #include <linux/extcon.h>
 #include <linux/regmap.h>
+#include <linux/usb/sprd_usbm.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -56,11 +57,12 @@ struct dwc3_sprd {
 	struct extcon_dev	*id_edev;
 	struct notifier_block	vbus_nb;
 	struct notifier_block	id_nb;
+	struct notifier_block	audio_nb;
 	struct regulator	*vbus;
 
 	bool			hibernate_en;
 	enum usb_dr_mode	dr_mode;
-	enum usb_dr_mode	next_mode;
+	enum usb_dr_mode	wq_mode;
 
 	struct wakeup_source		wake_lock;
 	spinlock_t		lock;
@@ -69,6 +71,7 @@ struct dwc3_sprd {
 	bool			block_active;
 	bool			charging_mode;
 	bool			suspend;
+	bool			is_audio_dev;
 	wait_queue_head_t	wait;
 	struct work_struct	work;
 };
@@ -439,13 +442,13 @@ static int dwc3_sprd_stop(struct dwc3_sprd *sdwc, enum usb_dr_mode mode)
 
 	ret = device_for_each_child(sdwc->dev, NULL, dwc3_sprd_suspend_child);
 	if (ret) {
-		dev_err(sdwc->dev, "Dwc3 core suspend failed!\n");
+		dev_err(sdwc->dev, "[%s]Dwc3 core suspend failed!\n", __func__);
 		return ret;
 	}
 
 	ret = pm_runtime_put_sync(sdwc->dev);
 	if (ret) {
-		dev_err(sdwc->dev, "Dwc3 sprd suspend failed!\n");
+		dev_err(sdwc->dev, "[%s]Dwc3 sprd suspend failed!\n", __func__);
 		return ret;
 	}
 	return 0;
@@ -453,23 +456,29 @@ static int dwc3_sprd_stop(struct dwc3_sprd *sdwc, enum usb_dr_mode mode)
 
 static void dwc3_sprd_hot_plug(struct dwc3_sprd *sdwc)
 {
-	enum usb_dr_mode mode;
+	enum usb_dr_mode current_mode;
+	int current_state;
 	bool charging_only = false;
 	unsigned long flags;
 	int ret;
 
 	spin_lock_irqsave(&sdwc->lock, flags);
-	mode = sdwc->dr_mode;
+	current_mode = sdwc->wq_mode;
+	current_state = sdwc->vbus_active;
+	sdwc->wq_mode = USB_DR_MODE_UNKNOWN;
+	spin_unlock_irqrestore(&sdwc->lock, flags);
 
-	if (sdwc->vbus_active) {
+	if (current_state) {
+		spin_lock_irqsave(&sdwc->lock, flags);
 		if (sdwc->block_active) {
 			dev_err(sdwc->dev, "USB core is already activated\n");
 			spin_unlock_irqrestore(&sdwc->lock, flags);
 			return;
 		}
-		spin_unlock_irqrestore(&sdwc->lock, flags);
 
-		ret = dwc3_sprd_start(sdwc, mode);
+		sdwc->dr_mode = current_mode;
+		spin_unlock_irqrestore(&sdwc->lock, flags);
+		ret = dwc3_sprd_start(sdwc, current_mode);
 
 		spin_lock_irqsave(&sdwc->lock, flags);
 		if (ret)
@@ -482,16 +491,17 @@ static void dwc3_sprd_hot_plug(struct dwc3_sprd *sdwc)
 
 		if (ret) {
 			dev_err(sdwc->dev, "failed to run as %s\n",
-				mode == USB_DR_MODE_HOST ? "HOST" : "DEVICE");
+				current_mode == USB_DR_MODE_HOST ? "HOST" : "DEVICE");
 			return;
 		}
 
-		if (!charging_only)
-			__pm_stay_awake(&sdwc->wake_lock);
+		if (charging_only)
+			__pm_relax(&sdwc->wake_lock);
 
 		dev_info(sdwc->dev, "is running as %s\n",
-			 mode == USB_DR_MODE_HOST ? "HOST" : "DEVICE");
+			 current_mode == USB_DR_MODE_HOST ? "HOST" : "DEVICE");
 	} else {
+		spin_lock_irqsave(&sdwc->lock, flags);
 		if (!sdwc->block_active) {
 			dev_err(sdwc->dev, "USB core is already deactivated\n");
 			spin_unlock_irqrestore(&sdwc->lock, flags);
@@ -499,10 +509,8 @@ static void dwc3_sprd_hot_plug(struct dwc3_sprd *sdwc)
 		}
 
 		sdwc->dr_mode = USB_DR_MODE_UNKNOWN;
-		sdwc->block_active = false;
 		spin_unlock_irqrestore(&sdwc->lock, flags);
-
-		dwc3_sprd_stop(sdwc, mode);
+		dwc3_sprd_stop(sdwc, current_mode);
 
 		/*
 		 * When OTG power off, then we can enable the VBUS irq to detect
@@ -510,16 +518,9 @@ static void dwc3_sprd_hot_plug(struct dwc3_sprd *sdwc)
 		 */
 
 		spin_lock_irqsave(&sdwc->lock, flags);
+		sdwc->block_active = false;
 		charging_only = sdwc->charging_mode;
 		sdwc->charging_mode = false;
-
-		if (sdwc->next_mode != USB_DR_MODE_UNKNOWN) {
-			sdwc->vbus_active = true;
-			sdwc->dr_mode = sdwc->next_mode;
-			sdwc->next_mode = USB_DR_MODE_UNKNOWN;
-			queue_work(system_unbound_wq, &sdwc->work);
-		}
-
 		spin_unlock_irqrestore(&sdwc->lock, flags);
 
 		if (!charging_only)
@@ -542,35 +543,38 @@ static int dwc3_sprd_vbus_notifier(struct notifier_block *nb,
 {
 	struct dwc3_sprd *sdwc = container_of(nb, struct dwc3_sprd, vbus_nb);
 	unsigned long flags;
+	dev_info(sdwc->dev, "%s, event: %ld\n", __func__, event);
+
+	/* In usb audio mode, we turn off dwc3, but still keep the vbus on.
+	 * It should income invalid vbus notifier, filter them
+	 */
+	if (sdwc->is_audio_dev) {
+		dev_info(sdwc->dev, "ignore device connection detected from VBUS GPIO for is_audio_dev.\n");
+		return 0;
+	}
 
 	if (event) {
 		spin_lock_irqsave(&sdwc->lock, flags);
-		if (sdwc->vbus_active == true) {
+		if (sdwc->vbus_active == true ||
+			sdwc->dr_mode == USB_DR_MODE_HOST) {
 			spin_unlock_irqrestore(&sdwc->lock, flags);
 			dev_info(sdwc->dev,
 				"ignore device connection detected from VBUS GPIO.\n");
 			return 0;
 		}
 
-		if (sdwc->dr_mode != USB_DR_MODE_UNKNOWN) {
-			sdwc->vbus_active = false;
-			sdwc->next_mode = USB_DR_MODE_PERIPHERAL;
-			queue_work(system_unbound_wq, &sdwc->work);
-			spin_unlock_irqrestore(&sdwc->lock, flags);
-			dev_info(sdwc->dev, "missed disconnect event when GPIO device connect.\n");
-			return 0;
-		}
+		__pm_stay_awake(&sdwc->wake_lock);
 
 		sdwc->vbus_active = true;
-		sdwc->dr_mode = USB_DR_MODE_PERIPHERAL;
-		sdwc->next_mode = USB_DR_MODE_UNKNOWN;
+		sdwc->wq_mode = USB_DR_MODE_PERIPHERAL;
 		queue_work(system_unbound_wq, &sdwc->work);
 		spin_unlock_irqrestore(&sdwc->lock, flags);
 		dev_info(sdwc->dev,
 			"device connection detected from VBUS GPIO.\n");
 	} else {
 		spin_lock_irqsave(&sdwc->lock, flags);
-		if (sdwc->vbus_active == false) {
+		if (sdwc->vbus_active == false ||
+			sdwc->dr_mode == USB_DR_MODE_HOST) {
 			spin_unlock_irqrestore(&sdwc->lock, flags);
 			dev_info(sdwc->dev,
 				"ignore device disconnect detected from VBUS GPIO.\n");
@@ -578,7 +582,7 @@ static int dwc3_sprd_vbus_notifier(struct notifier_block *nb,
 		}
 
 		sdwc->vbus_active = false;
-		sdwc->next_mode = USB_DR_MODE_UNKNOWN;
+		sdwc->wq_mode = USB_DR_MODE_PERIPHERAL;
 		queue_work(system_unbound_wq, &sdwc->work);
 		spin_unlock_irqrestore(&sdwc->lock, flags);
 		dev_info(sdwc->dev,
@@ -592,25 +596,40 @@ static int dwc3_sprd_id_notifier(struct notifier_block *nb,
 {
 	struct dwc3_sprd *sdwc = container_of(nb, struct dwc3_sprd, id_nb);
 	unsigned long flags;
+	dev_info(sdwc->dev, "%s, event: %ld\n", __func__, event);
 
 	if (event) {
 		spin_lock_irqsave(&sdwc->lock, flags);
-		if (sdwc->vbus_active == true) {
+		if (sdwc->vbus_active == true ||
+			sdwc->dr_mode == USB_DR_MODE_PERIPHERAL) {
 			spin_unlock_irqrestore(&sdwc->lock, flags);
 			dev_info(sdwc->dev,
 				"ignore host connection detected from ID GPIO.\n");
 			return 0;
 		}
 
+		__pm_stay_awake(&sdwc->wake_lock);
+
 		sdwc->vbus_active = true;
-		sdwc->dr_mode = USB_DR_MODE_HOST;
+		sdwc->wq_mode = USB_DR_MODE_HOST;
 		queue_work(system_unbound_wq, &sdwc->work);
 		spin_unlock_irqrestore(&sdwc->lock, flags);
 		dev_info(sdwc->dev,
 			"host connection detected from ID GPIO.\n");
 	} else {
 		spin_lock_irqsave(&sdwc->lock, flags);
-		if (sdwc->vbus_active == false) {
+		if (sdwc->is_audio_dev) {
+			sdwc->is_audio_dev = false;
+			spin_unlock_irqrestore(&sdwc->lock, flags);
+
+			/* notify musb to stop */
+			call_sprd_usbm_event_notifiers(SPRD_USBM_EVENT_HOST_MUSB, false, NULL);
+
+			return 0;
+		}
+
+		if (sdwc->vbus_active == false ||
+			sdwc->dr_mode == USB_DR_MODE_PERIPHERAL) {
 			spin_unlock_irqrestore(&sdwc->lock, flags);
 			dev_info(sdwc->dev,
 				"ignore host disconnect detected from ID GPIO.\n");
@@ -618,6 +637,7 @@ static int dwc3_sprd_id_notifier(struct notifier_block *nb,
 		}
 
 		sdwc->vbus_active = false;
+		sdwc->wq_mode = USB_DR_MODE_HOST;
 		queue_work(system_unbound_wq, &sdwc->work);
 		spin_unlock_irqrestore(&sdwc->lock, flags);
 		dev_info(sdwc->dev,
@@ -630,6 +650,7 @@ static void dwc3_sprd_detect_cable(struct dwc3_sprd *sdwc)
 {
 	unsigned long flags;
 	enum usb_dr_mode mode = USB_DR_MODE_UNKNOWN;
+	struct extcon_dev *id_ext = sdwc->id_edev ? sdwc->id_edev : sdwc->edev;
 
 	spin_lock_irqsave(&sdwc->lock, flags);
 	if (extcon_get_state(sdwc->edev, EXTCON_USB) == true) {
@@ -640,11 +661,13 @@ static void dwc3_sprd_detect_cable(struct dwc3_sprd *sdwc)
 			return;
 		}
 
+		__pm_stay_awake(&sdwc->wake_lock);
+
 		sdwc->vbus_active = true;
-		sdwc->dr_mode = USB_DR_MODE_PERIPHERAL;
-		mode = sdwc->dr_mode;
+		sdwc->wq_mode = USB_DR_MODE_PERIPHERAL;
+		mode = sdwc->wq_mode;
 		queue_work(system_unbound_wq, &sdwc->work);
-	} else if (extcon_get_state(sdwc->edev, EXTCON_USB_HOST) == true) {
+	} else if (extcon_get_state(id_ext, EXTCON_USB_HOST) == true) {
 		if (sdwc->vbus_active == true) {
 			spin_unlock_irqrestore(&sdwc->lock, flags);
 			dev_info(sdwc->dev,
@@ -652,9 +675,11 @@ static void dwc3_sprd_detect_cable(struct dwc3_sprd *sdwc)
 			return;
 		}
 
+		__pm_stay_awake(&sdwc->wake_lock);
+
 		sdwc->vbus_active = true;
-		sdwc->dr_mode = USB_DR_MODE_HOST;
-		mode = sdwc->dr_mode;
+		sdwc->wq_mode = USB_DR_MODE_HOST;
+		mode = sdwc->wq_mode;
 		queue_work(system_unbound_wq, &sdwc->work);
 	}
 	spin_unlock_irqrestore(&sdwc->lock, flags);
@@ -667,6 +692,40 @@ static void dwc3_sprd_detect_cable(struct dwc3_sprd *sdwc)
 			"host connection detected from ID GPIO.\n");
 }
 
+/* realize the notifier_call func */
+int dwc3_sprd_audio_notifier(struct notifier_block *nb, unsigned long event,
+    void *data)
+{
+	struct dwc3_sprd *sdwc = container_of(nb, struct dwc3_sprd, audio_nb);
+	unsigned long flags;
+
+	/* dwc3 only need to proccess "false" event */
+	if (!event) {
+		spin_lock_irqsave(&sdwc->lock, flags);
+		sdwc->is_audio_dev = true;
+		spin_unlock_irqrestore(&sdwc->lock, flags);
+
+		/* start musb */
+		call_sprd_usbm_event_notifiers(SPRD_USBM_EVENT_HOST_MUSB, true, NULL);
+
+		/* suspend usb3 */
+		spin_lock_irqsave(&sdwc->lock, flags);
+		if (sdwc->vbus_active == false) {
+			spin_unlock_irqrestore(&sdwc->lock, flags);
+			dev_info(sdwc->dev,
+				"ignore host disconnect detected from ID audio.\n");
+			return 0;
+		}
+		sdwc->vbus_active = false;
+		sdwc->wq_mode = USB_DR_MODE_HOST;
+		spin_unlock_irqrestore(&sdwc->lock, flags);
+		queue_work(system_unbound_wq, &sdwc->work);
+		dev_info(sdwc->dev, "[%s] done\n", __func__);
+	}
+
+	return 0;
+}
+
 static int dwc3_sprd_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -675,6 +734,8 @@ static int dwc3_sprd_probe(struct platform_device *pdev)
 	struct dwc3_sprd *sdwc;
 	const char *usb_mode;
 	int ret;
+
+	dev_info(&pdev->dev, "[%s]enter\n", __func__);
 
 	if (!node) {
 		dev_err(dev, "can not find device node\n");
@@ -807,6 +868,7 @@ static int dwc3_sprd_probe(struct platform_device *pdev)
 		sdwc->edev = extcon_get_edev_by_phandle(sdwc->dev, 0);
 		if (IS_ERR(sdwc->edev)) {
 			dev_err(dev, "failed to find vbus extcon device.\n");
+			ret = PTR_ERR(sdwc->edev);
 			goto err_susp_clk;
 		}
 
@@ -865,6 +927,13 @@ static int dwc3_sprd_probe(struct platform_device *pdev)
 			 sdwc->dr_mode == USB_DR_MODE_PERIPHERAL ? "DEVICE" : "HOST");
 	}
 
+	sdwc->audio_nb.notifier_call = dwc3_sprd_audio_notifier;
+	ret = register_sprd_usbm_notifier(&sdwc->audio_nb, SPRD_USBM_EVENT_HOST_DWC3);
+	if (ret) {
+		dev_err(sdwc->dev, "failed to register usb event\n");
+		goto err_extcon_id;
+	}
+
 	platform_set_drvdata(pdev, sdwc);
 
 	ret = sysfs_create_groups(&sdwc->dev->kobj, dwc3_sprd_groups);
@@ -881,6 +950,8 @@ static int dwc3_sprd_probe(struct platform_device *pdev)
 		dwc3_sprd_detect_cable(sdwc);
 	else
 		queue_work(system_unbound_wq, &sdwc->work);
+
+	dev_info(&pdev->dev, "[%s]end\n", __func__);
 
 	return 0;
 
@@ -1002,7 +1073,7 @@ static int dwc3_sprd_suspend_child(struct device *dev, void *data)
 
 	ret = pm_runtime_put_sync(dev);
 	if (ret) {
-		dev_err(dev, "enters suspend failed, ret = %d\n", ret);
+		dev_err(dev, "[%s]enters suspend failed, ret = %d\n", __func__, ret);
 		return ret;
 	}
 
@@ -1010,7 +1081,7 @@ static int dwc3_sprd_suspend_child(struct device *dev, void *data)
 		msleep(500);
 
 	if (cnt <= 0) {
-		dev_err(dev, "dwc3 child device enters suspend failed!!!\n");
+		dev_err(dev, "[%s]dwc3 child device enters suspend failed!!!\n", __func__);
 		return -EAGAIN;
 	}
 

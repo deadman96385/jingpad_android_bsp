@@ -54,7 +54,6 @@ enum sipa_rm_wq_cmd {
  * @event: event to notify
  */
 struct sipa_rm_wq_work_type {
-	struct work_struct		work;
 	enum sipa_rm_wq_cmd		wq_cmd;
 	enum sipa_rm_res_id	resource_name;
 	enum sipa_rm_event		event;

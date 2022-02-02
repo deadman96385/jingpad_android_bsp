@@ -95,6 +95,7 @@ static const char *resource_name_to_str[SIPA_RM_RES_MAX] = {
 };
 
 static struct sipa_rm_it_private sipa_rm_it_handles[SIPA_RM_RES_MAX];
+static void sipa_rm_wq_handler(struct work_struct *work);
 
 /**
  * sipa_rm_res_str() - returns string that represent the resource
@@ -107,6 +108,11 @@ const char *sipa_rm_res_str(enum sipa_rm_res_id resource_name)
 
 	return resource_name_to_str[resource_name];
 };
+
+struct sipa_rm_resource **sipa_rm_get_all_resource(void)
+{
+	return sipa_rm_ctx->dep_graph->resource_table;
+}
 
 static void sipa_rm_inactivity_timer_func(struct work_struct *work)
 {
@@ -171,7 +177,7 @@ int sipa_rm_create_resource(struct sipa_rm_create_params *create_params)
 
 	if (unlikely(!sipa_rm_ctx)) {
 		pr_err("SIPA RM was not initialized\n");
-		return -EINVAL;
+		return -EPROBE_DEFER;
 	}
 
 	if (!create_params) {
@@ -199,6 +205,8 @@ int sipa_rm_create_resource(struct sipa_rm_create_params *create_params)
 
 	result = sipa_rm_resource_create(create_params,
 					 &resource);
+	INIT_WORK(&resource->work, sipa_rm_wq_handler);
+
 	if (result) {
 		pr_err("sipa_rm_resource_create() failed\n");
 		return result;
@@ -322,7 +330,7 @@ int sipa_rm_add_dependency(enum sipa_rm_res_id cons,
 
 	if (unlikely(!sipa_rm_ctx)) {
 		pr_err("SIPA RM was not initialized\n");
-		return -EINVAL;
+		return -EPROBE_DEFER;
 	}
 
 	pr_debug("%s -> %s\n", sipa_rm_res_str(cons),
@@ -707,55 +715,66 @@ EXPORT_SYMBOL(sipa_rm_inactivity_timer_release_resource);
 
 static void sipa_rm_wq_handler(struct work_struct *work)
 {
+	int ret;
 	unsigned long flags;
-	struct sipa_rm_resource *resource;
-	struct sipa_rm_wq_work_type *sipa_rm_work =
-		container_of(work,
-			     struct sipa_rm_wq_work_type,
-			     work);
-	pr_debug("%s cmd=%d event=%d\n",
-		 sipa_rm_res_str(sipa_rm_work->resource_name),
-		 sipa_rm_work->wq_cmd,
-		 sipa_rm_work->event);
-	switch (sipa_rm_work->wq_cmd) {
-	case SIPA_RM_WQ_NOTIFY_CONS:
-		if (!SIPA_RM_RESORCE_IS_CONS(sipa_rm_work->resource_name)) {
-			pr_err("resource is not PROD\n");
-			return;
-		}
-		spin_lock_irqsave(&sipa_rm_ctx->sipa_rm_lock, flags);
-		if (sipa_rm_dep_graph_get_resource(sipa_rm_ctx->dep_graph,
-						   sipa_rm_work->resource_name,
-						   &resource) != 0) {
-			pr_err("resource does not exists\n");
+	struct sipa_rm_resource *resource =
+		container_of(work, struct sipa_rm_resource, work);
+	struct sipa_rm_wq_work_type sipa_rm_work;
+
+	for (ret = kfifo_out(&resource->work_type_fifo, &sipa_rm_work,
+			     sizeof(sipa_rm_work));
+	     ret == sizeof(sipa_rm_work);
+	     ret = kfifo_out(&resource->work_type_fifo, &sipa_rm_work,
+			     sizeof(sipa_rm_work))) {
+		pr_debug("%s cmd=%d event=%d\n",
+			 sipa_rm_res_str(sipa_rm_work.resource_name),
+			 sipa_rm_work.wq_cmd,
+			 sipa_rm_work.event);
+		switch (sipa_rm_work.wq_cmd) {
+		case SIPA_RM_WQ_NOTIFY_CONS:
+			if (!SIPA_RM_RESORCE_IS_CONS(
+					sipa_rm_work.resource_name)) {
+				pr_err("resource is not PROD\n");
+				continue;
+			}
+			spin_lock_irqsave(&sipa_rm_ctx->sipa_rm_lock, flags);
+			if (sipa_rm_dep_graph_get_resource(
+					sipa_rm_ctx->dep_graph,
+					sipa_rm_work.resource_name,
+					&resource) != 0) {
+				pr_err("resource does not exists\n");
+				spin_unlock_irqrestore(
+					&sipa_rm_ctx->sipa_rm_lock, flags);
+				continue;
+			}
+			sipa_rm_resource_consumer_notify_clients(
+				(struct sipa_rm_res_cons *)resource,
+				sipa_rm_work.event);
 			spin_unlock_irqrestore(&sipa_rm_ctx->sipa_rm_lock,
 					       flags);
-			return;
-		}
-		sipa_rm_resource_consumer_notify_clients(
-			(struct sipa_rm_res_cons *)resource,
-			sipa_rm_work->event);
-		spin_unlock_irqrestore(&sipa_rm_ctx->sipa_rm_lock, flags);
-		break;
-	case SIPA_RM_WQ_NOTIFY_PROD:
-		break;
-	case SIPA_RM_WQ_RESOURCE_CB:
-		spin_lock_irqsave(&sipa_rm_ctx->sipa_rm_lock, flags);
-		if (sipa_rm_dep_graph_get_resource(sipa_rm_ctx->dep_graph,
-						   sipa_rm_work->resource_name,
-						   &resource) != 0) {
-			pr_err("resource does not exists\n");
+			break;
+		case SIPA_RM_WQ_NOTIFY_PROD:
+			break;
+		case SIPA_RM_WQ_RESOURCE_CB:
+			spin_lock_irqsave(&sipa_rm_ctx->sipa_rm_lock, flags);
+			if (sipa_rm_dep_graph_get_resource(
+					sipa_rm_ctx->dep_graph,
+					sipa_rm_work.resource_name,
+					&resource) != 0) {
+				pr_err("resource does not exists\n");
+				spin_unlock_irqrestore(
+					&sipa_rm_ctx->sipa_rm_lock, flags);
+				continue;
+			}
+			sipa_rm_resource_producer_handle_cb(
+				(struct sipa_rm_res_prod *)resource,
+				sipa_rm_work.event);
 			spin_unlock_irqrestore(&sipa_rm_ctx->sipa_rm_lock,
 					       flags);
-			return;
+			break;
+		default:
+			break;
 		}
-		sipa_rm_resource_producer_handle_cb(
-			(struct sipa_rm_res_prod *)resource,
-			sipa_rm_work->event);
-		spin_unlock_irqrestore(&sipa_rm_ctx->sipa_rm_lock, flags);
-		break;
-	default:
-		break;
 	}
 }
 
@@ -763,8 +782,9 @@ int sipa_rm_wq_send_cmd(enum sipa_rm_wq_cmd wq_cmd,
 			enum sipa_rm_res_id resource_name,
 			enum sipa_rm_event event)
 {
+	int ret;
 	struct sipa_rm_resource *resource;
-	struct sipa_rm_wq_work_type *work;
+	struct sipa_rm_wq_work_type work_type;
 
 	if (sipa_rm_dep_graph_get_resource(sipa_rm_ctx->dep_graph,
 					   resource_name,
@@ -773,14 +793,19 @@ int sipa_rm_wq_send_cmd(enum sipa_rm_wq_cmd wq_cmd,
 		return -EINVAL;
 	}
 
-	work = &resource->work;
-	INIT_WORK((struct work_struct *)work, sipa_rm_wq_handler);
-	work->wq_cmd = wq_cmd;
-	work->resource_name = resource_name;
-	work->event = event;
+	work_type.wq_cmd = wq_cmd;
+	work_type.resource_name = resource_name;
+	work_type.event = event;
+	ret = kfifo_in(&resource->work_type_fifo,
+		       &work_type, sizeof(work_type));
+	if (ret != sizeof(work_type)) {
+		pr_err("res name = %s cache work type err\n",
+		       sipa_rm_res_str(resource_name));
+		return -ENOSPC;
+	}
 
 	return queue_work(sipa_rm_ctx->sipa_rm_wq,
-			    (struct work_struct *)work);
+			  &resource->work);
 }
 
 /**

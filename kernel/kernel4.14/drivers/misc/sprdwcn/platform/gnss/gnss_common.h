@@ -53,6 +53,11 @@
 
 #define GNSS_EFUSE_DATA_SIZE 0xc
 
+#ifdef CONFIG_UMW2652
+#define GNSS_UART_CFG_ADDR 0x40aabf70
+#endif
+#define GNSS_UART_CFG_SIZE 0x4
+
 /*  GNSS assert workaround */
 #ifdef CONFIG_UMW2652
 #define GNSS_BOOTSTATUS_ADDRESS  0x40aabf6c
@@ -86,7 +91,6 @@
 #define TSEN_CTRL2		0x33c
 #define TSEN_CTRL3		0x340
 #define BIT_TSEN_EN		BIT(0)
-#define BIT_TSEN_SEL_EN		BIT(3)
 #define BIT_TSEN_TIME_SEL_MASK  (BIT(4) | BIT(5))
 #define BIT_TSEN_TIME_sel(x)    (((x)&0x3)<<4)
 

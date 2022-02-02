@@ -439,7 +439,7 @@ int ap_vbc_fifo_enable(int fifo_id, int chan, int enable)
 		val = bit;
 	else
 		val = ~bit;
-	ap_vbc_reg_update(reg, bit, mask);
+	ap_vbc_reg_update(reg, val, mask);
 	pr_info("%s fifo_id=%s, vbc_chan =%s, enable=%d\n",
 		__func__, ap_vbc_fifo_id2name(fifo_id),
 		ap_vbc_chan_id2name(chan), enable);
@@ -584,7 +584,7 @@ void ap_vbc_aud_dma_chn_en(int fifo_id, int vbc_chan, int enable)
 		val = bit;
 	else
 		val = ~bit;
-	ap_vbc_reg_update(reg, bit, mask);
+	ap_vbc_reg_update(reg, val, mask);
 	pr_info("%s fifo_id=%s, vbc_chan =%s, enable=%d\n",
 		__func__, ap_vbc_fifo_id2name(fifo_id),
 		ap_vbc_chan_id2name(vbc_chan), enable);
@@ -1324,6 +1324,30 @@ int dsp_ivsence_func(int enable, int iv_adc_id)
 		-1, SND_VBC_DSP_IO_KCTL_SET,
 		&ivs_smtpa, sizeof(struct ivsense_smartpa_t),
 		AUDIO_SIPC_WAIT_FOREVER);
+	if (ret < 0)
+		pr_err("%s, Failed to set, ret: %d\n", __func__, ret);
+
+	return 0;
+}
+
+/* SND_KCTL_TYPE_VOICE_MIX_UL */
+int dsp_vbc_voice_pcm_play_set(bool enable, int mode)
+{
+	int ret;
+	struct vbc_voice_pcm_play_t play_mode;
+
+	sp_asoc_pr_dbg("%s enable =%d, mode = %d\n",
+		__func__, enable, mode);
+	play_mode.mix_pcm_enable = enable;
+	play_mode.mix_pcm_mode = mode;
+
+	/* send audio cmd */
+	sp_asoc_pr_dbg("cmd=%d, parameter0=%d\n", SND_VBC_DSP_IO_KCTL_SET,
+		SND_KCTL_TYPE_VOICE_MIX_UL);
+	ret = aud_send_cmd_no_wait_param(AMSG_CH_VBC_CTL,
+		SND_KCTL_TYPE_VOICE_MIX_UL, -1, SND_VBC_DSP_IO_KCTL_SET,
+		&play_mode, sizeof(struct vbc_voice_pcm_play_t));
+
 	if (ret < 0)
 		pr_err("%s, Failed to set, ret: %d\n", __func__, ret);
 

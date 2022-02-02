@@ -428,7 +428,23 @@ static void free_buffer_data(struct dm_bufio_client *c,
 {
 	switch (data_mode) {
 	case DATA_MODE_SLAB:
-		kmem_cache_free(DM_BUFIO_CACHE(c), data);
+		//SLAB mode allocated buffer block size should equal
+		//  or smaller than DM_BUFIO_BLOCK_SIZE_SLAB_LIMIT
+		if (c->block_size <= DM_BUFIO_BLOCK_SIZE_SLAB_LIMIT) {
+			//SLAB mode allocated buffer size should larger than zero
+			if (dm_bufio_allocated_kmem_cache > 0) {
+				kmem_cache_free(DM_BUFIO_CACHE(c), data);
+			}
+		} else if ((DM_BUFIO_BLOCK_SIZE_SLAB_LIMIT < c->block_size <= DM_BUFIO_BLOCK_SIZE_GFP_LIMIT) &&
+			    dm_bufio_allocated_get_free_pages > 0 ) {
+			// try to treate as free page allocated buffer
+			printk("dm_bufio_allocated_kmem_cache = %lu bytes\n", dm_bufio_allocated_kmem_cache);
+			if ((c->sectors_per_block_bits == (__ffs(c->block_size) - SECTOR_SHIFT)) &&
+			    (c->pages_per_block_bits == (__ffs(c->block_size) >= PAGE_SHIFT ? __ffs(c->block_size) - PAGE_SHIFT : 0)) &&
+			    (c->blocks_per_page_bits == (__ffs(c->block_size) < PAGE_SHIFT ? PAGE_SHIFT - __ffs(c->block_size) : 0))) {
+				free_pages((unsigned long)data, c->pages_per_block_bits);
+			    }
+		}
 		break;
 
 	case DATA_MODE_GET_FREE_PAGES:

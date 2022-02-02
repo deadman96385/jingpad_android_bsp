@@ -12,6 +12,9 @@
  */
 
 #include "lt9611_i2c.h"
+#include <linux/interrupt.h>
+#include <linux/of_gpio.h>
+#include <linux/of_irq.h>
 
 struct video_timing *video;
 
@@ -33,14 +36,14 @@ struct lontium_ic_mode lt9611 = {
 	DSI,              //mipi_mode;     //dsi or csi
 	NON_BURST_MODE_WITH_SYNC_EVENTS,
 	AUDIO_I2S,       //audio_out      //audio_i2s or audio_spdif
-	//DC_MODE,       //hdmi_coupling_mode;//ac_mode or dc_mode
-	AC_MODE,         //hdmi_coupling_mode;//ac_mode or dc_mode
-	HDCP_ENABLE      //hdcp_encryption //hdcp_enable or hdcp_diabled
+	DC_MODE,       //hdmi_coupling_mode;//ac_mode or dc_mode
+	//AC_MODE,         //hdmi_coupling_mode;//ac_mode or dc_mode
+	HDCP_DISABLED      //hdcp_encryption //hdcp_enable or hdcp_diabled
 };
 // hfp, hs, hbp,hact,htotal,vfp, vs, vbp,vact,vtotal, pclk_khz
 struct video_timing video_1920x1080_60Hz  = {
-	32, 4, 32, 1920,  1988,  176,  10,
-	16, 1080, 1282, 1, 1, 16, 2, 153600};
+	164, 44, 148, 1920,  2276,  4,  5,
+	36, 1080, 1125, 1, 1, 16, 2, 153600};
 struct video_timing video_1920x1080_50Hz  = {
 	528, 44, 148, 1920,  2640,  4,  5,
 	36, 1080, 1125, 1, 1, 31, 2, 148500};
@@ -53,6 +56,9 @@ struct video_timing video_1920x1080_25Hz  = {
 struct video_timing video_1920x1080_24Hz  = {
 	638, 44, 148, 1920,  2750,  4,  5,
 	36, 1080, 1125, 1, 1, 32, 2, 74250};
+
+
+BLOCKING_NOTIFIER_HEAD(sprd_hdmi_notifier_list);
 
 static int lt9611_i2c_read(u8 reg, u8 *data, u16 length)
 {
@@ -355,7 +361,8 @@ void lt9611_mipi_pcr(struct video_timing *video_timing)
 	hdmi_writei2c_byte(0x21, 0x4a); //bit[3:0] step[11:8]
 	//hdmi_writei2c_byte(0x22, 0x40);//step[7:0]
 
-	hdmi_writei2c_byte(0x24, 0x71); //bit[7:4]v/h/de mode; line for clk stb[11:8]
+	//bit[7:4]v/h/de mode; line for clk stb[11:8]
+	hdmi_writei2c_byte(0x24, 0x71);
 	hdmi_writei2c_byte(0x25, 0x30); //line for clk stb[7:0]
 
 	hdmi_writei2c_byte(0x2a, 0x01); //clk stable in
@@ -400,7 +407,8 @@ void lt9611_mipi_pcr(struct video_timing *video_timing)
 		break;
 	case VIDEO_540x960_60HZ_VIC:
 	case VIDEO_1024x600_60HZ_VIC:
-		hdmi_writei2c_byte(0x24, 0x70); //bit[7:4]v/h/de mode; line for clk stb[11:8]
+		//bit[7:4]v/h/de mode; line for clk stb[11:8]
+		hdmi_writei2c_byte(0x24, 0x70);
 		hdmi_writei2c_byte(0x25, 0x80); //line for clk stb[7:0]
 		hdmi_writei2c_byte(0x2a, 0x10); //clk stable in
 		/* stage 2 */
@@ -412,6 +420,9 @@ void lt9611_mipi_pcr(struct video_timing *video_timing)
 	default:
 		break;
 	}
+	hdmi_writei2c_byte(0xff, 0x83);
+	hdmi_writei2c_byte(0x1d, 0xF0);
+
 	lt9611_mipi_video_timing(video);
 
 	hdmi_writei2c_byte(0xff, 0x83);
@@ -468,7 +479,8 @@ int lt9611_pll(struct video_timing *video_timing)
 	hdmi_writei2c_byte(0xff, 0x83);
 	hdmi_writei2c_byte(0x2d, 0x40); //M up limit
 	hdmi_writei2c_byte(0x31, 0x08); //M down limit
-	hdmi_writei2c_byte(0x26, 0x80 | pcr_m); /* fixed M is to let pll locked*/
+	/* fixed M is to let pll locked*/
+	hdmi_writei2c_byte(0x26, 0x80 | pcr_m);
 
 	pclk = pclk / 2;
 	hdmi_writei2c_byte(0xff, 0x82);     //13.5M
@@ -589,7 +601,7 @@ void lt9611_hdmi_tx_digital(struct video_timing *video_timing)
 
 	hdmi_writei2c_byte(0xff, 0x84);
 	hdmi_writei2c_byte(0x10, 0x02); //data iland
-	hdmi_writei2c_byte(0x12, 0x64); //act_h_blank
+	hdmi_writei2c_byte(0x12, 0x40); //act_h_blank
 }
 
 void lt9611_csc(void)
@@ -630,6 +642,8 @@ void lt9611_audio_init(void)
 
 		hdmi_writei2c_byte(0x34, 0xd4); //CTS_N
 	}
+	hdmi_writei2c_byte(0xff, 0x84);
+	hdmi_writei2c_byte(0x3c, 0x21);
 }
 
 void lt9611_irq_init(void)
@@ -872,6 +886,46 @@ void lt9611_dphy_debug(void)
 #endif
 }
 
+static int lt9211_resume(void)
+{
+	lt9611_pll(video);
+	lt9611_mipi_pcr(video);
+	lt9611_hdmi_tx_digital(video);
+	lt9611_hdmi_out_enable();
+
+	return 0;
+}
+
+static int lt9211_suspend(void)
+{
+	lt9611_hdmi_out_disable();
+
+	return 0;
+}
+
+static int sprd_hdmi_notifier_call(struct notifier_block *nb,
+				   unsigned long code, void *_param)
+{
+	switch (code) {
+	case SPRD_HDMI_RESUME:
+		lt9211_resume();
+		break;
+
+	case SPRD_HDMI_SUSPEND:
+		lt9211_suspend();
+		break;
+
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static struct notifier_block sprd_hdmi_notifier_block = {
+	.notifier_call = sprd_hdmi_notifier_call,
+};
+
 int lt9611_init(void)
 {
 	int ret = 0;
@@ -927,10 +981,70 @@ int lt9611_init(void)
 	return 0;
 }
 
+int hdmi_notifier_chain_register(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&sprd_hdmi_notifier_list, nb);
+}
+
+int hdmi_notifier_chain_unregister(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&sprd_hdmi_notifier_list, nb);
+}
+
+int hdmi_notifier_call_chain(unsigned long val, void *v)
+{
+	return blocking_notifier_call_chain(&sprd_hdmi_notifier_list, val, v);
+}
+
+static void lt9611_hpd_work_func(struct work_struct *work)
+{
+	lt9611_hpd_status();
+	if (tx_hpd) {
+		LT_INFO("Detect hpd High\n");
+		lt9611_read_edid();
+		lt9611_hdmi_out_enable();
+		lt9611_hdcp_enable();
+	} else {
+		LT_INFO("Detect hpd Low\n");
+		lt9611_hdcp_disable();
+		lt9611_hdmi_out_disable();
+	}
+}
+
+static irqreturn_t lt9611_irq_thread_handler(int irq, void *dev_id)
+{
+	u8 irq_flag3 = 0;
+
+	hdmi_writei2c_byte(0xff, 0x82);
+	irq_flag3 = hdmi_readi2c_byte(0x0f);
+
+	/* hpd changed low */
+	if (irq_flag3 & BIT(7)) {
+
+		hdmi_writei2c_byte(0xff, 0x82); /* irq 3 clear flag */
+		hdmi_writei2c_byte(0x07, 0xbf);
+		hdmi_writei2c_byte(0x07, 0x3f);
+	}
+	/* hpd changed high */
+	if (irq_flag3 & BIT(6)) {
+
+		hdmi_writei2c_byte(0xff, 0x82); /* irq 3 clear flag */
+		hdmi_writei2c_byte(0x07, 0x7f);
+		hdmi_writei2c_byte(0x07, 0x3f);
+	}
+
+	if (irq_flag3 & 0xc0)
+		schedule_work(&lt9611_i2c.hpd_work);
+
+	return IRQ_HANDLED;
+}
+
 static int lt9611_i2c_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	int ret = 0;
+	struct device *dev = &client->dev;
+	struct gpio_desc *gpio_hpd;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		LT_ERR("I2C check functionality fail!");
@@ -949,6 +1063,24 @@ static int lt9611_i2c_probe(struct i2c_client *client,
 		return ret;
 	}
 
+	hdmi_notifier_chain_register(&sprd_hdmi_notifier_block);
+
+	gpio_hpd = devm_gpiod_get(dev, "hpd", GPIOD_IN);
+	ret = PTR_ERR_OR_ZERO(gpio_hpd);
+	if (ret)
+		LT_ERR("failed to find gpio\n");
+	else
+		client->irq = gpiod_to_irq(gpio_hpd);
+	if (client->irq) {
+		INIT_WORK(&lt9611_i2c.hpd_work, lt9611_hpd_work_func);
+		ret = devm_request_threaded_irq(dev, gpiod_to_irq(gpio_hpd), NULL,
+				lt9611_irq_thread_handler,
+				IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+				"lt9611", &lt9611_i2c);
+		if (ret)
+			LT_ERR("Failed to request IRQ: %d\n", client->irq);
+	}
+
 	LT_INFO("I2C device probe OK\n");
 
 	return 0;
@@ -958,6 +1090,9 @@ static int lt9611_i2c_remove(struct i2c_client *client)
 {
 	i2c_set_clientdata(client, NULL);
 	lt9611_i2c.client = NULL;
+
+	disable_irq(client->irq);
+	hdmi_notifier_chain_unregister(&sprd_hdmi_notifier_block);
 
 	return 0;
 }

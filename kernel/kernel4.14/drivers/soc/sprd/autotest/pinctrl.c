@@ -20,7 +20,7 @@
 
 #include "core.h"
 
-#define NAME_MAX_SIZE	9
+#define NAME_MAX_SIZE	32
 static struct pinctrl *p;
 
 static int pinctrl_pre_test(struct autotest_handler *handler, void *data)
@@ -69,8 +69,13 @@ static int pinctrl_test(struct autotest_handler *handler, void *arg)
 		return -EFAULT;
 
 	pr_info("gpio = %d\n", gpio);
-	snprintf(state_name, NAME_MAX_SIZE, "gpio_%d", gpio);
 
+	snprintf(state_name, NAME_MAX_SIZE, "gpio_%d_config", gpio);
+	pinctrl_state = pinctrl_lookup_state(p, state_name);
+	if (!IS_ERR(pinctrl_state))
+		pinctrl_select_state(p, pinctrl_state);
+
+	snprintf(state_name, NAME_MAX_SIZE, "gpio_%d", gpio);
 	pinctrl_state = pinctrl_lookup_state(p, state_name);
 	if (IS_ERR(pinctrl_state)) {
 		pr_err("there are no autotest gpios state.\n");

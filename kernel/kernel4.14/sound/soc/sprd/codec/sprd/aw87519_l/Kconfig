@@ -1,0 +1,5 @@
+config SND_SOC_AW87XX_IIC_PA
+	tristate "Sprd Smart PA AW87519"
+	depends on I2C
+	help
+	  If AW87519 smart pa is needed, set this to Y or M, else N.

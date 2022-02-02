@@ -154,6 +154,8 @@ static ssize_t ssc_store(struct device *dev,
 			struct device_attribute *attr,
 			const char *buf, size_t count)
 {
+
+#if 0
 	int ret;
 	struct sprd_dphy *dphy = dev_get_drvdata(dev);
 
@@ -170,10 +172,9 @@ static ssize_t ssc_store(struct device *dev,
 		pr_err("Invalid input value\n");
 		return -EINVAL;
 	}
-
 	sprd_dphy_ssc_en(dphy, ssc_en);
 	mutex_unlock(&dphy->ctx.lock);
-
+#endif
 	return count;
 }
 static DEVICE_ATTR_RW(ssc);
@@ -192,6 +193,8 @@ static ssize_t hop_store(struct device *dev,
 			struct device_attribute *attr,
 			const char *buf, size_t count)
 {
+    return count;
+    #if 0
 	int ret;
 	int delta;
 	struct sprd_dphy *dphy = dev_get_drvdata(dev);
@@ -216,18 +219,21 @@ static ssize_t hop_store(struct device *dev,
 	 * the rule is actual freq * 10 / 2,
 	 * Eg: Required freq is 500M
 	 * Equation: 2500*2*1000/10=500*1000=2500*200=500M
-	 */
-	if (hop_freq == 0)
-		hop_freq = ctx->freq;
-	else
-		hop_freq *= 200;
-	pr_info("input freq is %d\n", hop_freq);
+     */
+    if (hop_freq == 0)
+        hop_freq = ctx->freq;
+    else
+        hop_freq *= 200;
+    pr_info("input freq is %d\n", hop_freq);
 
-	delta = hop_freq - ctx->freq;
+
+
+    delta = hop_freq - ctx->freq;
 	sprd_dphy_hop_config(dphy, delta, 200);
 	mutex_unlock(&dphy->ctx.lock);
 
 	return count;
+    #endif
 }
 static DEVICE_ATTR_RW(hop);
 

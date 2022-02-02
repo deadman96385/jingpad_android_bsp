@@ -73,16 +73,12 @@ static void smsg_init_channel2index(void)
 
 static void get_channel_status(u8 dst, char *status, int size)
 {
-	u8 ch_index;
 	int i, len;
 	struct smsg_channel *ch;
 
 	len = strlen(status);
 	for (i = 0;  i < SMSG_VALID_CH_NR && len < size; i++) {
-		ch_index = channel2index[i];
-		if (ch_index == INVALID_CHANEL_INDEX)
-			continue;
-		ch = smsg_ipcs[dst]->channels[ch_index];
+		ch = smsg_ipcs[dst]->channels[i];
 		if (!ch)
 			continue;
 		if (SIPC_READL(ch->rdptr) < SIPC_READL(ch->wrptr))
@@ -804,7 +800,7 @@ static int smsg_debug_show(struct seq_file *m, void *private)
 	struct smsg_ipc *smsg_sipc = NULL;
 	struct smsg_channel *ch;
 
-	int i, j, cnt, ch_index;
+	int i, j, cnt;
 
 	for (i = 0; i < SIPC_ID_NR; i++) {
 		smsg_sipc = smsg_ipcs[i];
@@ -847,8 +843,7 @@ static int smsg_debug_show(struct seq_file *m, void *private)
 
 		cnt = 1;
 		for (j = 0;  j < SMSG_VALID_CH_NR; j++) {
-			ch_index = channel2index[i];
-			ch = smsg_sipc->channels[ch_index];
+			ch = smsg_sipc->channels[j];
 			if (!ch)
 				continue;
 

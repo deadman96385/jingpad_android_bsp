@@ -27,7 +27,10 @@
 		(1 << SIPA_TERM_VAP2) | (1 << SIPA_TERM_CP0) | \
 		(1 << SIPA_TERM_CP1) | (1 << SIPA_TERM_VCP))
 
-#define SIPA_NIC_RM_INACTIVE_TIMER	1000
+#define SIPA_PCIE_SRC ((1 << SIPA_TERM_PCIE0) | (1 << SIPA_TERM_PCIE1) | \
+		(1 << SIPA_TERM_PCIE2))
+
+#define SIPA_NIC_RM_INACTIVE_TIMER	3000
 
 struct sipa_nic_statics_info {
 	enum sipa_ep_id send_ep;
@@ -108,18 +111,69 @@ static struct sipa_nic_statics_info s_spia_nic_statics[SIPA_NIC_MAX] = {
 		.netid = 7,
 		.cons = SIPA_RM_RES_CONS_WWAN_UL,
 	},
+	{
+		.send_ep = SIPA_EP_AP_ETH,
+		.pkt_type = SIPA_PKT_ETH,
+		.src_mask = SIPA_PCIE_SRC,
+		.netid = 0,
+		.cons = SIPA_RM_RES_CONS_WWAN_DL,
+	},
+	{
+		.send_ep = SIPA_EP_AP_ETH,
+		.pkt_type = SIPA_PKT_ETH,
+		.src_mask = SIPA_PCIE_SRC,
+		.netid = 1,
+		.cons = SIPA_RM_RES_CONS_WWAN_DL,
+	},
+	{
+		.send_ep = SIPA_EP_AP_ETH,
+		.pkt_type = SIPA_PKT_ETH,
+		.src_mask = SIPA_PCIE_SRC,
+		.netid = 2,
+		.cons = SIPA_RM_RES_CONS_WWAN_DL,
+	},
+	{
+		.send_ep = SIPA_EP_AP_ETH,
+		.pkt_type = SIPA_PKT_ETH,
+		.src_mask = SIPA_PCIE_SRC,
+		.netid = 3,
+		.cons = SIPA_RM_RES_CONS_WWAN_DL,
+	},
 };
 
 static void sipa_nic_rm_res_release(struct sipa_nic *nic);
 
-static void sipa_nic_rm_res_granted(struct sipa_nic *nic)
+static bool sipa_nic_rm_res_granted(struct sipa_nic *nic)
 {
+	bool ret;
 	unsigned long flags;
 	struct sipa_nic_cons_res *res = &nic->rm_res;
 
 	spin_lock_irqsave(&res->lock, flags);
 	res->request_in_progress = false;
+	ret = (atomic_read(&nic->status) == NIC_OPEN) &&
+		 nic->rm_res.rm_flow_ctrl;
+	if (ret)
+		nic->rm_res.rm_flow_ctrl = 0;
 	spin_unlock_irqrestore(&res->lock, flags);
+
+	return ret;
+}
+
+static bool sipa_nic_rm_res_reinit(struct sipa_nic *nic)
+{
+	bool ret;
+	unsigned long flags;
+	struct sipa_nic_cons_res *res = &nic->rm_res;
+
+	spin_lock_irqsave(&res->lock, flags);
+	ret = (atomic_read(&nic->status) == NIC_OPEN) &&
+		 nic->rm_res.rm_flow_ctrl;
+	if (ret)
+		nic->rm_res.rm_flow_ctrl = 0;
+	spin_unlock_irqrestore(&res->lock, flags);
+
+	return ret;
 }
 
 static void sipa_nic_rm_notify_cb(void *user_data,
@@ -131,13 +185,12 @@ static void sipa_nic_rm_notify_cb(void *user_data,
 	pr_debug("%s: event %d\n", __func__, event);
 	switch (event) {
 	case SIPA_RM_EVT_GRANTED:
-		sipa_nic_rm_res_granted(nic);
-		if (atomic_read(&nic->status) == NIC_OPEN)
+		if (sipa_nic_rm_res_granted(nic))
 			nic->cb(nic->cb_priv, SIPA_LEAVE_FLOWCTRL, 0);
-
-		sipa_nic_rm_res_release(nic);
 		break;
 	case SIPA_RM_EVT_RELEASED:
+		if (sipa_nic_rm_res_reinit(nic))
+			nic->cb(nic->cb_priv, SIPA_LEAVE_FLOWCTRL, 0);
 		break;
 	default:
 		pr_err("%s: unknown event %d\n", __func__, event);
@@ -179,6 +232,7 @@ static void sipa_nic_rm_timer_func(struct work_struct *work)
 						     struct sipa_nic_cons_res,
 						     work);
 	unsigned long flags;
+	bool release_flag = false;
 
 	pr_debug("timer expired for resource %d!\n",
 		 res->cons);
@@ -193,15 +247,21 @@ static void sipa_nic_rm_timer_func(struct work_struct *work)
 				   res->jiffies);
 	} else if (res->resource_requested) {
 		pr_debug("not calling release\n");
-		res->release_in_progress = false;
+		queue_delayed_work(system_unbound_wq,
+				   &res->work,
+				   res->jiffies);
 	} else {
 		pr_debug("calling release_resource on resource %d!\n",
 			 res->cons);
-		sipa_rm_release_resource(res->cons);
+		release_flag = true;
 		res->need_request = true;
 		res->release_in_progress = false;
+		res->request_in_progress = false;
 	}
 	spin_unlock_irqrestore(&res->lock, flags);
+
+	if (release_flag)
+		sipa_rm_release_resource(res->cons);
 }
 
 static int sipa_nic_rm_init(struct sipa_nic_cons_res *res,
@@ -224,6 +284,7 @@ static int sipa_nic_rm_init(struct sipa_nic_cons_res *res,
 	res->release_in_progress = false;
 	res->need_request = true;
 	res->request_in_progress = false;
+	res->rm_flow_ctrl = 0;
 
 	INIT_DELAYED_WORK(&res->work,
 			  sipa_nic_rm_timer_func);
@@ -233,23 +294,37 @@ static int sipa_nic_rm_init(struct sipa_nic_cons_res *res,
 
 static int sipa_nic_rm_res_request(struct sipa_nic *nic)
 {
+	bool need_flag = false;
 	int ret = 0;
 	unsigned long flags;
 	struct sipa_nic_cons_res *res = &nic->rm_res;
 
 	spin_lock_irqsave(&res->lock, flags);
 	res->resource_requested = true;
-	if (res->need_request) {
+	if (res->need_request && !res->request_in_progress) {
+		need_flag = true;
 		res->need_request = false;
-		ret = sipa_rm_request_resource(nic->rm_res.cons);
-		if (ret == -EINPROGRESS)
-			res->request_in_progress = true;
-		else
-			res->request_in_progress = false;
+		res->request_in_progress = true;
 	} else {
 		ret = res->request_in_progress ? -EINPROGRESS : 0;
 	}
+
+	if (ret == -EINPROGRESS)
+		res->rm_flow_ctrl = 1;
 	spin_unlock_irqrestore(&res->lock, flags);
+
+	if (need_flag) {
+		ret = sipa_rm_request_resource(nic->rm_res.cons);
+		spin_lock_irqsave(&res->lock, flags);
+		res->need_request = false;
+		if (ret == -EINPROGRESS) {
+			res->request_in_progress = true;
+			res->rm_flow_ctrl = 1;
+		} else {
+			res->request_in_progress = false;
+		}
+		spin_unlock_irqrestore(&res->lock, flags);
+	}
 
 	return ret;
 }
@@ -274,6 +349,35 @@ static void sipa_nic_rm_res_release(struct sipa_nic *nic)
 			   res->jiffies);
 	spin_unlock_irqrestore(&res->lock, flags);
 }
+
+int sipa_nic_check_suspend_condition(void)
+{
+	int i;
+	unsigned long flags;
+	struct sipa_control *ctrl = sipa_get_ctrl_pointer();
+
+	for (i = 0; i < SIPA_NIC_MAX; i++) {
+		if (!ctrl->nic[i])
+			continue;
+
+		if (atomic_read(&ctrl->nic[i]->status) != NIC_OPEN)
+			continue;
+
+		spin_lock_irqsave(&ctrl->nic[i]->rm_res.lock, flags);
+		if (!ctrl->nic[i]->rm_res.need_request) {
+			spin_unlock_irqrestore(&ctrl->nic[i]->rm_res.lock,
+					       flags);
+			dev_info(ctrl->ctx->pdev,
+				 "nic can't sleep netid = %d, src_mask = 0x%x",
+				 ctrl->nic[i]->netid, ctrl->nic[i]->src_mask);
+			return -EAGAIN;
+		}
+		spin_unlock_irqrestore(&ctrl->nic[i]->rm_res.lock, flags);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(sipa_nic_check_suspend_condition);
 
 int sipa_nic_open(enum sipa_term_type src, int netid,
 		  sipa_notify_cb cb, void *priv)
@@ -326,7 +430,7 @@ int sipa_nic_open(enum sipa_term_type src, int netid,
 	if (ret)
 		return ret;
 
-	atomic_set(&nic->status, NIC_OPEN);
+	nic->continue_notify = true;
 	nic->nic_id = nic_id;
 	nic->send_ep = ctrl->eps[s_spia_nic_statics[nic_id].send_ep];
 	nic->need_notify = 0;
@@ -345,6 +449,8 @@ int sipa_nic_open(enum sipa_term_type src, int netid,
 	}
 
 	sipa_skb_sender_add_nic(sender, nic);
+
+	atomic_set(&nic->status, NIC_OPEN);
 
 	return nic_id;
 }
@@ -366,8 +472,9 @@ void sipa_nic_close(enum sipa_nic_id nic_id)
 
 	nic = ctrl->nic[nic_id];
 
-	sipa_nic_deregister_rm(nic, nic_id);
 	atomic_set(&nic->status, NIC_CLOSE);
+	sipa_nic_deregister_rm(nic, nic_id);
+	nic->continue_notify = false;
 	/* free all  pending skbs */
 	while ((skb = skb_dequeue(&nic->rx_skb_q)) != NULL)
 		dev_kfree_skb_any(skb);
@@ -404,8 +511,11 @@ EXPORT_SYMBOL(sipa_nic_try_notify_recv);
 
 void sipa_nic_push_skb(struct sipa_nic *nic, struct sk_buff *skb)
 {
+	struct sipa_control *ctrl = sipa_get_ctrl_pointer();
+
+	atomic_inc(&ctrl->recv_cnt);
 	skb_queue_tail(&nic->rx_skb_q, skb);
-	if (nic->rx_skb_q.qlen == 1)
+	if (nic->rx_skb_q.qlen == 1 || nic->continue_notify)
 		nic->need_notify = 1;
 }
 EXPORT_SYMBOL(sipa_nic_push_skb);
@@ -426,8 +536,10 @@ int sipa_nic_tx(enum sipa_nic_id nic_id, enum sipa_term_type dst,
 		return -ENODEV;
 
 	ret = sipa_nic_rm_res_request(ctrl->nic[nic_id]);
-	if (ret)
+	if (ret) {
+		sipa_nic_rm_res_release(ctrl->nic[nic_id]);
 		return ret;
+	}
 
 	ret = sipa_skb_sender_send_data(sender, skb, dst, netid);
 	if (ret == -EAGAIN)
@@ -453,10 +565,17 @@ int sipa_nic_rx(enum sipa_nic_id nic_id, struct sk_buff **out_skb)
 	    atomic_read(&ctrl->nic[nic_id]->status) == NIC_CLOSE)
 		return -ENODEV;
 
+	if (sipa_receiver_has_stop_recv())
+		sipa_receiver_clean_stop_recv();
+
 	nic = ctrl->nic[nic_id];
 	skb = skb_dequeue(&nic->rx_skb_q);
+	if (nic->continue_notify)
+		nic->continue_notify = false;
 
 	*out_skb = skb;
+	if (skb)
+		atomic_dec(&ctrl->recv_cnt);
 
 	return (skb) ? 0 : -ENODATA;
 }
@@ -480,6 +599,33 @@ int sipa_nic_rx_has_data(enum sipa_nic_id nic_id)
 	return (!!nic->rx_skb_q.qlen);
 }
 EXPORT_SYMBOL(sipa_nic_rx_has_data);
+
+bool sipa_nic_check_flow_ctrl(enum sipa_nic_id nic_id)
+{
+	bool flow_ctrl;
+	unsigned long flags;
+	struct sipa_nic *nic;
+	struct sipa_nic_cons_res *res;
+	struct sipa_control *ctrl = sipa_get_ctrl_pointer();
+
+	if (!ctrl) {
+		pr_err("sipa driver may not register\n");
+		return false;
+	}
+
+	if (!ctrl->nic[nic_id] ||
+	    atomic_read(&ctrl->nic[nic_id]->status) == NIC_CLOSE)
+		return false;
+
+	nic = ctrl->nic[nic_id];
+	res = &nic->rm_res;
+	spin_lock_irqsave(&res->lock, flags);
+	flow_ctrl = nic->rm_res.rm_flow_ctrl;
+	spin_unlock_irqrestore(&res->lock, flags);
+
+	return flow_ctrl;
+}
+EXPORT_SYMBOL(sipa_nic_check_flow_ctrl);
 
 int sipa_nic_trigger_flow_ctrl_work(enum sipa_nic_id nic_id, int err)
 {

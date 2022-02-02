@@ -20,3 +20,13 @@ config SPRD_IMS_BRIDGE_TEST
 	  Support for ims bridge kernel test suite, the supported lists
 	  can be retrived by /d/ims_bridge/test-suite.
 	  If unsure, say N.
+
+config SPRD_IMS_BRIDGE_TRANSIT
+	tristate "Spreadtrum ims stack bridge config for orca board"
+	depends on INET && NETFILTER && SPRD_SIPC
+	default y
+	help
+	  This option add only on orca board, so the imsbr on orca on play
+	  a role as a data-transfer.
+	  If unsure, say N.
+

@@ -35,6 +35,18 @@
 #define REG_FLAG	0x0B
 #define REG_MAX		REG_FLAG
 
+static bool cali_mode;
+
+static int boot_mode_check(char *str)
+{
+	if (str != NULL && !strncmp(str, "cali", strlen("cali")))
+		cali_mode = true;
+	else
+		cali_mode = false;
+	return 0;
+}
+__setup("androidboot.mode=", boot_mode_check);
+
 static int ktd3137_read_reg(struct i2c_client *client, int reg, u8 *val)
 {
 	int ret;
@@ -111,7 +123,6 @@ static int ktd3137_bled_update_status(struct backlight_device *bd)
 {
 	int brightness = bd->props.brightness;
 	struct ktd3137_bl *bl = bl_get_data(bd);
-
 	if (bd->props.power != FB_BLANK_UNBLANK ||
 	   bd->props.fb_blank != FB_BLANK_UNBLANK ||
 	   bd->props.state & BL_CORE_FBBLANK)
@@ -145,8 +156,15 @@ static int ktd3137_parse_dt(struct device *dev, struct ktd3137_bl *bl)
 	pdata->using_lsb = of_property_read_bool(np, "ktd,using-lsb");
 	pdata->using_linear = of_property_read_bool(np, "ktd,using-linear");
 
-	pdata->default_brightness = 0xff;
+	pdata->default_brightness = 25;
 	pdata->max_brightness = 255;
+
+	if (!of_property_read_u32(np, "ktd,default-brightness-level",
+					   &val))
+		pdata->default_brightness = val;
+	else
+		dev_warn(dev, "parse default_brightness failed\n");
+
 
 	if (!of_property_read_u32(np, "ktd,pwm-frequency", &val))
 		pdata->pwm_period = val;
@@ -293,7 +311,7 @@ static void ktd3137_backlight_init(struct ktd3137_bl *bl)
 	ktd3137_transition_ramp(bl);
 	ktd3137_read_reg(bl->client, REG_CONTROL, &value);
 	ktd3137_write_reg(bl->client, REG_MODE, pdata->full_scale_led);
-	bl->brightness = 0;
+	bl->brightness = pdata->default_brightness;
 }
 
 static int ktd3137_probe(struct i2c_client *client,
@@ -303,6 +321,12 @@ static int ktd3137_probe(struct i2c_client *client,
 	struct ktd3137_bl *bl;
 	struct ktd3137_bl_data *pdata = dev_get_platdata(&client->dev);
 	struct backlight_properties props;
+
+	if (cali_mode) {
+		dev_info(&client->dev,
+			"Calibration Mode! Don't register ktd3137 backlight");
+		return 0;
+	}
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c functionality check fail.\n");
@@ -327,8 +351,8 @@ static int ktd3137_probe(struct i2c_client *client,
 	bl->hwen_gpio = devm_gpiod_get_optional(&client->dev, "hwen",
 					   GPIOD_ASIS);
 	if (IS_ERR_OR_NULL(bl->hwen_gpio))
-	dev_err(&client->dev, "can't get ktd3137 hwen gpio: %ld\n",
-	       PTR_ERR(bl->hwen_gpio));
+		dev_err(&client->dev, "can't get ktd3137 hwen gpio: %ld\n",
+			PTR_ERR(bl->hwen_gpio));
 
 	if (bl->hwen_gpio)
 		gpiod_direction_output(bl->hwen_gpio, 1);
@@ -346,6 +370,11 @@ static int ktd3137_probe(struct i2c_client *client,
 		ret = PTR_ERR(bl->bd);
 		return ret;
 	}
+
+	bl->bd->props.brightness = pdata->default_brightness;
+	bl->bd->props.power = FB_BLANK_UNBLANK;
+	backlight_update_status(bl->bd);
+
 
 	return 0;
 }

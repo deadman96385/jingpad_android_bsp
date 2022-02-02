@@ -36,3 +36,12 @@ config WCN_SWD
 
 	In order to control or debug your marlin chip, you will need to support
 	swd driver to access arm registers.
+
+config WCN_ROMCODED
+	bool "romcode download flow"
+	depends on WCN_BOOT
+	default n
+	help
+	Choose Y here if you need romcode download interface.
+
+	In order to download wcn firmware by romcode flow, you will nne enable it.

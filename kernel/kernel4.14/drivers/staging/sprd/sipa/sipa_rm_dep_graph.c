@@ -186,8 +186,8 @@ int sipa_rm_dep_graph_delete_dependency(struct sipa_rm_dep_graph *graph,
 	struct sipa_rm_resource *pord_res = NULL;
 
 	if (!graph ||
-	    !SIPA_RM_RESORCE_IS_PROD(cons) ||
-	    !SIPA_RM_RESORCE_IS_CONS(pord)) {
+	    !SIPA_RM_RESORCE_IS_PROD(pord) ||
+	    !SIPA_RM_RESORCE_IS_CONS(cons)) {
 		pr_err("invalid params\n");
 		return -EINVAL;
 	}

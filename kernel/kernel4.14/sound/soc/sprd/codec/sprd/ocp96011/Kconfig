@@ -1,0 +1,5 @@
+config SND_SOC_OCP96011
+	tristate "SoC Audio for awinic OCP96011 Switch"
+	depends on I2C
+	help
+	  This option enables support for OCP96011 Switch.

@@ -20,6 +20,10 @@
 #include <linux/mutex.h>
 #include <linux/types.h>
 #include <linux/stat.h>
+#include <linux/notifier.h>
+
+#define SPRD_HDMI_RESUME                (0UL)
+#define SPRD_HDMI_SUSPEND               (1UL)
 
 #define TAG "[LT9611]"
 
@@ -54,6 +58,7 @@
 #define HDCP_DISABLED 0
 #define HDCP_ENABLE   1
 
+extern struct blocking_notifier_head sprd_hdmi_notifier_list;
 
 struct lontium_ic_mode {
 	u8 mipi_port_cnt; //1 or 2
@@ -127,7 +132,18 @@ struct lt9611_i2c {
 	struct i2c_client *client;
 	struct platform_device *mp_dev;
 	u32 chipid;
+	int irq;
+	struct work_struct hpd_work;
 };
 
+
+#if IS_ENABLED(CONFIG_DRM_SPRD_HDMI)
+int hdmi_notifier_call_chain(unsigned long val, void *v);
+#else
+static inline int hdmi_notifier_call_chain(unsigned long val, void *v)
+{
+	return 0;
+}
+#endif
 
 #endif

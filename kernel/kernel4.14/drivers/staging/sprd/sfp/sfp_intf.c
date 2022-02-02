@@ -501,6 +501,26 @@ int sfp_check_mod_pkts(u32 ifindex,
 	return out_ifindex;
 }
 
+static void sfp_maybe_trim_skb(struct sk_buff *skb)
+{
+	struct iphdr *iph;
+	struct ipv6hdr *ipv6h;
+	u32 len;
+
+	iph = ip_hdr(skb);
+
+	if (skb->protocol == htons(ETH_P_IP)) {
+		len = ntohs(iph->tot_len);
+		if (len != skb->len)
+			pskb_trim_rcsum(skb, len);
+	} else if (skb->protocol == htons(ETH_P_IPV6)) {
+		ipv6h = (struct ipv6hdr *)iph;
+		len = ntohs(ipv6h->payload_len) + sizeof(struct ipv6hdr);
+		if (len != skb->len)
+			pskb_trim_rcsum(skb, len);
+	}
+}
+
 /*
  * 1.check the data if it will be forward. If it will be,
  * modify the header according to spread fast path forwarding
@@ -539,7 +559,33 @@ int soft_fastpath_process(int in_if,
 
 	/* Check whether is ip or ip6 header */
 	skb = (struct sk_buff *)data_header;
+
+	if (!get_sfp_tether_scheme()) {
+		if (is_banned_ipa_netdev(skb->dev))
+			return 1;
+	}
+
+	skb_reset_network_header(skb);
 	piphdr = ip_hdr(skb);
+
+	/* aqc driver may pass some pkts with 6 bytes paddings */
+	sfp_maybe_trim_skb(skb);
+
+	/*
+	 * Some ethernet drivers(For example, atlantic-fwd)
+	 * support a feature NETIF_F_SG, so the skb from them
+	 * could be nonlinear. The payload may be scattered
+	 * into different pages.
+	 * If we do not linearize it, the csum will be incorrect.
+	 * If return -ENOMEM, we do not free it, we pass it to
+	 * IP stack.
+	 */
+	if (skb_linearize(skb)) {
+		FP_PRT_DBG(FP_PRT_WARN,
+			   "nomem to linear, pass to IP stack\n");
+		return -ENOMEM;
+	}
+
 	if (piphdr->version == 0x04) {
 		*out_if = sfp_check_mod_pkts(
 			in_if,
@@ -552,7 +598,7 @@ int soft_fastpath_process(int in_if,
 			return 1;
 		else
 			return 0;
-	} else {
+	} else if (piphdr->version == 0x06) {
 		struct ipv6hdr *ip6hdr = (struct ipv6hdr *)piphdr;
 		*out_if = sfp_check_mod_pkts(
 			in_if,
@@ -565,9 +611,10 @@ int soft_fastpath_process(int in_if,
 			return 1;
 		else
 			return 0;
+	} else {
+		FP_PRT_DBG(FP_PRT_DEBUG, "recv neither v4 nor v6 pkt\n");
+		return 1;
 	}
-
-	return 1;
 }
 EXPORT_SYMBOL(soft_fastpath_process);
 

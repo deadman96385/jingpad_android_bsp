@@ -301,6 +301,12 @@ static irqreturn_t sprd_busmon_irq(int irq_num, void *dev)
 		if (val & INT_MSK_STATUS)
 			break;
 	}
+
+	if (i >= bm->num) {
+		master->ops->unlock(master);
+		return IRQ_NONE;
+	}
+
 	bm->match.name = desc[i].name;
 
 	if (bm->desc[i].type)
@@ -582,7 +588,7 @@ static int sprd_busmon_probe(struct djtag_device *ddev)
 			return bm->irq[i];
 		ret = devm_request_threaded_irq(&ddev->dev, bm->irq[i],
 						sprd_busmon_irq,
-						NULL, IRQF_TRIGGER_NONE,
+						NULL, IRQF_TRIGGER_NONE | IRQF_SHARED,
 						np->name, bm);
 		if (ret) {
 			dev_err(&ddev->dev, "%s m[%d] request irq fail\n",

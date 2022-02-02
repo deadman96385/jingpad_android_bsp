@@ -44,7 +44,10 @@ static int default_dcdc_volt_update(struct regmap *map, struct reg_info *regs,
 
 	val = (u_volt - pm->volt_base) / pm->per_step;
 
-	return regmap_update_bits(map, reg, msk << off, val << off);
+	if (pm->flag == 1)
+		return regmap_update_bits(map, reg, msk << off, ((val | (0x1 << 7))) << off);
+	else
+		return regmap_update_bits(map, reg, msk << off, val << off);
 }
 
 static u32 default_cycle_calculate(u32 max_val_uV, u32 slew_rate,
@@ -77,6 +80,31 @@ static struct pmic_data pmic_array[MAX_PMIC_TYPE_NUM] = {
 		.volt_base = 600000,
 		.per_step = 10000,
 		.margin_us = 20,
+		.update = default_dcdc_volt_update,
+		.up_cycle_calculate = default_cycle_calculate,
+		.down_cycle_calculate = default_cycle_calculate,
+	},
+	[PMIC_DA9121] = {
+		.volt_base = 0,
+		.per_step = 10000,
+		.margin_us = 25,
+		.update = default_dcdc_volt_update,
+		.up_cycle_calculate = default_cycle_calculate,
+		.down_cycle_calculate = default_cycle_calculate,
+	},
+	[PMIC_UP1106E] = {
+		.flag = 1,
+		.volt_base = 600000,
+		.per_step = 10000,
+		.margin_us = 25,
+		.update = default_dcdc_volt_update,
+		.up_cycle_calculate = default_cycle_calculate,
+		.down_cycle_calculate = default_cycle_calculate,
+	},
+	[PMIC_CHP2630] = {
+		.volt_base = 500000,
+		.per_step = 3125,
+		.margin_us = 25,
 		.update = default_dcdc_volt_update,
 		.up_cycle_calculate = default_cycle_calculate,
 		.down_cycle_calculate = default_cycle_calculate,
@@ -222,6 +250,126 @@ const struct dvfs_private_data ums312_dvfs_private_data = {
 	.mpll_manager = &ums312_mpll_manager,
 };
 
+/* UD710 Private data */
+static struct volt_grades_table ud710_volt_grades_tbl[] = {
+	[DCDC_CPU0_I2C] = {
+		.regs_array = {
+			GENREGSET(0x260, 0, 0xff),
+			GENREGSET(0x260, 16, 0xff),
+			GENREGSET(0x264, 0, 0xff),
+			GENREGSET(0x264, 16, 0xff),
+			GENREGSET(0x268, 0, 0xff),
+			GENREGSET(0x268, 16, 0xff),
+			GENREGSET(0x26c, 0, 0xff),
+			GENREGSET(0x26c, 16, 0xff),
+		},
+		.grade_count = 8,
+	},
+	[DCDC_CPU1_I2C] = {
+		.regs_array = {
+			GENREGSET(0x280, 0, 0xffff),
+			GENREGSET(0x280, 16, 0xffff),
+			GENREGSET(0x284, 0, 0xffff),
+			GENREGSET(0x284, 16, 0xffff),
+			GENREGSET(0x288, 0, 0xffff),
+			GENREGSET(0x288, 16, 0xffff),
+		},
+		.grade_count = 6,
+	},
+};
+
+static struct udelay_tbl ud710_up_udelay_tbl[] = {
+	[DCDC_CPU0] = {
+		.tbl = {
+			GENREGSET(0x110, 0, 0xffff),
+			GENREGSET(0x110, 16, 0xffff),
+			GENREGSET(0x114, 0, 0xffff),
+			GENREGSET(0x114, 16, 0xffff),
+			GENREGSET(0x118, 0, 0xffff),
+			GENREGSET(0x118, 16, 0xffff),
+			GENREGSET(0x11c, 0, 0xffff),
+		},
+	},
+	[DCDC_CPU1] = {
+		.tbl = {
+			GENREGSET(0x130, 0, 0xffff),
+			GENREGSET(0x130, 16, 0xffff),
+			GENREGSET(0x134, 0, 0xffff),
+			GENREGSET(0x134, 16, 0xffff),
+			GENREGSET(0x138, 0, 0xffff),
+			GENREGSET(0x138, 16, 0xffff),
+			GENREGSET(0x13c, 0, 0xffff),
+		},
+	},
+};
+
+static struct udelay_tbl ud710_down_udelay_tbl[] = {
+	[DCDC_CPU0] = {
+		.tbl = {
+			GENREGSET(0x120, 0, 0xffff),
+			GENREGSET(0x120, 16, 0xffff),
+			GENREGSET(0x124, 0, 0xffff),
+			GENREGSET(0x124, 16, 0xffff),
+			GENREGSET(0x128, 0, 0xffff),
+			GENREGSET(0x128, 16, 0xffff),
+			GENREGSET(0x12c, 0, 0xffff),
+		},
+	},
+	[DCDC_CPU1] = {
+		.tbl = {
+			GENREGSET(0x140, 0, 0xffff),
+			GENREGSET(0x140, 16, 0xffff),
+			GENREGSET(0x144, 0, 0xffff),
+			GENREGSET(0x144, 16, 0xffff),
+			GENREGSET(0x148, 0, 0xffff),
+			GENREGSET(0x148, 16, 0xffff),
+			GENREGSET(0x14c, 0, 0xffff),
+		},
+	},
+};
+
+static struct reg_info ud710_volt_misc_cfg_array[] = {
+	GENREGVALSET(0, 0, 0, 0),
+};
+
+static struct reg_info ud710_freq_misc_cfg_array[] = {
+	/* Set default work index 2 to twpll for lit core */
+	GENREGVALSET(0x214, 0, 0xf, 2),
+	/* Set default work index 1 to ltepll for big core */
+	GENREGVALSET(0x224, 0, 0xf, 1),
+	/* Set default work index 3 to twppll for scu */
+	GENREGVALSET(0x22c, 0, 0xf, 3),
+	/* The end of misc configurations */
+	GENREGVALSET(0, 0, 0, 0),
+};
+
+static struct mpll_index_tbl ud710_mpll_index_tbl[MAX_MPLL] = {
+
+};
+
+static struct topdvfs_volt_manager ud710_volt_manager = {
+	.grade_tbl = ud710_volt_grades_tbl,
+	.up_udelay_tbl =  ud710_up_udelay_tbl,
+	.down_udelay_tbl = ud710_down_udelay_tbl,
+	.misc_cfg_array = ud710_volt_misc_cfg_array,
+};
+
+static struct cpudvfs_freq_manager ud710_freq_manager = {
+	.misc_cfg_array = ud710_freq_misc_cfg_array,
+};
+
+static struct mpll_freq_manager ud710_mpll_manager = {
+	.mpll_tbl = ud710_mpll_index_tbl,
+};
+
+const struct dvfs_private_data ud710_dvfs_private_data = {
+	.module_clk_khz = 128000,
+	.pmic = pmic_array,
+	.volt_manager = &ud710_volt_manager,
+	.freq_manager = &ud710_freq_manager,
+	.mpll_manager = &ud710_mpll_manager,
+};
+
 static struct reg_info ums512_volt_misc_cfg_array[] = {
 	GENREGVALSET(0, 0, 0, 0),
 };
@@ -288,6 +436,17 @@ static struct volt_grades_table ums512_volt_grades_tbl[] = {
 			GENREGSET(0xfc, 0, 0x1ff),
 		},
 		.grade_count = 7,
+	},
+	[DCDC_CPU1] = {
+		.regs_array = {
+			GENREGSET(0x100, 0, 0x1ff),
+			GENREGSET(0x100, 9, 0x1ff),
+			GENREGSET(0x100, 18, 0x1ff),
+			GENREGSET(0x104, 0, 0x1ff),
+			GENREGSET(0x104, 9, 0x1ff),
+			GENREGSET(0x104, 18, 0x1ff),
+		},
+		.grade_count = 6,
 	},
 	[DCDC_CPU1_I2C] = {
 		.regs_array = {

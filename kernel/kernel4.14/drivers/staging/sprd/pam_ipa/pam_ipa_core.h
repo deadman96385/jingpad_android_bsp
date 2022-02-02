@@ -17,6 +17,16 @@
 #define PAM_IPA_STI_64BIT(l_val, h_val) \
 			((u64)((l_val) | ((u64)(h_val) << 32)))
 
+enum pam_ipa_suspend_stage {
+	PAM_IPA_FORCE_SUSPEND = BIT(0),
+	PAM_IPA_EB_SUSPEND = BIT(1),
+	PAM_IPA_REG_SUSPEND = BIT(2),
+};
+
+#define PAM_IPA_SUSPEND_STAGE (PAM_IPA_FORCE_SUSPEND | \
+			       PAM_IPA_EB_SUSPEND | \
+			       PAM_IPA_REG_SUSPEND)
+
 struct pam_ipa_hal_proc_tag {
 	u32 (*init_pcie_ul_fifo_base)(void __iomem *reg_base,
 				      u32 free_addrl, u32 free_addrh,
@@ -44,11 +54,14 @@ struct pam_ipa_hal_proc_tag {
 					  u32 filled_addrl, u32 filled_addrh);
 	u32 (*set_ddr_mapping)(void __iomem *reg_base,
 			       u32 offset_l, u32 offset_h);
+	void (*set_ul_ddr_mapping)(void __iomem *reg_base,
+				   u32 offset_l, u32 offset_h);
 	u32 (*set_pcie_rc_base)(void __iomem *reg_base,
 				u32 offset_l, u32 offset_h);
 	u32 (*start)(void __iomem *reg_base);
 	u32 (*stop)(void __iomem *reg_base);
 	u32 (*resume)(void __iomem *reg_base, u32 flag);
+	bool (*get_start_status)(void __iomem *reg_base);
 
 };
 
@@ -61,7 +74,8 @@ struct pam_ipa_cfg_tag {
 	u32 enable_reg;
 	u32 enable_mask;
 
-	bool connected;
+	bool ready;
+	bool power_status;
 	u64 pcie_offset;
 	u64 pcie_rc_base;
 
@@ -76,12 +90,18 @@ struct pam_ipa_cfg_tag {
 	dma_addr_t ul_dma_addr;
 	dma_addr_t dma_addr_buf[PAM_FREE_FIFO_SIZE];
 
+	struct regulator *vpower;
 	struct pam_ipa_hal_proc_tag hal_ops;
+
+	u32 suspend_stage;
+
+	struct delayed_work power_work;
+	struct workqueue_struct *power_wq;
 };
 
 u32 pam_ipa_init_api(struct pam_ipa_hal_proc_tag *ops);
 u32 pam_ipa_init(struct pam_ipa_cfg_tag *cfg);
-int pam_ipa_set_enabled(struct pam_ipa_cfg_tag *cfg);
+int pam_ipa_set_enabled(struct pam_ipa_cfg_tag *cfg, bool enable);
 int pam_ipa_on_miniap_ready(struct sipa_to_pam_info *remote_cfg);
 
 #endif

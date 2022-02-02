@@ -36,6 +36,9 @@ static int pcie_buf_list_free(int chn, struct mbuf_t *head,
 static int pcie_list_push(int chn, struct mbuf_t *head,
 			  struct mbuf_t *tail, int num)
 {
+	if (sprd_pcie_get_carddump_status())
+		return -1;
+
 	return mchn_push_link(chn, head, tail, num);
 }
 
@@ -125,6 +128,10 @@ static void pcie_remove_card(void *wcn_dev)
 	return sprd_pcie_remove_card(wcn_dev);
 }
 
+static enum wcn_hard_intf_type pcie_get_hwintf_type(void)
+{
+	return HW_TYPE_PCIE;
+}
 
 static struct sprdwcn_bus_ops pcie_bus_ops = {
 	.preinit = pcie_preinit,
@@ -141,6 +148,7 @@ static struct sprdwcn_bus_ops pcie_bus_ops = {
 	.read_l = pcie_read32,
 	.write_l = pcie_write32,
 	.update_bits = pcie_update_bits,
+	.get_hwintf_type = pcie_get_hwintf_type,
 	.get_bus_status = pcie_get_bus_status,
 	.get_carddump_status = pcie_get_carddump_status,
 	.set_carddump_status = pcie_set_carddump_status,

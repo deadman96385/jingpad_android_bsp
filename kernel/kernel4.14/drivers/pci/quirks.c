@@ -1655,6 +1655,99 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_PXH_1,	quirk_pc
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_PXHV,	quirk_pcie_pxh);
 
 /*
+ * resize bar to :bar0:256MB, bar1:64kb, bar2:256MB,
+ * bar3: 64kb, bar4:256MB, bar5:64kb.
+ */
+#define SPRD_PCI_BAR0	0x10
+#define SPRD_BAR_NUM		0x6
+#define SPRD_PCI_MISC_CTRL1_OFF	0x8bc
+#define SPRD_PCI_DBI_RO_WR_EN	(0x1 << 0)
+#define SPRD_PCI_RESIZABLE_BAR_EXTENDED_CAP_HEADER	0x260
+#define SPRD_PCI_RESIZABLE_BAR_EXTENDED_CAPID		0x15
+/* Resizable BAR Capability Register */
+#define SPRD_PCI_RESIZABLE_BAR0		0x264
+#define SPRD_PCI_RESIZABLE_BAR2		0x26c
+#define SPRD_PCI_RESIZABLE_BAR4		0x274
+#define SPRD_BAR_SUPPORT_2MB (0x1 << 5)
+#define SPRD_BAR_SUPPORT_4MB (0x1 << 6)
+#define SPRD_BAR_SUPPORT_8MB (0x1 << 7)
+#define SPRD_BAR_SUPPORT_256MB (0x1 << 12)
+/* Resizable BAR Control Register */
+#define SPRD_PCI_RESIZABLE_BAR0_CTL		0x268
+#define SPRD_PCI_RESIZABLE_BAR2_CTL		0x270
+#define SPRD_PCI_RESIZABLE_BAR4_CTL		0x278
+/* bit[13:8] is bar size */
+#define SPRD_PCI_RESIZABLE_BAR_SIZE_MASK 0x3F00
+#define SPRD_PCI_RESIZABLE_2MB		(0x1 << 8)
+#define SPRD_PCI_RESIZABLE_4MB		(0x2 << 8)
+#define SPRD_PCI_RESIZABLE_8MB		(0x3 << 8)
+#define SPRD_PCI_RESIZABLE_256MB	(0x8 << 8)
+#define SIZE(val) ((~(val & 0xFFFFFFF0)) + 1)
+
+static void quirk_sprd_pci_resize(struct pci_dev *dev)
+{
+	u32 val, i, backup;
+
+	pci_read_config_dword(dev,
+		SPRD_PCI_RESIZABLE_BAR_EXTENDED_CAP_HEADER, &val);
+	if ((val & 0xFF) !=
+	     SPRD_PCI_RESIZABLE_BAR_EXTENDED_CAPID) {
+		dev_info(&dev->dev, "%s: not support resize bar\n", __func__);
+		return;
+	}
+
+	pci_read_config_dword(dev, SPRD_PCI_BAR0, &backup);
+	pci_write_config_dword(dev, SPRD_PCI_BAR0, 0xFFFFFFFF);
+	pci_read_config_dword(dev, SPRD_PCI_BAR0, &val);
+	pci_write_config_dword(dev, SPRD_PCI_BAR0, backup);
+	dev_info(&dev->dev, "%s: bar0 size 0x%x\n",
+			__func__, SIZE(val));
+	if (SIZE(val) != 0x4000000)
+		return;
+	pci_read_config_dword(dev, SPRD_PCI_MISC_CTRL1_OFF, &val);
+	val |= SPRD_PCI_DBI_RO_WR_EN;
+	pci_write_config_dword(dev, SPRD_PCI_MISC_CTRL1_OFF, val);
+
+	pci_read_config_dword(dev,  SPRD_PCI_RESIZABLE_BAR0, &val);
+	pci_write_config_dword(dev, SPRD_PCI_RESIZABLE_BAR0,
+				 val | SPRD_BAR_SUPPORT_256MB);
+	pci_read_config_dword(dev, SPRD_PCI_RESIZABLE_BAR2, &val);
+	pci_write_config_dword(dev, SPRD_PCI_RESIZABLE_BAR2,
+				 val | SPRD_BAR_SUPPORT_256MB);
+	pci_read_config_dword(dev, SPRD_PCI_RESIZABLE_BAR4, &val);
+	pci_write_config_dword(dev, SPRD_PCI_RESIZABLE_BAR4,
+				 val | SPRD_BAR_SUPPORT_256MB);
+
+	pci_read_config_dword(dev, SPRD_PCI_MISC_CTRL1_OFF, &val);
+	val &= ~SPRD_PCI_DBI_RO_WR_EN;
+	pci_write_config_dword(dev, SPRD_PCI_MISC_CTRL1_OFF, val);
+
+	pci_read_config_dword(dev, SPRD_PCI_RESIZABLE_BAR0_CTL, &val);
+	pci_write_config_dword(dev, SPRD_PCI_RESIZABLE_BAR0_CTL,
+				 (val & (~SPRD_PCI_RESIZABLE_BAR_SIZE_MASK)) |
+				 SPRD_PCI_RESIZABLE_256MB);
+	pci_read_config_dword(dev, SPRD_PCI_RESIZABLE_BAR2_CTL, &val);
+	pci_write_config_dword(dev, SPRD_PCI_RESIZABLE_BAR2_CTL,
+				 (val & (~SPRD_PCI_RESIZABLE_BAR_SIZE_MASK)) |
+				 SPRD_PCI_RESIZABLE_256MB);
+	pci_read_config_dword(dev, SPRD_PCI_RESIZABLE_BAR4_CTL, &val);
+	pci_write_config_dword(dev, SPRD_PCI_RESIZABLE_BAR4_CTL,
+				 (val & (~SPRD_PCI_RESIZABLE_BAR_SIZE_MASK)) |
+				 SPRD_PCI_RESIZABLE_256MB);
+
+	for (i = 0; i < SPRD_BAR_NUM; i++) {
+		pci_read_config_dword(dev, SPRD_PCI_BAR0 + i * 4, &backup);
+		pci_write_config_dword(dev, SPRD_PCI_BAR0 + i * 4, 0xFFFFFFFF);
+		pci_read_config_dword(dev, SPRD_PCI_BAR0 + i * 4, &val);
+		pci_write_config_dword(dev, SPRD_PCI_BAR0 + i * 4, backup);
+
+		dev_info(&dev->dev, "%s: bar%d size 0x%x\n",
+			__func__, i, SIZE(val));
+	}
+}
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_SYNOPSYS,	0xabcd, quirk_sprd_pci_resize);
+
+/*
  * Some Intel PCI Express chipsets have trouble with downstream
  * device power management.
  */

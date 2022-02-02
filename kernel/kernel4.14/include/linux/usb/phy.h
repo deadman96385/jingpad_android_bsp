@@ -161,6 +161,7 @@ struct usb_phy {
 
 	/* reset the PHY */
 	int	(*reset_phy)(struct usb_phy *x);
+	int	(*reset_done)(struct usb_phy *x);
 
 	void	(*set_emphasis)(struct usb_phy *x, bool enabled);
 };
@@ -253,6 +254,14 @@ static inline int usb_phy_reset(struct usb_phy *x)
 		return 0;
 
 	return x->reset_phy(x);
+}
+
+static inline bool usb_phy_reset_done(struct usb_phy *x)
+{
+	if (!x || !x->reset_done)
+		return true;
+
+	return x->reset_done(x);
 }
 
 static inline void usb_phy_emphasis_set(struct usb_phy *x, bool enabled)

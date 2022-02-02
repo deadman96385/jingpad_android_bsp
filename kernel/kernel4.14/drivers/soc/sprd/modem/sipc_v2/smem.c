@@ -28,12 +28,12 @@
 /*
  * workround: Due to orca ipa hardware limitations
  * the sipc share memory must map from
- * 0x280000000(orca side) to 0x80000000(roc1
+ * 0x2x0000000(orca side) to 0xx0000000(roc1
  * side), and the size must be 256M
  */
 #ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
-#define IPA_SRC_BASE	0x280000000
-#define IPA_DST_BASE	0x80000000
+#define IPA_GET_SRC_BASE(addr)	(((addr) & 0xf0000000) + 0x200000000)
+#define IPA_GET_DST_BASE(addr)	((addr) & 0xf0000000)
 #define IPA_SIZE	0x10000000
 #endif
 
@@ -137,9 +137,16 @@ static void *soc_modem_ram_vmap(phys_addr_t start, size_t size, int noncached)
 		addr = page_start + i * PAGE_SIZE;
 		pages[i] = pfn_to_page(addr >> PAGE_SHIFT);
 	}
-	vaddr = vm_map_ram(pages, page_count, -1, prot) + offset_in_page(start);
+	vaddr = vm_map_ram(pages, page_count, -1, prot);
 	kfree(pages);
 
+	if (!vaddr) {
+		pr_err("smem: vm map failed.\n");
+		kfree(map);
+		return NULL;
+	}
+
+	vaddr += offset_in_page(start);
 	map->count = page_count;
 	map->mem = vaddr;
 	map->task = current;
@@ -221,13 +228,15 @@ static void *shmem_ram_vmap(u8 dst, phys_addr_t start,
 	if (spool->mem_type == SMEM_PCIE) {
 		if (start < spool->addr
 		    || start + size > spool->addr + spool->size) {
-			pr_info("%s: error, start = 0x%llx, size = 0x%lx.\n",
-				__func__, start, size);
+			pr_info("%s: error, start = 0x%lx, size = 0x%lx.\n",
+				__func__,
+				(unsigned long)start,
+				(unsigned long)size);
 			return NULL;
 		}
 
-		pr_info("%s: succ, start = 0x%llx, size = 0x%lx.\n",
-			__func__, start, size);
+		pr_info("%s: succ, start = 0x%lx, size = 0x%lx.\n",
+			__func__, (unsigned long)start, (unsigned long)size);
 		return (spool->pcie_base + start - spool->addr);
 	}
 
@@ -253,7 +262,7 @@ int smem_init(u32 addr, u32 size, u32 dst, u32 mem_type)
 
 	spool = kzalloc(sizeof(struct smem_pool), GFP_KERNEL);
 	if (!spool)
-		return -ENOMEM;
+		return -1;
 
 	spin_lock_irqsave(&phead->lock, flags);
 	list_add_tail(&spool->smem_plist, &phead->smem_phead);
@@ -285,16 +294,13 @@ int smem_init(u32 addr, u32 size, u32 dst, u32 mem_type)
 		spool->gen = gen_pool_create(SMEM_MIN_ORDER, -1);
 
 	if (!spool->gen) {
-		kfree(spool);
 		pr_err("Failed to create smem gen pool!\n");
-		return -ENOMEM;
+		return -1;
 	}
 
 	if (gen_pool_add(spool->gen, spool->addr, spool->size, -1) != 0) {
-		gen_pool_destroy(spool->gen);
-		kfree(spool);
 		pr_err("Failed to add smem gen pool!\n");
-		return -ENOMEM;
+		return -1;
 	}
 	pr_info("%s: pool addr = 0x%x, size = 0x%x added.\n",
 		__func__, spool->addr, spool->size);
@@ -302,17 +308,14 @@ int smem_init(u32 addr, u32 size, u32 dst, u32 mem_type)
 	if (mem_type == SMEM_PCIE) {
 #ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
 #ifdef CONFIG_PCIE_EPF_SPRD
-		spool->pcie_base = sprd_epf_ipa_map(IPA_SRC_BASE,
-						    IPA_DST_BASE, IPA_SIZE);
-		if (!spool->pcie_base) {
-			gen_pool_destroy(spool->gen);
-			kfree(spool);
+		spool->pcie_base = sprd_epf_ipa_map(IPA_GET_SRC_BASE(addr),
+						    IPA_GET_DST_BASE(addr),
+						    IPA_SIZE);
+		if (!spool->pcie_base)
 			return -ENOMEM;
-		}
-		spool->pcie_base += (addr - IPA_DST_BASE);
+
+		spool->pcie_base += (addr - IPA_GET_DST_BASE(addr));
 #else
-		gen_pool_destroy(spool->gen);
-		kfree(spool);
 		pr_err("Failed to pcie map, can't br here!\n");
 		return -ENOMEM;
 #endif

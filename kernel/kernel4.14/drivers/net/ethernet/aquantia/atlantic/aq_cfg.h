@@ -12,11 +12,11 @@
 #ifndef AQ_CFG_H
 #define AQ_CFG_H
 
-#define AQ_CFG_VECS_DEF   4U
+#define AQ_CFG_VECS_DEF   8U
 #define AQ_CFG_TCS_DEF    1U
 
 #define AQ_CFG_TXDS_DEF    4096U
-#define AQ_CFG_RXDS_DEF    1024U
+#define AQ_CFG_RXDS_DEF    2048U
 
 #define AQ_CFG_IS_POLLING_DEF 0U
 
@@ -28,19 +28,23 @@
 
 #define AQ_CFG_INTERRUPT_MODERATION_USEC_MAX (0x1FF * 2)
 
-#define AQ_CFG_IRQ_MASK                      0x1FFU
+#define AQ_CFG_IRQ_MASK                      0x3FFU
 
 #define AQ_CFG_VECS_MAX   8U
 #define AQ_CFG_TCS_MAX    8U
 
 #define AQ_CFG_TX_FRAME_MAX  (16U * 1024U)
-#define AQ_CFG_RX_FRAME_MAX  (4U * 1024U)
+#define AQ_CFG_RX_FRAME_MAX  (2U * 1024U)
+
+#define AQ_CFG_TX_CLEAN_BUDGET 256U
+
+#define AQ_CFG_RX_HDR_SIZE 256U
 
 /* LRO */
 #define AQ_CFG_IS_LRO_DEF           1U
 
 /* RSS */
-#define AQ_CFG_RSS_INDIRECTION_TABLE_MAX  128U
+#define AQ_CFG_RSS_INDIRECTION_TABLE_MAX  64U
 #define AQ_CFG_RSS_HASHKEY_SIZE           320U
 
 #define AQ_CFG_IS_RSS_DEF           1U
@@ -50,7 +54,7 @@
 #define AQ_CFG_PCI_FUNC_MSIX_IRQS   9U
 #define AQ_CFG_PCI_FUNC_PORTS       2U
 
-#define AQ_CFG_SERVICE_TIMER_INTERVAL    (2 * HZ)
+#define AQ_CFG_SERVICE_TIMER_INTERVAL    (1 * HZ)
 #define AQ_CFG_POLLING_TIMER_INTERVAL   ((unsigned int)(2 * HZ))
 
 #define AQ_CFG_SKB_FRAGS_MAX   32U
@@ -61,16 +65,36 @@
 
 #define AQ_CFG_NAPI_WEIGHT     64U
 
-#define AQ_CFG_MULTICAST_ADDRESS_MAX     32U
-
 /*#define AQ_CFG_MAC_ADDR_PERMANENT {0x30, 0x0E, 0xE3, 0x12, 0x34, 0x56}*/
 
-#define AQ_CFG_FC_MODE 3U
+#define AQ_NIC_FC_OFF    0U
+#define AQ_NIC_FC_TX     1U
+#define AQ_NIC_FC_RX     2U
+#define AQ_NIC_FC_FULL   3U
+#define AQ_NIC_FC_AUTO   4U
+
+#define AQ_CFG_FC_MODE AQ_NIC_FC_FULL
+
+/* Default WOL mode used on initialization */
+#define AQ_CFG_WOL_MODE AQ_NIC_WOL_ENABLED
 
 #define AQ_CFG_SPEED_MSK  0xFFFFU	/* 0xFFFFU==auto_neg */
 
 #define AQ_CFG_IS_AUTONEG_DEF       1U
 #define AQ_CFG_MTU_DEF              1514U
+
+/* When defined, driver ensures fastest link up time
+ * on start and on ifup. Full hardware reset sequence
+ * is skipped in that case, we rely on existing FW state.
+ * 
+ * #define AQ_CFG_FAST_START
+ */
+
+/* HW bug workaround:
+ * Disable RSS for UDP using rx flow filter 0.
+ */
+#define AQ_CFG_UDP_RSS_DISABLE	0
+
 
 #define AQ_CFG_LOCK_TRYS   100U
 
@@ -80,6 +104,7 @@
 #define AQ_CFG_DRV_VERSION	__stringify(NIC_MAJOR_DRIVER_VERSION)"."\
 				__stringify(NIC_MINOR_DRIVER_VERSION)"."\
 				__stringify(NIC_BUILD_DRIVER_VERSION)"."\
-				__stringify(NIC_REVISION_DRIVER_VERSION)
+				__stringify(NIC_REVISION_DRIVER_VERSION) \
+				AQ_CFG_DRV_VERSION_SUFFIX
 
 #endif /* AQ_CFG_H */

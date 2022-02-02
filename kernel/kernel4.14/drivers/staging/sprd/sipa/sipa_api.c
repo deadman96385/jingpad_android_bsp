@@ -24,7 +24,7 @@
 #include <linux/io.h>
 #include <linux/cdev.h>
 #include <linux/pm_wakeup.h>
-#include <linux/regulator/consumer.h>
+#include <linux/pm_runtime.h>
 
 #include "sipa_api.h"
 #include "sipa_priv.h"
@@ -449,6 +449,11 @@ early_resume:
 		sipa_hal_cmn_fifo_set_receive(hdl, ep->recv_fifo.idx,
 					      false);
 
+	ep = ctrl->eps[SIPA_EP_PCIE];
+	if (ep && ep->connected)
+		sipa_hal_cmn_fifo_set_receive(hdl, ep->recv_fifo.idx,
+					      false);
+
 	ctrl->suspend_stage &= ~SIPA_EP_SUSPEND;
 
 	if (!cfg->is_bypass && (ctrl->suspend_stage & SIPA_THREAD_SUSPEND)) {
@@ -473,18 +478,32 @@ early_resume:
  * ipa will work normally.
  *
  */
-static void sipa_resume_work(struct work_struct *work)
+static int sipa_resume_work(struct sipa_control *ctrl)
 {
-	struct sipa_control *ctrl = container_of((struct delayed_work *)work,
-						 struct sipa_control,
-						 resume_work);
+	int ret;
+	struct device *dev = NULL;
 
-	if (!ctrl)
-		return;
+	if (!ctrl) {
+		pr_err("sipa resume work ctrl is null\n");
+		return -EINVAL;
+	}
 
-	if (ctrl->suspend_stage & SIPA_FORCE_SUSPEND) {
+	dev = ctrl->ctx->pdev;
+	if ((ctrl->suspend_stage & SIPA_FORCE_SUSPEND) &&
+	    ctrl->params_cfg.standalone_subsys) {
+		ret = pm_runtime_get_sync(ctrl->ctx->pdev);
+		if (ret) {
+			pm_runtime_put(ctrl->ctx->pdev);
+			dev_info(dev,
+				 "ret = %d dd = %d is = %d rs = %d uc = %d\n",
+				 ret, dev->power.disable_depth,
+				 dev->power.is_suspended,
+				 dev->power.runtime_status,
+				 atomic_read(&dev->power.usage_count));
+			return ret;
+		}
+
 		ctrl->suspend_stage &= ~SIPA_FORCE_SUSPEND;
-		sipa_force_wakeup(&ctrl->params_cfg, true);
 	}
 
 	sipa_prepare_resume(ctrl);
@@ -498,6 +517,8 @@ static void sipa_resume_work(struct work_struct *work)
 				  SIPA_RM_RES_PROD_IPA);
 
 	ctrl->suspend_stage = 0;
+
+	return 0;
 }
 
 /**
@@ -557,8 +578,12 @@ static int sipa_ep_prepare_suspend(struct device *dev)
 	if (ctrl->suspend_stage & SIPA_EP_SUSPEND)
 		return 0;
 
+	if (sipa_nic_check_suspend_condition())
+		return -EAGAIN;
+
 	if (sipa_check_ep_suspend(dev, SIPA_EP_USB) ||
 	    sipa_check_ep_suspend(dev, SIPA_EP_WIFI) ||
+	    sipa_check_ep_suspend(dev, SIPA_EP_PCIE) ||
 	    sipa_check_ep_suspend(dev, SIPA_EP_VCP))
 		return -EAGAIN;
 
@@ -624,6 +649,7 @@ static int sipa_fifo_prepare_suspend(struct device *dev)
 
 static int sipa_prepare_suspend(struct device *dev)
 {
+	int ret;
 	struct sipa_control *ctrl = dev_get_drvdata(dev);
 
 	if (ctrl->power_flag)
@@ -638,18 +664,20 @@ static int sipa_prepare_suspend(struct device *dev)
 	if (sipa_fifo_prepare_suspend(dev))
 		return -EAGAIN;
 
-	if (!(ctrl->suspend_stage & SIPA_ACTION_SUSPEND)) {
-		sipa_hal_ctrl_action(false);
-		ctrl->suspend_stage |= SIPA_ACTION_SUSPEND;
-	}
-
 	if (!(ctrl->suspend_stage & SIPA_EB_SUSPEND) &&
 	    !sipa_set_enabled(false))
 		ctrl->suspend_stage |= SIPA_EB_SUSPEND;
 
 	if (!(ctrl->suspend_stage & SIPA_FORCE_SUSPEND) &&
-	    !sipa_force_wakeup(&ctrl->params_cfg, false))
+	    ctrl->params_cfg.standalone_subsys) {
+		ret = pm_runtime_put_sync(dev);
+		if (ret < 0)
+			dev_err(dev, "pm runtime put err, ret = %d\n",
+				ret);
 		ctrl->suspend_stage |= SIPA_FORCE_SUSPEND;
+	}
+
+	ctrl->suspend_stage |= SIPA_ACTION_SUSPEND;
 
 	dev_info(dev, "sipa prepare suspend finish\n");
 
@@ -663,8 +691,8 @@ static int sipa_rm_prepare_release(void *priv)
 
 	ctrl->params_cfg.suspend_cnt++;
 	ctrl->power_flag = false;
-	cancel_delayed_work(&ctrl->resume_work);
-	queue_delayed_work(ctrl->power_wq, &ctrl->suspend_work, 0);
+	cancel_delayed_work(&ctrl->power_work);
+	queue_delayed_work(ctrl->power_wq, &ctrl->power_work, 0);
 
 	return 0;
 }
@@ -676,8 +704,8 @@ static int sipa_rm_prepare_resume(void *priv)
 
 	ctrl->params_cfg.resume_cnt++;
 	ctrl->power_flag = true;
-	cancel_delayed_work(&ctrl->suspend_work);
-	queue_delayed_work(ctrl->power_wq, &ctrl->resume_work, 0);
+	cancel_delayed_work(&ctrl->power_work);
+	queue_delayed_work(ctrl->power_wq, &ctrl->power_work, 0);
 
 	/* TODO: will remove the error code in future */
 	return -EINPROGRESS;
@@ -704,6 +732,18 @@ int sipa_get_ep_info(enum sipa_ep_id id,
 }
 EXPORT_SYMBOL(sipa_get_ep_info);
 
+bool sipa_check_cmn_fifo_complete(enum sipa_ep_id id)
+{
+	struct sipa_control *ctrl = sipa_get_ctrl_pointer();
+	struct sipa_endpoint *ep = ctrl->eps[id];
+
+	return sipa_hal_check_send_cmn_fifo_com(ep->sipa_ctx->hdl,
+						ep->send_fifo.idx) &&
+		sipa_hal_check_send_cmn_fifo_com(ep->sipa_ctx->hdl,
+						 ep->recv_fifo.idx);
+}
+EXPORT_SYMBOL(sipa_check_cmn_fifo_complete);
+
 int sipa_pam_connect(const struct sipa_connect_params *in)
 {
 	u32 i;
@@ -719,21 +759,25 @@ int sipa_pam_connect(const struct sipa_connect_params *in)
 	}
 
 	sipa_set_enabled(true);
+	ep->connected = true;
+	ep->suspended = false;
+
+	if (ctrl->suspend_stage)
+		sipa_resume_for_pamu3(ctrl);
+
+	if (ep->inited)
+		goto set_recv;
+
 	memset(&fifo_item, 0, sizeof(fifo_item));
 	ep->send_notify = in->send_notify;
 	ep->recv_notify = in->recv_notify;
 	ep->send_priv = in->send_priv;
 	ep->recv_priv = in->recv_priv;
-	ep->connected = true;
-	ep->suspended = false;
+	ep->inited = true;
 	memcpy(&ep->send_fifo_param, &in->send_param,
 	       sizeof(struct sipa_comm_fifo_params));
 	memcpy(&ep->recv_fifo_param, &in->recv_param,
 	       sizeof(struct sipa_comm_fifo_params));
-
-	if (ctrl->suspend_stage)
-		sipa_resume_for_pamu3(ctrl);
-
 	sipa_open_common_fifo(ep->sipa_ctx->hdl, ep->send_fifo.idx,
 			      &ep->send_fifo_param, NULL, false,
 			      (sipa_hal_notify_cb)ep->send_notify, ep);
@@ -762,6 +806,7 @@ int sipa_pam_connect(const struct sipa_connect_params *in)
 		}
 	}
 
+set_recv:
 	sipa_hal_cmn_fifo_set_receive(ep->sipa_ctx->hdl,
 				      ep->recv_fifo.idx, false);
 
@@ -877,8 +922,9 @@ int sipa_disconnect(enum sipa_ep_id ep_id, enum sipa_disconnect_id stage)
 		break;
 	case SIPA_DISCONNECT_END:
 		ep->suspended = true;
-		sipa_hal_reclaim_unuse_node(ctrl->ctx->hdl,
-					    ep->recv_fifo.idx);
+		if (ep->id == SIPA_EP_USB)
+			sipa_hal_reclaim_unuse_node(ctrl->ctx->hdl,
+						    ep->recv_fifo.idx);
 		sipa_set_enabled(false);
 		break;
 	default:
@@ -965,7 +1011,7 @@ static int sipa_parse_dts_configuration(struct platform_device *pdev,
 		dev_err(&pdev->dev, "No matching driver data found\n");
 		return -EINVAL;
 	}
-	cfg->debugfs_data = pdata;
+	cfg->hw_data = pdata;
 	cfg->standalone_subsys = pdata->standalone_subsys;
 	/* get IPA global register base  address */
 	resource = platform_get_resource_byname(pdev,
@@ -1016,6 +1062,9 @@ static int sipa_parse_dts_configuration(struct platform_device *pdev,
 		of_property_read_bool(pdev->dev.of_node,
 				      "sprd,wiap-ul-dma");
 
+	cfg->pcie_dl_dma = of_property_read_bool(pdev->dev.of_node,
+						 "sprd,pcie-dl-dma");
+
 	/* get tft mode flag */
 	cfg->tft_mode =
 		of_property_read_bool(pdev->dev.of_node,
@@ -1037,18 +1086,6 @@ static int sipa_parse_dts_configuration(struct platform_device *pdev,
 	else {
 		cfg->enable_reg = reg_info[0];
 		cfg->enable_mask = reg_info[1];
-	}
-
-	/* get wakeup register informations */
-	if (cfg->standalone_subsys) {
-		cfg->vpower = devm_regulator_get(&pdev->dev, "vpower");
-		if (IS_ERR(cfg->vpower)) {
-			ret = PTR_ERR(cfg->vpower);
-			dev_err(&pdev->dev,
-				"unable to get vpower supply %d\n",
-				ret);
-			return ret;
-		}
 	}
 
 	/* get IPA fifo memory settings */
@@ -1481,19 +1518,38 @@ static void sipa_notify_sender_flow_ctrl(struct work_struct *work)
 			wake_up(&sipa_ctrl->sender[i]->free_waitq);
 }
 
-static void sipa_prepare_suspend_work(struct work_struct *work)
+static void sipa_prepare_suspend_work(struct sipa_control *ctrl)
 {
-	struct sipa_control *ctrl = container_of((struct delayed_work *)work,
-						 struct sipa_control,
-						 suspend_work);
-
 	if (sipa_prepare_suspend(ctrl->ctx->pdev) && !ctrl->power_flag) {
 		/* 200ms can ensure that the skb data has been recycled */
-		queue_delayed_work(ctrl->power_wq, &ctrl->suspend_work,
+		queue_delayed_work(ctrl->power_wq, &ctrl->power_work,
 				   msecs_to_jiffies(200));
 		dev_info(ctrl->ctx->pdev,
 			 "sipa schedule_delayed_work\n");
 	}
+}
+
+static void sipa_prepare_resume_work(struct sipa_control *ctrl)
+{
+	if (sipa_resume_work(ctrl) && ctrl->power_flag) {
+		queue_delayed_work(ctrl->power_wq, &ctrl->power_work,
+				   msecs_to_jiffies(100));
+		dev_info(ctrl->ctx->pdev,
+			 "sipa schedule_resume_work\n");
+	}
+}
+
+static void sipa_power_work(struct work_struct *work)
+{
+	struct delayed_work *power_delay_work = to_delayed_work(work);
+	struct sipa_control *ctrl = container_of(power_delay_work,
+						 struct sipa_control,
+						 power_work);
+
+	if (ctrl->power_flag)
+		sipa_prepare_resume_work(ctrl);
+	else
+		sipa_prepare_suspend_work(ctrl);
 }
 
 static int sipa_plat_drv_probe(struct platform_device *pdev_p)
@@ -1521,6 +1577,10 @@ static int sipa_plat_drv_probe(struct platform_device *pdev_p)
 		return ret;
 	}
 
+	if (dma_set_mask_and_coherent(dev,
+				      ctrl->params_cfg.hw_data->dma_mask))
+		dev_warn(dev, "no suitable DMA availabld\n");
+
 	ctrl->suspend_stage = SIPA_SUSPEND_MASK;
 	ret = ipa_pre_init(&ctrl->params_cfg);
 	if (ret) {
@@ -1530,8 +1590,7 @@ static int sipa_plat_drv_probe(struct platform_device *pdev_p)
 
 	mutex_init(&ctrl->resume_lock);
 	INIT_WORK(&ctrl->flow_ctrl_work, sipa_notify_sender_flow_ctrl);
-	INIT_DELAYED_WORK(&ctrl->resume_work, sipa_resume_work);
-	INIT_DELAYED_WORK(&ctrl->suspend_work, sipa_prepare_suspend_work);
+	INIT_DELAYED_WORK(&ctrl->power_work, sipa_power_work);
 	ctrl->power_wq = create_workqueue("sipa_power_wq");
 	if (!ctrl->power_wq) {
 		dev_err(dev, "sipa power wq create failed\n");
@@ -1544,8 +1603,13 @@ static int sipa_plat_drv_probe(struct platform_device *pdev_p)
 		return ret;
 	}
 
+	atomic_set(&ctrl->recv_cnt, 0);
 	device_init_wakeup(dev, true);
 	sipa_init_debugfs(&ctrl->params_cfg, ctrl);
+
+	if (ctrl->params_cfg.standalone_subsys)
+		pm_runtime_enable(dev);
+
 	return ret;
 }
 
@@ -1553,21 +1617,46 @@ static int sipa_plat_drv_probe(struct platform_device *pdev_p)
  * offset address and register , we should save offset and names
  * in the device data structure.
  */
+
+static struct sipa_pcie_mem_intr_cfg sipa_defs_pcie = {
+	.eb = false,
+};
+
+static struct sipa_pcie_mem_intr_cfg sipa_orca_8198d_pcie = {
+	.eb = true,
+	.pcie_mem_intr_reg = {0x2900002c, 0x2900002c,
+			      0x2900002c, 0x2900002c},
+	.pcie_mem_intr_pattern = {1, 1, 1, 1},
+};
+
 static struct sipa_hw_data roc1_defs_data = {
 	.ahb_reg = sipa_roc1_ahb_regmap,
 	.ahb_regnum = ROC1_AHB_MAX_REG,
 	.standalone_subsys = true,
+	.pcie_cfg = &sipa_defs_pcie,
+	.dma_mask = DMA_BIT_MASK(34),
 };
 
 static struct sipa_hw_data orca_defs_data = {
 	.ahb_reg = sipa_orca_ahb_regmap,
 	.ahb_regnum = ORCA_AHB_MAX_REG,
 	.standalone_subsys = false,
+	.pcie_cfg = &sipa_defs_pcie,
+	.dma_mask = DMA_BIT_MASK(34),
+};
+
+static struct sipa_hw_data orca_8198d_data = {
+	.ahb_reg = sipa_orca_ahb_regmap,
+	.ahb_regnum = ORCA_AHB_MAX_REG,
+	.standalone_subsys = false,
+	.pcie_cfg = &sipa_orca_8198d_pcie,
+	.dma_mask = DMA_BIT_MASK(34),
 };
 
 static struct of_device_id sipa_plat_drv_match[] = {
 	{ .compatible = "sprd,roc1-sipa", .data = &roc1_defs_data },
 	{ .compatible = "sprd,orca-sipa", .data = &orca_defs_data },
+	{ .compatible = "sprd,orca-8198d-sipa", .data = &orca_8198d_data },
 	{ .compatible = "sprd,remote-sipa", },
 	{}
 };

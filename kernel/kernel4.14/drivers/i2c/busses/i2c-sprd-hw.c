@@ -361,8 +361,8 @@ static void  sprd_i2c_hw_set_clk(struct sprd_i2c_hw *i2c_dev, u32 freq)
 		high = (((i2c_dvd -  I2C_CLK_3M4_HIGH_ADJUST) << 1) * 3) / 10;
 		low = (((i2c_dvd -  I2C_CLK_3M4_LOW_ADJUST) << 1) * 7) / 10;
 	} else {
-		high = ((i2c_dvd << 1) * 2) / 6;
-		low = ((i2c_dvd << 1) * 3) / 6;
+		high = ((i2c_dvd << 1) * 2) / 5;
+		low = ((i2c_dvd << 1) * 3) / 5;
 	}
 
 	div0 = (high & TIMIMG_MAST_L) << 16 | (low & TIMIMG_MAST_L);
@@ -431,7 +431,7 @@ static int sprd_i2c_hw_clk_init(struct sprd_i2c_hw *i2c_dev)
 		clk_parent = NULL;
 	}
 
-	if (clk_i2c && !clk_set_parent(clk_i2c, clk_parent))
+	if (!clk_set_parent(clk_i2c, clk_parent) && clk_i2c)
 		i2c_dev->src_clk = clk_get_rate(clk_i2c);
 	else
 		i2c_dev->src_clk = I2C_SOURCE_CLK_26M;

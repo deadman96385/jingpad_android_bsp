@@ -16,6 +16,7 @@
 
 #include <linux/list.h>
 #include <linux/sipa.h>
+#include <linux/kfifo.h>
 #include "sipa_rm.h"
 #include "sipa_rm_peers_list.h"
 
@@ -72,12 +73,13 @@ struct sipa_rm_resource {
 	enum sipa_rm_res_id	name;
 	enum sipa_rm_res_type	type;
 	int ref_count;
-	struct sipa_rm_wq_work_type work;
+	struct work_struct	work;
 	enum sipa_voltage_level		floor_voltage;
 	u32				max_bw;
 	u32				needed_bw;
 	enum sipa_rm_res_state	state;
 	struct sipa_rm_peers_list	*peers_list;
+	struct kfifo work_type_fifo;
 };
 
 struct sipa_rm_res_prod {
@@ -146,5 +148,9 @@ int sipa_rm_resource_consumer_release_work(
 	struct sipa_rm_res_prod *cons,
 	enum sipa_rm_res_state prev_state,
 	bool notify_completion);
+
+struct sipa_rm_resource **sipa_rm_get_all_resource(void);
+
+const char *sipa_rm_res_str(enum sipa_rm_res_id resource_name);
 
 #endif /* _SIPA_RM_RES_H_ */

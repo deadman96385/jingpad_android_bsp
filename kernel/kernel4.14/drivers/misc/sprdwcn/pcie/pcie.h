@@ -16,6 +16,7 @@
 
 #include <linux/pci.h>
 #include <misc/wcn_bus.h>
+#include  <linux/platform_device.h>
 
 #define DRVER_NAME      "wcn_pcie"
 
@@ -69,6 +70,9 @@
 #define WCN_CARD_EXIST(xmit) \
 	(atomic_read(xmit) < BUS_REMOVE_CARD_VAL)
 
+#define WCN_PCIE_DEV_AND_VND_ID 0x180000
+#define WCN_PCIE_CMD 0x180004
+
 struct bar_info {
 	resource_size_t mmio_start;
 	resource_size_t mmio_end;
@@ -92,6 +96,7 @@ struct sub_sys_pm_state {
 	unsigned int rsvd:26;
 };
 struct wcn_pcie_info {
+	struct platform_device *rc_pd;
 	struct pci_dev *dev;
 	struct pci_saved_state *saved_state;
 	int legacy_en;
@@ -122,6 +127,7 @@ struct wcn_pcie_info {
 	atomic_t edma_ready;
 	atomic_t tx_complete;
 	atomic_t card_exist;
+	atomic_t is_suspending;
 	struct mutex pm_lock;
 };
 
@@ -190,4 +196,5 @@ void sprd_pcie_write_reg32(struct wcn_pcie_info *priv, u32 reg_offset,
 int wcn_get_edma_status(void);
 int wcn_set_tx_complete_status(int flag);
 int wcn_get_tx_complete_status(void);
+void wcn_dump_ep_regs(struct wcn_pcie_info *priv);
 #endif

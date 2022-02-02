@@ -2212,6 +2212,69 @@ static void announce_device(struct usb_device *udev)
 static inline void announce_device(struct usb_device *udev) { }
 #endif
 
+#if IS_ENABLED(CONFIG_SPRD_USBM)
+#include <linux/usb/sprd_usbm.h>
+static int sprd_switch_usb_audio(struct usb_device *udev)
+{
+	struct usb_interface_descriptor *intf_desc;
+	struct usb_config_descriptor	*config_desc;
+	const char		*driver_name;
+	int i = 0;
+	int cnt = 0;
+	bool audio_flag = false;
+	bool ret = false;
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+
+	intf_desc = &udev->config->intf_cache[0]->altsetting[0].desc;
+	config_desc = &udev->config->desc;
+
+	if (udev->bus->controller->driver)
+		driver_name = udev->bus->controller->driver->name;
+	else
+		driver_name = udev->bus->sysdev->driver->name;
+
+	/* There may be couple of intf_cache due to config, loopup all
+	 * of the intf for usb audio
+	 */
+	for (i = 0; i < config_desc->bNumInterfaces; i++) {
+		intf_desc = &udev->config->intf_cache[i]->altsetting[0].desc;
+		/* FIXME: There is a issue that fail to alternate usb ctrl from
+		 * dwc3 to musb for a microphone usb device, modify to support
+		 * offload only for usb headset device.
+		 * check to match USB_SUBCLASS_AUDIOSTREAMING(0x2)
+		 */
+		if (intf_desc->bInterfaceClass == USB_CLASS_AUDIO &&
+			intf_desc->bInterfaceSubClass == 0x2)
+			cnt++;
+		if (cnt > 1) {
+			audio_flag = true;
+			break;
+		}
+	}
+
+	dev_info(&udev->dev,
+		"config_desc: bNumInterfaces=%d, intf_desc: bInterfaceNumber=%d bInterfaceClass=%d \
+		bInterfaceSubClass=%d bInterfaceProtocol=%d, cnt=%d\n",
+		config_desc->bNumInterfaces,
+		intf_desc->bInterfaceNumber,
+		intf_desc->bInterfaceClass,
+		intf_desc->bInterfaceSubClass,
+		intf_desc->bInterfaceProtocol,
+		cnt);
+
+	/* If the usb device is an audio device, and current usb controller is
+	 * not "musb-hdrc", need to switch to musb
+	 */
+	if (audio_flag && !strncmp(driver_name, "xhci-hcd", 8)) {
+		dev_info(&udev->dev, "Do usb3 -> usb2 switch for usb audio, [%s]\n",
+			dev_name(hcd->usb_phy->dev));
+		call_sprd_usbm_event_notifiers(SPRD_USBM_EVENT_HOST_DWC3, false, NULL);
+		ret = true;
+	}
+
+	return ret;
+}
+#endif
 
 /**
  * usb_enumerate_device_otg - FIXME (usbcore-internal)
@@ -2448,6 +2511,17 @@ int usb_new_device(struct usb_device *udev)
 	dev_dbg(&udev->dev, "udev %d, busnum %d, minor = %d\n",
 			udev->devnum, udev->bus->busnum,
 			(((udev->bus->busnum-1) * 128) + (udev->devnum-1)));
+
+#if IS_ENABLED(CONFIG_SPRD_USBM)
+	/* if we want to switch the usb controlloer, we set the err to -ENOTCONN to make
+	 * sure it will not re-try the enumerate, just break and do switching
+	 */
+	if (sprd_switch_usb_audio(udev)) {
+		err = -ENOTCONN;
+		goto fail;
+	}
+#endif
+
 	/* export the usbdev device-node for libusb */
 	udev->dev.devt = MKDEV(USB_DEVICE_MAJOR,
 			(((udev->bus->busnum-1) * 128) + (udev->devnum-1)));
@@ -4931,6 +5005,7 @@ static void hub_port_connect(struct usb_hub *hub, int port1, u16 portstatus,
 		/* Run it through the hoops (find a driver, etc) */
 		if (!status) {
 			status = usb_new_device(udev);
+
 			if (status) {
 				mutex_lock(&usb_port_peer_mutex);
 				spin_lock_irq(&device_state_lock);

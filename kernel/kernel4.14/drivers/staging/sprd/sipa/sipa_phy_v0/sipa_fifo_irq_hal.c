@@ -1,4 +1,3 @@
-#include <asm/irq.h>
 #include <linux/sipa.h>
 #include <linux/pm_wakeup.h>
 
@@ -37,14 +36,18 @@ ipa_fifo_traverse_int_bit(enum sipa_cmn_fifo_index id,
 	fifo_base = ipa_cfg->fifo_reg_base;
 	int_status = ipa_phy_get_fifo_all_int_sts(fifo_base);
 
-	if (int_status & IPA_INT_EXIT_FLOW_CTRL_STS)
+	if (int_status & IPA_INT_EXIT_FLOW_CTRL_STS) {
+		ipa_cfg->exit_flow_ctrl_cnt++;
 		clr_sts |= IPA_EXIT_FLOW_CONTROL_CLR_BIT;
+	}
 
 	if (int_status & IPA_INT_ERRORCODE_IN_TX_FIFO_STS)
 		clr_sts |= IPA_ERROR_CODE_INTR_CLR_BIT;
 
-	if (int_status & IPA_INT_ENTER_FLOW_CTRL_STS)
+	if (int_status & IPA_INT_ENTER_FLOW_CTRL_STS) {
+		ipa_cfg->enter_flow_ctrl_cnt++;
 		clr_sts |= IPA_ENTRY_FLOW_CONTROL_CLR_BIT;
+	}
 
 	if (int_status & IPA_INT_INTR_BIT_STS)
 		clr_sts |= IPA_TX_FIFO_INTR_CLR_BIT;

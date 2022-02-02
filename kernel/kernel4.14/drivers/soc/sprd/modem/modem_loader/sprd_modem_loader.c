@@ -12,11 +12,18 @@
  */
 
 #include <linux/cdev.h>
+#include <linux/completion.h>
+#include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
+#include <linux/dma/sprd-dma.h>
 #include <linux/kernel.h>
+#include <linux/mdm_ctrl.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/io.h>
 #include <linux/of_device.h>
+#include <linux/of_dma.h>
+#include <linux/of_address.h>
 #include <linux/poll.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
@@ -26,6 +33,11 @@
 #include <linux/regmap.h>
 #include <linux/debugfs.h>
 #include <linux/gpio/consumer.h>
+
+#ifdef CONFIG_SPRD_PCIE_EP_DEVICE
+#include <linux/soc/sprd/sprd_pcie_ep_device.h>
+#include "../include/sprd_pcie_resource.h"
+#endif
 
 #include "sprd_modem_loader.h"
 
@@ -52,16 +64,19 @@
 
 #define MODEM_STOP_CMD _IO(MODEM_MAGIC, 0xc)
 #define MODEM_START_CMD _IO(MODEM_MAGIC, 0xd)
+#define MODEM_ASSERT_CMD _IO(MODEM_MAGIC, 0xe)
 
-#ifdef CONFIG_SPRD_EXT_MODEM_POWER_CTRL
-#define MODEM_REBOOT_EXT_MODEM_CMD _IO(MODEM_MAGIC, 0xe)
-#define MODEM_POWERON_EXT_MODEM_CMD _IO(MODEM_MAGIC, 0xf)
-#define MODEM_POWEROFF_EXT_MODEM_CMD _IO(MODEM_MAGIC, 0x10)
-#endif
+#define MODEM_REBOOT_EXT_MODEM_CMD _IO(MODEM_MAGIC, 0xf)
+#define MODEM_POWERON_EXT_MODEM_CMD _IO(MODEM_MAGIC, 0x10)
+#define MODEM_POWEROFF_EXT_MODEM_CMD _IO(MODEM_MAGIC, 0x11)
+#define MODEM_ENTER_SLEEP_CMD _IO(MODEM_MAGIC, 0x12)
 
 #define	MODEM_READ_ALL_MEM 0xff
 #define	MODEM_READ_MODEM_MEM 0xfe
 #define RUN_STATE_INVALID 0xff
+
+#define SRPD_DMA_MAX_SIZE	(0x400000)
+#define SRPD_DMA_FAST_SIZE	(0x100000)
 
 enum {
 	SPRD_5G_MODEM_DP = 0,
@@ -77,11 +92,16 @@ enum {
 	SPRD_4G_MODEM_CNT,
 };
 
+struct modem_data {
+	char	*name;
+	u32	dst;
+};
+
 #ifdef CONFIG_SPRD_EXT_MODEM
 const struct ext_modem_operations *ext_modem_ops;
 #endif
 
-const char *modem_ctrl_args[MODEM_CTRL_NR] = {
+static const char *modem_ctrl_args[MODEM_CTRL_NR] = {
 	"shutdown",
 	"deepsleep",
 	"corereset",
@@ -89,22 +109,78 @@ const char *modem_ctrl_args[MODEM_CTRL_NR] = {
 	"getstatus"
 };
 
-const char *modem_5g_name[SPRD_5G_MODEM_CNT] = {
-	"dpsys",
-	"modem",
-	"nrphy",
-	"v3phy"
+#ifdef CONFIG_SPRD_EXT_MODEM
+/* the external modem, all comunacate with SIPC_ID_MINIAP */
+static const struct modem_data modem_5g[SPRD_5G_MODEM_CNT] = {
+	{"dpsys", SIPC_ID_MINIAP},
+	{"modem", SIPC_ID_MINIAP},
+	{"nrphy", SIPC_ID_MINIAP},
+	{"v3phy", SIPC_ID_MINIAP}
 };
+#else
+static const struct modem_data modem_5g[SPRD_5G_MODEM_CNT] = {
+	{"dpsys", SIPC_ID_PM_SYS},
+	{"modem", SIPC_ID_PSCP},
+	{"nrphy", SIPC_ID_NR_PHY},
+	{"v3phy", SIPC_ID_V3_PHY}
+};
+#endif
 
-const char *modem_4g_name[SPRD_4G_MODEM_CNT] = {
-	"pmsys",
-	"pubcp"
+static const struct modem_data modem_4g[SPRD_4G_MODEM_CNT] = {
+	{"pmsys", SIPC_ID_PM_SYS},
+	{"pubcp", SIPC_ID_PSCP}
 };
 
 typedef int (*MODEM_PARSE_FUN)(struct modem_device *modem,
 			       struct device_node *np);
 
 static struct class *modem_class;
+
+#ifdef CONFIG_SPRD_EXT_MODEM
+static void modem_get_remote_flag(struct modem_device *modem)
+{
+	ext_modem_ops->get_remote_flag(modem);
+	dev_dbg(modem->p_dev, "get remote flag = 0x%x!\n", modem->remote_flag);
+}
+
+static void modem_set_remote_flag(struct modem_device *modem, u8 b_clear)
+{
+	ext_modem_ops->set_remote_flag(modem, b_clear);
+	dev_dbg(modem->p_dev, "set remote flag = 0x%x, b_clear = %d!\n",
+		 modem->remote_flag, b_clear);
+}
+
+static int modem_reboot_ext_modem(struct modem_device *modem, u8 b_reset)
+{
+#ifdef CONFIG_SPRD_PCIE_EP_DEVICE
+	if (modem->modem_type == PCIE_MODEM)
+		sprd_pcie_resource_reboot_ep(modem->modem_dst, false);
+#endif
+
+#ifdef CONFIG_SPRD_EXT_MODEM_POWER_CTRL
+	return ext_modem_ops->reboot(modem, b_reset);
+#else
+	return 0;
+#endif
+}
+
+static int modem_poweroff_ext_modem(struct modem_device *modem)
+{
+#ifdef CONFIG_SPRD_EXT_MODEM_POWER_CTRL
+	return ext_modem_ops->poweroff(modem);
+#else
+	return 0;
+#endif
+}
+#endif
+
+static int modem_enter_sleep(struct modem_device *modem)
+{
+	int ret = sprd_mpm_disable_later_idle_for_sleep(modem->modem_dst);
+
+	dev_info(modem->p_dev, "modem enter sleep, ret=%d!\n", ret);
+	return ret;
+}
 
 static int modem_open(struct inode *inode, struct file *filp)
 {
@@ -138,7 +214,7 @@ static void modem_get_base_range(struct modem_device *modem,
 			size = modem->all_size;
 			break;
 
-		case  MODEM_READ_MODEM_MEM:
+		case MODEM_READ_MODEM_MEM:
 			base = modem->modem_base;
 			size = modem->modem_size;
 			break;
@@ -157,7 +233,7 @@ static void modem_get_base_range(struct modem_device *modem,
 		size = region->size;
 	}
 
-	dev_dbg(modem->p_dev, "get base 0x%llx, size = 0x%lx!\n", base, size);
+	dev_info(modem->p_dev, "get base 0x%llx, size = 0x%lx!\n", base, size);
 
 	*p_base = base;
 	*p_size = size;
@@ -171,6 +247,9 @@ static void *modem_map_memory(struct modem_device *modem, phys_addr_t start,
 
 	do {
 		map_size = PAGE_ALIGN(map_size);
+		if (map_size == 0)
+			return NULL;
+
 		map = modem_ram_vmap_nocache(modem->modem_type,
 					     start, map_size);
 		if (map) {
@@ -185,14 +264,196 @@ static void *modem_map_memory(struct modem_device *modem, phys_addr_t start,
 	return NULL;
 }
 
+static int modem_request_pms(struct modem_device *modem, struct sprd_pms *pms)
+{
+	int ret;
+
+	if (modem->modem_type == PCIE_MODEM &&
+	    sprd_pcie_is_defective_chip()) {
+		/* In this case, pcie need split bar,
+		 * It has 2 times pcie scan action in host side boot process.
+		 * After the first scan, the ep only have 2 bar can be used
+		 * for memory map, the pcie resource is not completely ready.
+		 * The api sprd_pms_request_resource(pms, -1) will return
+		 * until the 2th scan action complete, and the ep will have
+		 * 4 bar can be used for memory map. but the ep bar can only
+		 * be split by the modem, so we can't used the commom api
+		 * sprd_pms_wait_resource here.
+		 * For workaroud this issue, we add a special api
+		 * sprd_pcie_wait_load_resource, this api will return after
+		 * the first pcie scan action, and in here we use it.
+		 */
+		sprd_pms_power_up(pms);
+		ret = sprd_pcie_wait_load_resource(modem->modem_dst);
+		dev_info(modem->p_dev,
+			 "pms, wait load ret =%d\n", ret);
+	} else {
+		/* must request resource before read or write ep memory */
+		ret = sprd_pms_request_resource(pms, -1);
+	}
+
+	return ret;
+}
+
+static int modem_rescan_pcie(struct modem_device *modem, struct sprd_pms *pms)
+{
+	int ret;
+	int cnt = 10;
+
+	sprd_pcie_resource_reboot_ep(modem->modem_dst, true);
+
+	/* first, wait pcie resource. */
+	ret = sprd_pcie_wait_load_resource(modem->modem_dst);
+	if (ret != 0) {
+		dev_info(modem->p_dev, "lock, wait load ret =%d\n", ret);
+		return ret;
+	}
+
+	sprd_pms_power_up(pms);
+
+	ret = -ETIME;
+	/* than, wait ep ddr ready. */
+	while (cnt--) {
+		modem_get_remote_flag(modem);
+		/* wait the ep set REMOTE_DDR_READY_FLAG. */
+		if (modem->remote_flag & REMOTE_DDR_READY_FLAG) {
+			ret = 0;
+			break;
+		}
+		msleep(100);
+	}
+	sprd_pms_power_down(pms, false);
+
+	return ret;
+}
+
+static void modem_dma_copy_complete(void *data)
+{
+	struct dma_copy_data *dma_ptr = data;
+
+	dev_dbg(dma_ptr->p_dev, "%s dma copy complete!\n", dma_ptr->dma_name);
+	complete(&dma_ptr->dma_comp);
+}
+
+static void modem_dma_free_mem(struct dma_copy_data *dma_ptr)
+{
+	if (dma_ptr && dma_ptr->buf_v) {
+		dma_free_coherent(dma_ptr->p_dev, dma_ptr->dma_size,
+				  dma_ptr->buf_v, dma_ptr->buf_p);
+		dma_ptr->buf_v = NULL;
+		dma_ptr->buf_p = 0;
+		dma_ptr->dma_size = 0;
+	}
+}
+
+static size_t modem_dma_alloc(struct dma_copy_data *dma_ptr, size_t dma_size)
+{
+	size_t size = dma_size;
+	size_t max_size;
+	bool update_try_size = false;
+
+	max_size = (dma_ptr->try_size > 0) ?
+		dma_ptr->try_size : SRPD_DMA_MAX_SIZE;
+
+	if (size > max_size) {
+		size = max_size;
+		update_try_size = true;
+	}
+
+	do {
+		/* if size < PAGE_SIZE, don't copy with dma. */
+		dev_dbg(dma_ptr->p_dev, "%s alloc size = 0x%lx!\n",
+			dma_ptr->dma_name,
+			(unsigned long)size);
+
+		size = size & ~(PAGE_SIZE - 1);
+		if (size == 0)
+			break;
+
+		dma_ptr->buf_v = dma_zalloc_coherent(dma_ptr->p_dev,
+						     size,
+						     &dma_ptr->buf_p,
+						     GFP_KERNEL);
+		if (dma_ptr->buf_v) {
+			dma_ptr->dma_size = size;
+			if (update_try_size)
+				dma_ptr->try_size = size;
+			return size;
+		}
+
+		if (size <= SRPD_DMA_FAST_SIZE)
+			break;
+
+		size -= SRPD_DMA_FAST_SIZE;
+	} while (size > SRPD_DMA_FAST_SIZE);
+
+	return 0;
+}
+
+static size_t modem_dma_copy(struct dma_copy_data *dma_ptr,
+			  size_t dma_size,
+			  dma_addr_t src_buf,
+			  dma_addr_t dst_buf)
+{
+	enum dma_status dma_s = DMA_ERROR;
+	struct dma_tx_state dma_tx_s;
+	struct dma_async_tx_descriptor *tx;
+	dma_cookie_t cookie;
+	dma_cap_mask_t mask;
+
+	dev_dbg(dma_ptr->p_dev, "%s dma copy! src_buf = 0x%lx, dst_buf = 0x%lx!\n",
+		dma_ptr->dma_name,
+		(unsigned long)src_buf,
+		(unsigned long)dst_buf);
+
+	dma_cap_zero(mask);
+	dma_cap_set(DMA_MEMCPY, mask);
+
+	tx = dmaengine_prep_dma_memcpy(dma_ptr->dma_chn, dst_buf,
+				       src_buf, dma_size, 0);
+	if (!tx) {
+		dev_err(dma_ptr->p_dev, "%s dma get descriptor failed!\n",
+			dma_ptr->dma_name);
+		return 0;
+	}
+
+	dev_dbg(dma_ptr->p_dev, "%s dma copy submit!\n", dma_ptr->dma_name);
+
+	tx->callback = modem_dma_copy_complete;
+	tx->callback_param = dma_ptr;
+	cookie = dmaengine_submit(tx);
+	if (dma_submit_error(cookie)) {
+		dev_err(dma_ptr->p_dev, "%s submit failed!\n",
+			dma_ptr->dma_name);
+		return 0;
+	}
+
+	dma_async_issue_pending(dma_ptr->dma_chn);
+	wait_for_completion_timeout(&dma_ptr->dma_comp, msecs_to_jiffies(3000));
+	dma_s = dmaengine_tx_status(dma_ptr->dma_chn, cookie, &dma_tx_s);
+	if (dma_s != DMA_COMPLETE) {
+		dev_info(dma_ptr->p_dev, "%s dma transfer timeout dma_s = %d\n",
+			 dma_ptr->dma_name,
+			 dma_s);
+		return 0;
+	}
+
+	dev_dbg(dma_ptr->p_dev, "%s dma copy done! size = 0x%lx!\n",
+		dma_ptr->dma_name,
+		(unsigned long)dma_size);
+
+	return dma_size;
+}
+
 static ssize_t modem_read(struct file *filp,
 			  char __user *buf, size_t count, loff_t *ppos)
 {
-	phys_addr_t base;
-	size_t size, offset, copy_size, map_size, r;
-	void *vmem;
+	phys_addr_t base, addr, src_buf;
+	size_t size, offset, copy_size, map_size, r, dma_size;
+	void *vmem, *vmem_cpy;
+	int ret;
 	struct modem_device *modem = filp->private_data;
-	phys_addr_t addr;
+	struct dma_copy_data *dma_ptr = modem->read_dma;
 
 	dev_dbg(modem->p_dev, "read, %s!\n", modem->modem_name);
 
@@ -203,38 +464,107 @@ static ssize_t modem_read(struct file *filp,
 		return -EACCES;
 	}
 
+	/* first, set try size to max size. */
+	if (*ppos == 0)
+		dma_ptr->try_size = SRPD_DMA_MAX_SIZE;
+
 	modem_get_base_range(modem, &base, &size, 1);
 	offset = *ppos;
-	dev_dbg(modem->p_dev, "read, offset = 0x%lx, count = 0x%lx!\n",
+	dev_dbg(modem->p_dev, "read start, offset = 0x%lx, count = 0x%lx!\n",
 		offset, count);
 
 	if (size <= offset)
 		return -EINVAL;
 
+	if (dma_ptr) {
+		dma_ptr->dma_chn = dma_request_slave_channel(dma_ptr->p_dev,
+							     dma_ptr->dma_name);
+		if (IS_ERR_OR_NULL(dma_ptr->dma_chn))
+			dev_err(modem->p_dev, "%s request dma chan failed!\n",
+				dma_ptr->dma_name);
+	}
+
 	count = min_t(size_t, size - offset, count);
 	r = count;
 	do {
 		addr = base + offset + (count - r);
+		ret = modem_request_pms(modem, modem->rd_pms);
+
+#ifdef CONFIG_SPRD_EXT_MODEM
+		/*
+		 * pcie modem and b_rx is true and
+		 * ret is -ETIME need rescan pcie.
+		 */
+		if (modem->modem_type == PCIE_MODEM &&
+		    ret == -ETIME) {
+			dev_info(modem->p_dev, "rescan pcie!");
+			ret = modem_rescan_pcie(modem, modem->rd_pms);
+		}
+#endif
+
+		if (ret)
+			return ret;
+
 		vmem = modem_map_memory(modem, addr, r, &map_size);
 		if (!vmem) {
 			dev_err(modem->p_dev,
 				"read, Unable to map  base: 0x%llx\n", addr);
+			sprd_pms_release_resource(modem->rd_pms);
 			return -ENOMEM;
 		}
-
+		vmem_cpy = vmem;
 		copy_size = min_t(size_t, r, map_size);
-		if (unalign_copy_to_user(buf, vmem, copy_size)) {
+
+		/* if dma is ok, use dma copy. */
+		if (dma_ptr && dma_ptr->dma_chn) {
+			src_buf = addr;
+#ifdef CONFIG_SPRD_PCIE_EP_DEVICE
+			if (modem->modem_type == PCIE_MODEM)
+				src_buf = sprd_ep_virtophy(PCIE_EP_MODEM, vmem);
+#endif
+			dma_size = modem_dma_alloc(dma_ptr, copy_size);
+			if (dma_size > 0) {
+				/* if dam copy succ, use dst buf to copy to user.*/
+				dma_size = modem_dma_copy(dma_ptr, dma_size,
+							  src_buf,
+							  dma_ptr->buf_p);
+				if (dma_size > 0) {
+					vmem_cpy = dma_ptr->buf_v;
+					copy_size = dma_size;
+				} else {
+					modem_dma_free_mem(dma_ptr);
+					modem_ram_unmap(modem->modem_type, vmem);
+					sprd_pms_release_resource(modem->rd_pms);
+					dev_err(modem->p_dev, "DMA copy faied.\n");
+					return -EFAULT;
+				}
+			}
+		}
+
+		if (unalign_copy_to_user(buf, vmem_cpy, copy_size)) {
 			dev_err(modem->p_dev,
 				"read, copy data from user err!\n");
+			modem_dma_free_mem(dma_ptr);
 			modem_ram_unmap(modem->modem_type, vmem);
+			sprd_pms_release_resource(modem->rd_pms);
 			return -EFAULT;
 		}
+
+		modem_dma_free_mem(dma_ptr);
 		modem_ram_unmap(modem->modem_type, vmem);
+		sprd_pms_release_resource(modem->rd_pms);
 		r -= copy_size;
 		buf += copy_size;
 	} while (r > 0);
 
+	if (dma_ptr && dma_ptr->dma_chn) {
+		dma_release_channel(dma_ptr->dma_chn);
+		dma_ptr->dma_chn = NULL;
+	}
+
 	*ppos += (count - r);
+	dev_dbg(modem->p_dev, "read complete\n");
+
 	return count - r;
 }
 
@@ -242,11 +572,12 @@ static ssize_t modem_write(struct file *filp,
 			   const char __user *buf,
 			   size_t count, loff_t *ppos)
 {
-	phys_addr_t base;
-	size_t size, offset, copy_size, map_size, r;
-	void *vmem;
+	phys_addr_t base, addr, dst_buf;
+	size_t size, offset, copy_size, map_size, r, dma_size;
+	void *vmem, *vmem_cpy;
 	struct modem_device *modem = filp->private_data;
-	phys_addr_t addr;
+	int ret;
+	struct dma_copy_data *dma_ptr = modem->write_dma;
 
 	dev_dbg(modem->p_dev, "write, %s!\n", modem->modem_name);
 
@@ -265,28 +596,80 @@ static ssize_t modem_write(struct file *filp,
 	if (size <= offset)
 		return -EINVAL;
 
+	if (dma_ptr) {
+		dma_ptr->dma_chn = dma_request_slave_channel(dma_ptr->p_dev,
+							     dma_ptr->dma_name);
+		if (IS_ERR_OR_NULL(dma_ptr->dma_chn))
+			dev_err(modem->p_dev, "%s request dma chan failed!\n",
+				dma_ptr->dma_name);
+	}
+
 	count = min_t(size_t, size - offset, count);
 	r = count;
 	do {
 		addr = base + offset + (count - r);
+		ret = modem_request_pms(modem, modem->wt_pms);
+		if (ret)
+			return ret;
+
 		vmem = modem_map_memory(modem, addr, r, &map_size);
 		if (!vmem) {
 			dev_err(modem->p_dev,
 				"write, Unable to map  base: 0x%llx\n",
 				addr);
+			sprd_pms_release_resource(modem->wt_pms);
 			return -ENOMEM;
 		}
+		vmem_cpy = vmem;
 		copy_size = min_t(size_t, r, map_size);
-		if (unalign_copy_from_user(vmem, buf, copy_size)) {
+
+		/* if dma is ok, alloc a dma buf to recv user data. */
+		if (dma_ptr && dma_ptr->dma_chn) {
+			dma_size = modem_dma_alloc(dma_ptr, copy_size);
+			if (dma_size > 0) {
+				copy_size = dma_size;
+				vmem_cpy = dma_ptr->buf_v;
+			}
+		}
+
+		if (unalign_copy_from_user(vmem_cpy, buf, copy_size)) {
 			dev_err(modem->p_dev,
 				"write, copy data from user err!\n");
+			modem_dma_free_mem(dma_ptr);
 			modem_ram_unmap(modem->modem_type, vmem);
+			sprd_pms_release_resource(modem->wt_pms);
 			return -EFAULT;
 		}
+
+			/* if dma is ok, use dma copy. */
+		if (dma_ptr && dma_ptr->dma_chn && dma_size > 0) {
+			dst_buf = addr;
+#ifdef CONFIG_SPRD_PCIE_EP_DEVICE
+			if (modem->modem_type == PCIE_MODEM)
+				dst_buf = sprd_ep_virtophy(PCIE_EP_MODEM, vmem);
+#endif
+			/* if dam copy succ, use dst buf to copy to user.*/
+			dma_size = modem_dma_copy(dma_ptr, dma_size,
+						  dma_ptr->buf_p, dst_buf);
+			if (dma_size != copy_size) {
+				dev_err(modem->p_dev,
+					"write, dma copy failed, copy with cpu!\n");
+				memcpy(dma_ptr->buf_v, vmem, copy_size);
+			}
+		}
+		modem_dma_free_mem(dma_ptr);
 		modem_ram_unmap(modem->modem_type, vmem);
+		sprd_pms_release_resource(modem->wt_pms);
 		r -= copy_size;
 		buf += copy_size;
 	} while (r > 0);
+
+	if (dma_ptr && dma_ptr->dma_chn) {
+		dma_release_channel(dma_ptr->dma_chn);
+		dma_ptr->dma_chn = NULL;
+	}
+
+	dev_dbg(modem->p_dev, "write complete!\n");
 
 	*ppos += (count - r);
 	return count - r;
@@ -309,11 +692,12 @@ static int modem_cmd_lock(struct file *filp,
 			  struct modem_device *modem, int b_rx)
 {
 	struct mutex *mut; /* mutex point to rd_mutex or wt_mutex*/
-	struct wakeup_source *ws;
+	struct sprd_pms *pms;
 	char *name;
+	int ret;
 
 	mut = b_rx ? &modem->rd_mutex : &modem->wt_mutex;
-	ws = b_rx ? &modem->rd_ws : &modem->wt_ws;
+	pms = b_rx ? modem->rd_pms : modem->wt_pms;
 	name = b_rx ? modem->rd_lock_name : modem->wt_lock_name;
 
 	if (filp->f_flags & O_NONBLOCK) {
@@ -323,13 +707,27 @@ static int modem_cmd_lock(struct file *filp,
 			return -EBUSY;
 		}
 	} else {
-		dev_dbg(modem->p_dev, "lock, %s has get lock %d !\n",
-			current->comm, b_rx);
 		mutex_lock(mut);
+		dev_info(modem->p_dev, "lock, %s has get lock %d !\n",
+			current->comm, b_rx);
 	}
 
-	/* lock, get wake lock, cpy task to name */
-	__pm_stay_awake(ws);
+	ret = modem_request_pms(modem, pms);
+
+#ifdef CONFIG_SPRD_EXT_MODEM
+	/* pcie modem and b_rx is true and ret is -ETIME need rescan pcie. */
+	if (modem->modem_type == PCIE_MODEM && b_rx && ret == -ETIME) {
+		dev_info(modem->p_dev, "rescan pcie!");
+		ret = modem_rescan_pcie(modem, pms);
+	}
+#endif
+
+	if (ret < 0) {
+		mutex_unlock(mut);
+		return ret;
+	}
+
+	/* lock, cpy task to name */
 	strcpy(name, current->comm);
 	return 0;
 }
@@ -337,23 +735,25 @@ static int modem_cmd_lock(struct file *filp,
 static int modem_cmd_unlock(struct modem_device *modem, int b_rx)
 {
 	struct mutex *mut; /* mutex point to rd_mutex or wt_mutex*/
-	struct wakeup_source *ws;
+	struct sprd_pms *pms;
 	char *name;
 
 	mut = b_rx ? &modem->rd_mutex : &modem->wt_mutex;
-	ws = b_rx ? &modem->rd_ws : &modem->wt_ws;
+	pms = b_rx ? modem->rd_pms : modem->wt_pms;
 	name = b_rx ? modem->rd_lock_name : modem->wt_lock_name;
 
 	if (strlen(name) == 0)
 		/* means no lock, so don't unlock */
 		return 0;
 
-	/* unlock, release wake lock, set name[0] to 0 */
+	/* release resource */
+	sprd_pms_release_resource(pms);
+
+	/* unlock, set name[0] to 0 */
 	name[0] = 0;
-	__pm_relax(ws);
 	mutex_unlock(mut);
 
-	dev_dbg(modem->p_dev,
+	dev_info(modem->p_dev,
 		"unlock, %s has unlock %d!\n",
 		current->comm, b_rx);
 
@@ -435,7 +835,7 @@ static void soc_modem_start(struct modem_device *modem)
 	/* waiting for core reset release stably */
 	msleep(50);
 
-	dev_info(modem->p_dev, "start over\n");
+	dev_info(modem->p_dev, "%s start over\n", modem->modem_name);
 }
 
 static void soc_modem_stop(struct modem_device *modem)
@@ -458,17 +858,18 @@ static void soc_modem_stop(struct modem_device *modem)
 	/* waiting for power off stably */
 	msleep(50);
 
-	dev_info(modem->p_dev, "stop over\n");
+	dev_info(modem->p_dev, "%s stop over\n", modem->modem_name);
 }
 
 static int modem_run(struct modem_device *modem, u8 b_run)
 {
-	dev_info(modem->p_dev, "%s modem run = %d!\n", current->comm, b_run);
+	dev_info(modem->p_dev, "%s run = %d!\n", modem->modem_name, b_run);
 
 	if (modem->run_state == b_run)
 		return -EINVAL;
 
 	modem->run_state = b_run;
+
 	if (modem->modem_type == SOC_MODEM) {
 		if (b_run)
 			soc_modem_start(modem);
@@ -479,32 +880,15 @@ static int modem_run(struct modem_device *modem, u8 b_run)
 	return 0;
 }
 
+static int modem_assert(struct modem_device *modem)
+{
 #ifdef CONFIG_SPRD_EXT_MODEM
-static void modem_get_remote_flag(struct modem_device *modem)
-{
-	ext_modem_ops->get_remote_flag(modem);
-	dev_info(modem->p_dev, "get remote flag = 0x%x!\n", modem->remote_flag);
-}
-
-static void modem_set_remote_flag(struct modem_device *modem, u8 b_clear)
-{
-	ext_modem_ops->set_remote_flag(modem, b_clear);
-	dev_info(modem->p_dev, "set remote flag = 0x%x, b_clear = %d!\n",
-		 modem->remote_flag, b_clear);
-}
+	modem_ctrl_poweron_modem(MDM_CTRL_CRASH_MODEM);
+	return 0;
+#else
+	return smsg_senddie(modem->modem_dst);
 #endif
-
-#ifdef CONFIG_SPRD_EXT_MODEM_POWER_CTRL
-static int modem_reboot_ext_modem(struct modem_device *modem, u8 b_reset)
-{
-	return ext_modem_ops->reboot(modem, b_reset);
 }
-
-static int modem_poweroff_ext_modem(struct modem_device *modem)
-{
-	return ext_modem_ops->poweroff(modem);
-}
-#endif
 
 static long modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
@@ -598,19 +982,12 @@ static long modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		if (ret == 0) {
 			modem->remote_flag = param;
 			modem_set_remote_flag(modem, b_clear);
+			/* notify pcie res load done. */
+			if (modem->remote_flag & MODEM_IMAGE_DONE_FLAG)
+				sprd_pcie_img_load_done(modem->modem_dst);
 		}
 		break;
-#endif
 
-	case MODEM_STOP_CMD:
-		ret = modem_run(modem, 0);
-		break;
-
-	case MODEM_START_CMD:
-		ret = modem_run(modem, 1);
-		break;
-
-#ifdef CONFIG_SPRD_EXT_MODEM_POWER_CTRL
 	case MODEM_REBOOT_EXT_MODEM_CMD:
 		ret = modem_reboot_ext_modem(modem, 1);
 		break;
@@ -621,8 +998,24 @@ static long modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	case MODEM_POWEROFF_EXT_MODEM_CMD:
 		ret = modem_poweroff_ext_modem(modem);
-			break;
+		break;
 #endif
+
+	case MODEM_ENTER_SLEEP_CMD:
+		ret = modem_enter_sleep(modem);
+		break;
+
+	case MODEM_STOP_CMD:
+		ret = modem_run(modem, 0);
+		break;
+
+	case MODEM_START_CMD:
+		ret = modem_run(modem, 1);
+		break;
+
+	case MODEM_ASSERT_CMD:
+		ret = modem_assert(modem);
+		break;
 
 	default:
 		ret = -EINVAL;
@@ -632,7 +1025,15 @@ static long modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return ret;
 }
 
-static int modem_get_device_name(struct modem_device *modem,
+#ifdef CONFIG_COMPAT
+static long modem_compat_ioctl(struct file *filp, unsigned int cmd,
+			       unsigned long arg)
+{
+	return modem_ioctl(filp, cmd, (unsigned long)compat_ptr(arg));
+}
+#endif
+
+static int modem_get_name_and_dst(struct modem_device *modem,
 			       struct device_node *np)
 {
 	int modem_id;
@@ -643,14 +1044,16 @@ static int modem_get_device_name(struct modem_device *modem,
 			dev_err(modem->p_dev, "fail to get id\n");
 			return -ENODEV;
 		}
-		modem->modem_name = modem_5g_name[modem_id];
+		modem->modem_name = modem_5g[modem_id].name;
+		modem->modem_dst = modem_5g[modem_id].dst;
 	} else {
 		modem_id = of_alias_get_id(np, "lte-modem");
 		if (modem_id == -ENODEV || modem_id >= SPRD_4G_MODEM_CNT) {
 			dev_err(modem->p_dev, "fail to get id\n");
 			return -ENODEV;
 		}
-		modem->modem_name = modem_4g_name[modem_id];
+		modem->modem_name = modem_4g[modem_id].name;
+		modem->modem_dst = modem_4g[modem_id].dst;
 	}
 
 	return 0;
@@ -663,7 +1066,7 @@ static int pcie_modem_parse_dt(struct modem_device *modem,
 
 	modem->modem_type = PCIE_MODEM;
 
-	ret = modem_get_device_name(modem, np);
+	ret = modem_get_name_and_dst(modem, np);
 	if (ret)
 		return ret;
 
@@ -698,7 +1101,7 @@ static int soc_modem_parse_dt(struct modem_device *modem,
 
 	modem->modem_type = SOC_MODEM;
 
-	ret = modem_get_device_name(modem, np);
+	ret = modem_get_name_and_dst(modem, np);
 	if (ret)
 		return ret;
 
@@ -708,9 +1111,7 @@ static int soc_modem_parse_dt(struct modem_device *modem,
 	if (!modem_ctl)
 		return -ENOMEM;
 
-	cr_num = 0;
-
-	do {
+	for (cr_num = 0; cr_num < MODEM_CTRL_NR; cr_num++) {
 		/* get apb & pmu reg handle */
 		modem_ctl->ctrl_map[cr_num] =
 			syscon_regmap_lookup_by_name(np,
@@ -737,9 +1138,7 @@ static int soc_modem_parse_dt(struct modem_device *modem,
 			dev_err(modem->p_dev, "failed to map ctrl reg\n");
 			return -EINVAL;
 		}
-
-		cr_num++;
-	} while (modem_ctrl_args[cr_num] != NULL);
+	}
 
 	modem->modem_ctrl = modem_ctl;
 	return 0;
@@ -849,6 +1248,9 @@ static const struct file_operations modem_fops = {
 	.read = modem_read,
 	.write = modem_write,
 	.unlocked_ioctl = modem_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = modem_compat_ioctl,
+#endif
 	.owner = THIS_MODULE
 };
 
@@ -857,6 +1259,37 @@ static const struct of_device_id modem_match_table[] = {
 	{.compatible = "sprd,pcie-modem", .data = pcie_modem_parse_dt},
 	{ },
 };
+
+static void modem_alloc_dma(struct modem_device *modem,
+			    const char *dma_name,
+			    struct dma_copy_data **dma_pptr)
+{
+	struct dma_copy_data *dma_ptr;
+
+	dma_ptr = devm_kzalloc(modem->p_dev, sizeof(*dma_ptr), GFP_KERNEL);
+	if (dma_ptr) {
+		dma_ptr->dma_name = dma_name;
+		init_completion(&dma_ptr->dma_comp);
+		*dma_pptr = dma_ptr;
+		dma_ptr->p_dev = modem->p_dev;
+	}
+}
+
+static void modem_init_dma(struct modem_device *modem,
+			   struct device_node *np)
+{
+	const char *dma_name[2];
+
+	/* get and init dma config. */
+	if (of_property_read_string_array(np, "dma-names", dma_name, 2) < 2)
+		return;
+
+	dev_info(modem->p_dev, "dma_name[0]=%s, dma_name[1]=%s\n",
+		 dma_name[0], dma_name[1]);
+
+	modem_alloc_dma(modem, dma_name[0], &modem->read_dma);
+	modem_alloc_dma(modem, dma_name[1], &modem->write_dma);
+}
 
 static int modem_probe(struct platform_device *pdev)
 {
@@ -890,6 +1323,8 @@ static int modem_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	modem_init_dma(modem, np);
+
 	ret = alloc_chrdev_region(&modem->devid, 0, 1, modem->modem_name);
 	if (ret != 0) {
 		dev_err(modem->p_dev, "get name fail, ret = %d!\n", ret);
@@ -913,8 +1348,19 @@ static int modem_probe(struct platform_device *pdev)
 
 	mutex_init(&modem->rd_mutex);
 	mutex_init(&modem->wt_mutex);
-	wakeup_source_init(&modem->rd_ws, "modem_read");
-	wakeup_source_init(&modem->wt_ws, "modem_write");
+	snprintf(modem->rd_pms_name,
+		 sizeof(modem->rd_pms_name), "%s-rd", modem->modem_name);
+	snprintf(modem->wt_pms_name,
+		 sizeof(modem->wt_pms_name), "%s-wt", modem->modem_name);
+	modem->rd_pms = sprd_pms_create(modem->modem_dst,
+					modem->rd_pms_name, false);
+	if (!modem->rd_pms)
+		pr_warn("create pms %s failed!\n", modem->rd_pms_name);
+
+	modem->wt_pms = sprd_pms_create(modem->modem_dst,
+					modem->wt_pms_name, false);
+	if (!modem->rd_pms)
+		pr_warn("create pms %s failed!\n", modem->wt_pms_name);
 
 	platform_set_drvdata(pdev, modem);
 
@@ -930,8 +1376,8 @@ static int  modem_remove(struct platform_device *pdev)
 	struct modem_device *modem = platform_get_drvdata(pdev);
 
 	if (modem) {
-		wakeup_source_trash(&modem->rd_ws);
-		wakeup_source_trash(&modem->wt_ws);
+		sprd_pms_destroy(modem->rd_pms);
+		sprd_pms_destroy(modem->wt_pms);
 		mutex_destroy(&modem->rd_mutex);
 		mutex_destroy(&modem->wt_mutex);
 		device_destroy(modem_class, modem->devid);

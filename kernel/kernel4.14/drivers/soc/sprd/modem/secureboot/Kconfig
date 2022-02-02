@@ -1,0 +1,5 @@
+config SPRD_SECBOOT
+	tristate "sprd secureboot for verification of modem images"
+	default n
+	help
+	  sprd secureboot for verification of modem images

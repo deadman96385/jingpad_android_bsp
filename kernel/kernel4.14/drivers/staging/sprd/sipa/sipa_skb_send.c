@@ -24,7 +24,9 @@
 #include <linux/seq_file.h>
 #include <linux/of_device.h>
 #include <linux/sipa.h>
+#include <net/ipv6.h>
 #include <uapi/linux/sched/types.h>
+#include <uapi/linux/ipv6.h>
 
 #include "sipa_priv.h"
 #include "sipa_hal.h"
@@ -47,17 +49,21 @@ static void sipa_inform_evt_to_nics(struct sipa_skb_sender *sender,
 	spin_unlock_irqrestore(&sender->nic_lock, flags);
 }
 
-void sipa_sender_notify_cb(void *priv, enum sipa_hal_evt_type evt,
-			   unsigned long data)
+static void sipa_sender_notify_cb(void *priv, enum sipa_hal_evt_type evt,
+				  unsigned long data)
 {
 	struct sipa_skb_sender *sender = (struct sipa_skb_sender *)priv;
 
 	if (evt & SIPA_RECV_EVT)
 		wake_up(&sender->free_waitq);
 
-	if (evt & SIPA_HAL_TXFIFO_OVERFLOW)
+	if (evt & SIPA_RECV_WARN_EVT) {
 		dev_err(sender->ctx->pdev,
-			"sipa overflow on ep:%d\n", sender->ep->id);
+			"sipa overflow on ep:%d evt = 0x%x\n",
+			sender->ep->id, evt);
+		sender->no_free_cnt++;
+		wake_up(&sender->free_waitq);
+	}
 
 	if (evt & SIPA_HAL_ENTER_FLOW_CTRL)
 		sender->enter_flow_ctrl_cnt++;
@@ -81,16 +87,16 @@ static void sipa_free_sent_items(struct sipa_skb_sender *sender)
 		sipa_hal_recv_conversion_node_to_item(sender->ctx->hdl,
 						      sender->ep->send_fifo.idx,
 						      &item, i);
-		if (item.err_code > 1)
+		if (item.err_code)
 			dev_err(sender->ctx->pdev,
 				"have node transfer err = %d\n", item.err_code);
 
 		spin_lock_irqsave(&sender->send_lock, flags);
 		if (list_empty(&sender->sending_list)) {
-			pr_err("fifo id %d: send list is empty\n",
-			       sender->ep->send_fifo.idx);
+			pr_err("fifo id %d: send list is empty i = %d num = %d\n",
+			       sender->ep->send_fifo.idx, i, num);
 			spin_unlock_irqrestore(&sender->send_lock, flags);
-			return;
+			continue;
 		}
 
 		list_for_each_entry_safe(iter, _iter,
@@ -125,50 +131,44 @@ static void sipa_free_sent_items(struct sipa_skb_sender *sender)
 		sender->free_notify_net = false;
 		sipa_inform_evt_to_nics(sender, SIPA_LEAVE_FLOWCTRL);
 	}
-	if (num != success_cnt)
+	if (num != success_cnt || i != num)
 		dev_err(sender->ctx->pdev,
-			"recv num = %d release num = %d\n",
-			num, success_cnt);
+			"i = %d recv num = %d release num = %d\n",
+			i, num, success_cnt);
 }
 
-static int sipa_send_thread(void *data)
+static bool sipa_sender_ck_unfree(struct sipa_skb_sender *sender)
 {
-	int ret;
-	struct sipa_skb_sender *sender = data;
-	struct sched_param param = {.sched_priority = 90};
+	bool ret;
 
-	sched_setscheduler(current, SCHED_RR, &param);
-
-	while (!kthread_should_stop()) {
-		ret = wait_event_interruptible(sender->send_waitq,
-			!sipa_hal_check_rx_priv_fifo_is_empty(sender->ctx->hdl,
-					sender->ep->send_fifo.idx));
-		if (!ret)
-			sipa_hal_put_rx_fifo_items(sender->ctx->hdl,
-						   sender->ep->send_fifo.idx);
-
-		if (sender->free_notify_net)
-			wake_up(&sender->free_waitq);
+	atomic_set(&sender->check_flag, 1);
+	if (atomic_read(&sender->check_suspend)) {
+		atomic_set(&sender->check_flag, 0);
+		pr_err("sipa send ep id = %d, check_suspend = %d\n",
+		       sender->ep->id, atomic_read(&sender->check_suspend));
+		return true;
 	}
 
-	return 0;
+	ret = sipa_hal_is_tx_fifo_empty(sender->ctx->hdl,
+					sender->ep->send_fifo.idx);
+	atomic_set(&sender->check_flag, 0);
+
+	return ret;
 }
 
 static int sipa_free_thread(void *data)
 {
-	int ret;
 	struct sipa_skb_sender *sender = (struct sipa_skb_sender *)data;
 	struct sched_param param = {.sched_priority = 90};
 
 	sched_setscheduler(current, SCHED_RR, &param);
 
 	while (!kthread_should_stop()) {
-		ret = wait_event_interruptible(sender->free_waitq,
-				(!sipa_hal_is_tx_fifo_empty(sender->ctx->hdl,
-					sender->ep->send_fifo.idx) ||
-					sender->free_notify_net));
-		if (!ret)
-			sipa_free_sent_items(sender);
+		wait_event_interruptible(sender->free_waitq,
+					 !sipa_sender_ck_unfree(sender) ||
+					 sender->free_notify_net);
+
+		sipa_free_sent_items(sender);
 	}
 
 	return 0;
@@ -178,10 +178,11 @@ static int sipa_skb_sender_init(struct sipa_skb_sender *sender)
 {
 	struct sipa_comm_fifo_params attr;
 
-	attr.tx_intr_delay_us = 500;
-	attr.tx_intr_threshold = 32;
+	attr.tx_intr_delay_us = 100;
+	attr.tx_intr_threshold = 128;
 	attr.flow_ctrl_cfg = flow_ctrl_tx_full;
 	attr.flowctrl_in_tx_full = true;
+	attr.errcode_intr = true;
 	attr.flow_ctrl_irq_mode = enter_exit_flow_ctrl;
 	attr.rx_enter_flowctrl_watermark = 0;
 	attr.rx_leave_flowctrl_watermark = 0;
@@ -196,23 +197,29 @@ static int sipa_skb_sender_init(struct sipa_skb_sender *sender)
 			      sipa_sender_notify_cb, sender);
 	sender->init_flag = true;
 
+	atomic_set(&sender->check_suspend, 0);
+	atomic_set(&sender->check_flag, 0);
+
 	return 0;
 }
 
 int sipa_sender_prepare_suspend(struct sipa_skb_sender *sender)
 {
-	if (!list_empty(&sender->sending_list)) {
-		pr_err("pkt_type = %d sending list have unsend node\n",
-		       sender->type);
+	atomic_set(&sender->check_suspend, 1);
+
+	if (atomic_read(&sender->check_flag)) {
+		dev_err(sender->ctx->pdev,
+			"task send %d is running\n", sender->ep->id);
+		atomic_set(&sender->check_suspend, 0);
 		wake_up(&sender->free_waitq);
 		return -EAGAIN;
 	}
 
-	if (!sipa_hal_check_rx_priv_fifo_is_empty(sender->ctx->hdl,
-						  sender->ep->send_fifo.idx)) {
-		pr_err("pkt_type = %d rx priv fifo is not empty\n",
+	if (!list_empty(&sender->sending_list)) {
+		pr_err("pkt_type = %d sending list have unsend node\n",
 		       sender->type);
-		wake_up(&sender->send_waitq);
+		atomic_set(&sender->check_suspend, 0);
+		wake_up(&sender->free_waitq);
 		return -EAGAIN;
 	}
 
@@ -220,6 +227,8 @@ int sipa_sender_prepare_suspend(struct sipa_skb_sender *sender)
 					      sender->ep->send_fifo.idx)) {
 		pr_err("pkt_type = %d sender have something to handle\n",
 		       sender->type);
+		atomic_set(&sender->check_suspend, 0);
+		wake_up(&sender->free_waitq);
 		return -EAGAIN;
 	}
 
@@ -229,10 +238,17 @@ EXPORT_SYMBOL(sipa_sender_prepare_suspend);
 
 int sipa_sender_prepare_resume(struct sipa_skb_sender *sender)
 {
+	atomic_set(&sender->check_suspend, 0);
 	if (unlikely(sender->init_flag)) {
-		wake_up_process(sender->send_thread);
 		wake_up_process(sender->free_thread);
 		sender->init_flag = false;
+	}
+
+	if (!sipa_hal_is_tx_fifo_empty(sender->ctx->hdl,
+				       sender->ep->send_fifo.idx)) {
+		dev_err(sender->ctx->pdev, "type = %d, tx fifo is not empty\n",
+			sender->type);
+		wake_up(&sender->free_waitq);
 	}
 
 	return 0;
@@ -282,22 +298,9 @@ int create_sipa_skb_sender(struct sipa_context *ipa,
 	init_waitqueue_head(&sender->send_waitq);
 	init_waitqueue_head(&sender->free_waitq);
 
-	/* create sender thread */
-	sender->send_thread = kthread_create(sipa_send_thread, sender,
-					     "sipa-send-%d", ep->id);
-	if (IS_ERR(sender->send_thread)) {
-		dev_err(ipa->pdev, "Failed to create kthread: ipa-send-%d\n",
-			ep->id);
-		ret = PTR_ERR(sender->send_thread);
-		kfree(sender->pair_cache);
-		kfree(sender);
-		return ret;
-	}
-
 	sender->free_thread = kthread_create(sipa_free_thread, sender,
 					     "sipa-free-%d", ep->id);
 	if (IS_ERR(sender->free_thread)) {
-		kthread_stop(sender->send_thread);
 		dev_err(ipa->pdev, "Failed to create kthread: ipa-free-%d\n",
 			ep->id);
 		ret = PTR_ERR(sender->free_thread);
@@ -345,21 +348,19 @@ int sipa_skb_sender_send_data(struct sipa_skb_sender *sender,
 			      enum sipa_term_type dst,
 			      u8 netid)
 {
+	int ret;
 	unsigned long flags;
 	dma_addr_t dma_addr;
 	struct sipa_skb_dma_addr_node *node;
 	struct sipa_hal_fifo_item item;
 
-	if (!atomic_read(&sender->left_cnt)) {
-		sender->no_free_cnt++;
-		return -EAGAIN;
-	}
-	atomic_dec(&sender->left_cnt);
-
 	dma_addr = dma_map_single(sender->ctx->pdev,
 				  skb->head,
 				  skb->len + skb_headroom(skb),
 				  DMA_TO_DEVICE);
+
+	if (unlikely(dma_mapping_error(sender->ctx->pdev, dma_addr)))
+		return -ENOMEM;
 
 	memset(&item, 0, sizeof(item));
 	item.addr = dma_addr;
@@ -369,20 +370,74 @@ int sipa_skb_sender_send_data(struct sipa_skb_sender *sender,
 	item.dst = dst;
 	item.src = sender->ep->send_fifo.src_id;
 
+	if ((s8)netid != -1 && skb->ip_summed == CHECKSUM_PARTIAL) {
+		struct iphdr *iph;
+		struct ipv6hdr *ipv6h;
+
+		if (skb->protocol == htons(ETH_P_IP)) {
+			iph = ip_hdr(skb);
+			item.ul_csum_en = true;
+
+			if (iph->protocol == IPPROTO_TCP)
+				item.ul_tcp_udp_flag = 0;
+			else if (iph->protocol == IPPROTO_UDP)
+				item.ul_tcp_udp_flag = 1;
+		} else if (skb->protocol == htons(ETH_P_IPV6)) {
+			ipv6h = ipv6_hdr(skb);
+			item.ul_csum_en = true;
+
+			if (ipv6h->nexthdr == NEXTHDR_TCP)
+				item.ul_tcp_udp_flag = 0;
+			else if (ipv6h->nexthdr == NEXTHDR_UDP)
+				item.ul_tcp_udp_flag = 1;
+		}
+
+		if (item.ul_csum_en &&
+		    skb->transport_header > skb_headroom(skb))
+			item.ul_upper_layer_hdr_offset = skb->transport_header -
+				skb_headroom(skb);
+		else
+			dev_err(sender->ctx->pdev,
+				"trans header = %d headroom = %d proto = %d\n",
+				skb->transport_header,
+				skb_headroom(skb),
+				skb->protocol);
+	}
+
 	spin_lock_irqsave(&sender->send_lock, flags);
+	if (!atomic_read(&sender->left_cnt)) {
+		spin_unlock_irqrestore(&sender->send_lock, flags);
+		dma_unmap_single(sender->ctx->pdev,
+				 dma_addr,
+				 skb->len + skb_headroom(skb),
+				 DMA_TO_DEVICE);
+		sender->no_free_cnt++;
+		return -EAGAIN;
+	}
+	atomic_dec(&sender->left_cnt);
+	ret = sipa_hal_cache_rx_fifo_item(sender->ctx->hdl,
+					  sender->ep->send_fifo.idx,
+					  &item, 0);
+	if (ret) {
+		spin_unlock_irqrestore(&sender->send_lock, flags);
+		dma_unmap_single(sender->ctx->pdev,
+				 dma_addr,
+				 skb->len + skb_headroom(skb),
+				 DMA_TO_DEVICE);
+		atomic_add(1, &sender->left_cnt);
+		return ret;
+	}
+
 	node = list_first_entry(&sender->pair_free_list,
 				struct sipa_skb_dma_addr_node,
 				list);
-	list_del(&node->list);
 	node->skb = skb;
 	node->dma_addr = dma_addr;
+	list_del(&node->list);
 	list_add_tail(&node->list, &sender->sending_list);
-	sipa_hal_cache_rx_fifo_item(sender->ctx->hdl,
-				    sender->ep->send_fifo.idx,
-				    &item);
+	sipa_hal_update_rx_fifo_wptr(sender->ctx->hdl,
+				     sender->ep->send_fifo.idx, 1);
 	spin_unlock_irqrestore(&sender->send_lock, flags);
-
-	wake_up(&sender->send_waitq);
 
 	return 0;
 }
@@ -390,6 +445,14 @@ EXPORT_SYMBOL(sipa_skb_sender_send_data);
 
 bool sipa_skb_sender_check_send_complete(struct sipa_skb_sender *sender)
 {
+	struct sipa_control *ctrl = sipa_get_ctrl_pointer();
+
+	if (!ctrl)
+		return true;
+
+	if (!ctrl->params_cfg.enable_cnt || !ctrl->power_flag)
+		return true;
+
 	return sipa_hal_check_send_cmn_fifo_com(sender->ctx->hdl,
 						sender->ep->send_fifo.idx);
 }

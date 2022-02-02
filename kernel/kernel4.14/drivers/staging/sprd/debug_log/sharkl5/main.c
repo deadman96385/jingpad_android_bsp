@@ -17,7 +17,6 @@
 #include <linux/gpio/consumer.h>
 #include <linux/regulator/consumer.h>
 #include <linux/kernel.h>
-
 #include <video/sprd_mmsys_pw_domain.h>
 
 #include <dt-bindings/soc/sprd,sharkl5-mask.h>

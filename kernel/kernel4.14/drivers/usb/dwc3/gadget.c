@@ -286,6 +286,9 @@ int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 	int			susphy = false;
 	int			ret = -EINVAL;
 
+	if (pm_runtime_suspended(dwc->dev))
+		return 0;
+
 	/*
 	 * Synopsys Databook 2.60a states, on section 6.3.2.5.[1-8], that if
 	 * we're issuing an endpoint command, we must check if
@@ -1878,6 +1881,39 @@ static void dwc3_gadget_setup_nump(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 }
 
+static int __dwc3_gadget_reset(struct dwc3 *dwc)
+{
+	struct dwc3_ep		*dep;
+	int			ret;
+
+	__dwc3_gadget_ep_disable(dwc->eps[0]);
+	__dwc3_gadget_ep_disable(dwc->eps[1]);
+
+	dep = dwc->eps[0];
+	ret = __dwc3_gadget_ep_enable(dep, false, false);
+	if (ret) {
+		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+		return ret;
+	}
+
+	dep = dwc->eps[1];
+	ret = __dwc3_gadget_ep_enable(dep, false, false);
+	if (ret) {
+		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+		goto error;
+	}
+
+	/* begin to receive SETUP packets */
+	dwc->ep0state = EP0_SETUP_PHASE;
+	dwc3_ep0_out_start(dwc);
+
+	return 0;
+
+error:
+	__dwc3_gadget_ep_disable(dwc->eps[0]);
+	return ret;
+}
+
 static int __dwc3_gadget_start(struct dwc3 *dwc)
 {
 	struct dwc3_ep		*dep;
@@ -2008,7 +2044,8 @@ static int dwc3_gadget_stop(struct usb_gadget *g)
 
 	if (pm_runtime_suspended(dwc->dev))
 		goto out;
-
+	dwc->eps[0]->trb_enqueue = 0;
+	dwc->eps[1]->trb_enqueue = 0;
 	__dwc3_gadget_stop(dwc);
 
 	for (epnum = 2; epnum < DWC3_ENDPOINTS_NUM; epnum++) {
@@ -2592,6 +2629,9 @@ static void dwc3_reset_gadget(struct dwc3 *dwc)
 {
 	if (!dwc->gadget_driver)
 		return;
+	dwc->eps[0]->trb_enqueue = 0;
+	dwc->eps[1]->trb_enqueue = 0;
+	__dwc3_gadget_reset(dwc);
 
 	if (dwc->gadget.speed != USB_SPEED_UNKNOWN) {
 		spin_unlock(&dwc->lock);

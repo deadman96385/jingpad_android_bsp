@@ -327,8 +327,7 @@ int topdvfs_device_dt_parse(struct topdvfs_dev *pdev)
 
 err_subsys_free:
 	for (ix = 0; ix < nr; ix++)
-		for (i = 0; i < pdev->pwr[ix].subsys_num; ++i)
-			kfree(pdev->pwr[ix].subsys + i);
+		kfree(pdev->pwr[ix].subsys);
 err_pwr_free:
 	kfree(pdev->pwr);
 	return ret;

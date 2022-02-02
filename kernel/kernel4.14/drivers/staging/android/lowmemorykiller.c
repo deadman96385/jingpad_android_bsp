@@ -610,6 +610,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 	get_current_ram(&other_free, &other_file_orig, &other_file, sc);
 #endif
 
+	si_swapinfo(&si);
 	if (lowmem_adj_size < array_size)
 		array_size = lowmem_adj_size;
 	if (lowmem_minfree_size < array_size)
@@ -618,6 +619,10 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		minfree = lowmem_minfree[i];
 		if (other_free < minfree && other_file < minfree) {
 			min_score_adj = lowmem_adj[i];
+			if (min_score_adj != 0 && si.freeswap < si.totalswap * 20 / 100) {
+				minfree = lowmem_minfree[i - 1];
+				min_score_adj = lowmem_adj[i - 1];
+			}
 			break;
 		}
 	}
@@ -752,7 +757,6 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 			mark_oom_victim(selected);
 		task_unlock(selected);
 		trace_lowmemory_kill(selected, cache_size, cache_limit, free);
-		si_swapinfo(&si);
 		lowmem_print(1, "Killing '%s' (%d:%d), adj %hd,\n"
 			"   to free %ldkB on behalf of '%s' (%d) because\n"
 			"   cache is %ldkB , limit is %ldkB for oom_score_adj %hd\n"

@@ -31,6 +31,9 @@ enum sprd_cpudvfs_pmic {
 	PMIC_SC2730,
 	PMIC_SC2703,
 	PMIC_FAN53555,
+	PMIC_DA9121,
+	PMIC_UP1106E,
+	PMIC_CHP2630,
 	MAX_PMIC_TYPE_NUM = 8,
 };
 
@@ -94,6 +97,7 @@ struct mpll_freq_manager {
 };
 
 struct pmic_data {
+	u32 flag;
 	u32 volt_base;	/*uV*/
 	u32 per_step;	/*uV*/
 	u32 margin_us;

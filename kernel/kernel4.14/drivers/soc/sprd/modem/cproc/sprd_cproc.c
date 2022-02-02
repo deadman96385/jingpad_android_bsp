@@ -35,6 +35,10 @@
 #include <linux/debugfs.h>
 #include <linux/sprd_cp.h>
 
+#ifdef CONFIG_SPRD_SECBOOT
+#include "../secureboot/sprd_secureboot.h"
+#endif
+
 #include "../include/sprd_cproc.h"
 
 #ifdef CONFIG_DEBUG_FS
@@ -55,7 +59,7 @@ static void sprd_cproc_init_debugfs(void);
 #define CPROC_WDT_FLASE  false
 /*used for ioremap to limit vmalloc size, shi yunlong*/
 #define CPROC_VMALLOC_SIZE_LIMIT 4096
-#define MAX_CPROC_ENTRY_NUM		0x10
+#define MAX_CPROC_ENTRY_NUM		0x20
 
 enum {
 	CP_NORMAL_STATUS = 0,
@@ -536,9 +540,9 @@ static int cproc_proc_copy_iram(struct cproc_device *cproc)
 		return 0;
 
 	ctrl->iram_loaded = 1;
-	pr_debug("%s: addr =0x%p, size =%d\n",
+	pr_debug("%s: addr =0x%lx, size =%d\n",
 		__func__,
-		(void *)ctrl->iram_addr,
+		(unsigned long)ctrl->iram_addr,
 		ctrl->iram_size);
 
 	vmem = modem_ram_vmap_nocache(SOC_MODEM,
@@ -979,6 +983,13 @@ static void sprd_cproc_regmap_read(struct cproc_ctrl *ctrl,
 	u32 reg;
 
 	reg = ctrl->ctrl_reg[index];
+	/* The bit 31 of the register is 1 means that it doesn't support
+	 * bit operation, so we can't use the api regmap_update_bits to
+	 * update it. and before use the register, must clear this bit.
+	 */
+	if (reg & BIT(31))
+		reg &= ~BIT(31);
+
 	(void)regmap_read(ctrl->rmap[index], reg, val);
 }
 
@@ -998,13 +1009,23 @@ static int sprd_cproc_native_arm_start(void *arg)
 	struct cproc_device *cproc = (struct cproc_device *)arg;
 	struct cproc_init_data *pdata = cproc->initdata;
 	struct cproc_ctrl *ctrl;
-	u32 state;
+	u32 state, cnt;
 
 	if (!pdata)
 		return -ENODEV;
+
+#ifdef CONFIG_SPRD_SECBOOT
+	/* only cp need verify. */
+	if (strstr(pdata->devname, "cp") &&
+	    sprd_image_verify(&pdata->load_table)) {
+		pr_err("cproc: %s verify err!\n", pdata->devname);
+		return -EACCES;
+	}
+#endif
+
 	ctrl = pdata->ctrl;
 
-	pr_debug("%s: %s, type = 0x%x, status = 0x%x\n",
+	pr_info("%s: %s, type = 0x%x, status = 0x%x\n",
 		__func__,
 		pdata->devname,
 		cproc->type,
@@ -1016,7 +1037,7 @@ static int sprd_cproc_native_arm_start(void *arg)
 		cproc_proc_copy_iram(cproc);
 
 	/* clear force shutdown */
-	pr_debug("%s: force shutdown reg =0x%x, mask =0x%x\n",
+	pr_info("%s: force shutdown reg =0x%x, mask =0x%x\n",
 		 __func__,
 		 ctrl->ctrl_reg[CPROC_CTRL_SHUT_DOWN],
 		 ctrl->ctrl_mask[CPROC_CTRL_SHUT_DOWN]);
@@ -1042,7 +1063,7 @@ static int sprd_cproc_native_arm_start(void *arg)
 	}
 
 	/* clear force deep sleep */
-	pr_debug("%s: deep sleep reg =0x%x, mask =0x%x\n",
+	pr_info("%s: deep sleep reg =0x%x, mask =0x%x\n",
 		 __func__,
 		 ctrl->ctrl_reg[CPROC_CTRL_DEEP_SLEEP],
 		 ctrl->ctrl_mask[CPROC_CTRL_DEEP_SLEEP]);
@@ -1055,7 +1076,7 @@ static int sprd_cproc_native_arm_start(void *arg)
 	}
 
 	/* clear core reset */
-	pr_debug("%s: core reset reg =0x%x, mask =0x%x\n",
+	pr_info("%s: core reset reg =0x%x, mask =0x%x\n",
 		 __func__,
 		 ctrl->ctrl_reg[CPROC_CTRL_CORE_RESET],
 		 ctrl->ctrl_mask[CPROC_CTRL_CORE_RESET]);
@@ -1067,17 +1088,23 @@ static int sprd_cproc_native_arm_start(void *arg)
 			ctrl->ctrl_mask[CPROC_CTRL_CORE_RESET],
 			~ctrl->ctrl_mask[CPROC_CTRL_CORE_RESET]);
 
-		while (1) {
+		cnt = 1000;
+		while (cnt--) {
+			udelay(10);
 			sprd_cproc_regmap_read(ctrl,
 					       CPROC_CTRL_CORE_RESET,
 					       &state);
 			if (!(state & ctrl->ctrl_mask[CPROC_CTRL_CORE_RESET]))
 				break;
 		}
+
+		if (cnt == 0)
+			pr_warn("%s: core reset time out state =0x%x\n",
+				__func__, state);
 	}
 
 	/* clear sys reset */
-	pr_debug("%s: sys reset reg =0x%x, mask =0x%x\n",
+	pr_info("%s: sys reset reg =0x%x, mask =0x%x\n",
 		 __func__,
 		 ctrl->ctrl_reg[CPROC_CTRL_SYS_RESET],
 		 ctrl->ctrl_mask[CPROC_CTRL_SYS_RESET]);
@@ -1089,13 +1116,19 @@ static int sprd_cproc_native_arm_start(void *arg)
 			ctrl->ctrl_mask[CPROC_CTRL_SYS_RESET],
 			~ctrl->ctrl_mask[CPROC_CTRL_SYS_RESET]);
 
-		while (1) {
+		cnt = 1000;
+		while (cnt--) {
+			udelay(10);
 			sprd_cproc_regmap_read(ctrl,
 					       CPROC_CTRL_SYS_RESET,
 					       &state);
 			if (!(state & ctrl->ctrl_mask[CPROC_CTRL_SYS_RESET]))
 				break;
 		}
+		if (cnt == 0)
+			pr_warn("%s: core reset time out state =0x%x\n",
+				__func__, state);
+
 	}
 
 	return 0;
@@ -1568,9 +1601,9 @@ static int sprd_cproc_parse_dt(struct cproc_init_data **init,
 			goto error;
 		}
 		ctrl->iram_addr = res.start;
-		pr_debug("%s: iram_addr=0x%p\n",
+		pr_debug("%s: iram_addr=0x%lx\n",
 			__func__,
-			(void *)ctrl->iram_addr);
+			(unsigned long)ctrl->iram_addr);
 		index++;
 	}
 
@@ -1583,9 +1616,9 @@ static int sprd_cproc_parse_dt(struct cproc_init_data **init,
 
 	pdata->base = res.start;
 	pdata->maxsz = res.end - res.start + 1;
-	pr_debug("%s: cp base = 0x%p, size = 0x%x\n",
+	pr_debug("%s: cp base = 0x%lx, size = 0x%x\n",
 		__func__,
-		(void *)pdata->base,
+		(unsigned long)pdata->base,
 		pdata->maxsz);
 	index++;
 
@@ -1643,6 +1676,19 @@ static int sprd_cproc_parse_dt(struct cproc_init_data **init,
 		}
 		seg->base = res.start;
 		seg->maxsz = res.end - res.start + 1;
+#ifdef CONFIG_SPRD_SECBOOT
+		if (sprd_check_secure_part(seg->name) >= 0) {
+			seg->base -= SECBOOT_HEAD_SIZE;
+			seg->maxsz += seg->maxsz;
+			pdata->load_table.image_cnt++;
+			pdata->load_table.image[i].img_addr = seg->base;
+			pdata->load_table.image[i].img_len = seg->maxsz;
+			pdata->load_table.image[i].img_name = seg->name;
+			pr_info("cproc: sec_table[%d] base=0x%x, size=0x%0x, name=%s\n",
+				i, seg->base, seg->maxsz, seg->name);
+		}
+#endif
+
 		pr_debug("%s: child node [%d] base=0x%x, size=0x%0x\n",
 			__func__, i, seg->base, seg->maxsz);
 		i++;
@@ -1722,9 +1768,9 @@ static int sprd_cproc_probe(struct platform_device *pdev)
 				return -ENOMEM;
 			}
 
-			pr_debug("%s: 0x%p 0x%x\n",
+			pr_debug("%s: 0x%lx 0x%x\n",
 				 __func__,
-				 (void *)pdata->base,
+				 (unsigned long)pdata->base,
 				 pdata->maxsz);
 
 			cproc->initdata = pdata;

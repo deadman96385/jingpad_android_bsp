@@ -46,6 +46,10 @@
 #define GNSS_DUMP_DATA_SUCCESS	3
 #define FIRMWARE_FILEPATHNAME_LENGTH_MAX 256
 
+#ifdef CONFIG_SC2355
+#define MAX_CHANGE_CLK_RETRY_CNT 100
+#endif
+
 struct gnss_common_ctl {
 	struct device *dev;
 	unsigned long chip_ver;
@@ -90,7 +94,9 @@ struct gnss_cali {
 };
 static struct gnss_cali gnss_cali_data;
 static u32 *gnss_efuse_data;
-
+#ifdef CONFIG_UMW2652
+static u32 gnss_uart_cfg;
+#endif
 
 #ifdef GNSSDEBUG
 static void gnss_cali_done_isr(void)
@@ -143,13 +149,39 @@ static int gnss_write_efuse_data(void)
 	return 0;
 }
 
+#ifdef CONFIG_UMW2652
+static int gnss_write_uart_cfg(void)
+{
+	int ret;
+	u32 *set_val;
+
+	GNSSCOMM_INFO("%s, flag %d, rate = %x\n",
+		__func__, gnss_cali_data.cali_done, gnss_uart_cfg);
+	if (gnss_cali_data.cali_done) {
+		set_val = kzalloc(GNSS_UART_CFG_SIZE, GFP_KERNEL);
+		if (set_val == NULL) {
+			GNSSCOMM_ERR("%s malloc uart data fail.\n", __func__);
+			return -ENOMEM;
+		}
+		*set_val = gnss_uart_cfg;
+		ret = sprdwcn_bus_direct_write(GNSS_UART_CFG_ADDR,
+					    set_val, GNSS_UART_CFG_SIZE);
+		kfree(set_val);
+	}
+
+	return 0;
+}
+#endif
+
 int gnss_write_data(void)
 {
 	int ret = 0;
 
 	gnss_write_cali_data();
 	ret = gnss_write_efuse_data();
-
+#ifdef CONFIG_UMW2652
+	gnss_write_uart_cfg();
+#endif
 	return ret;
 }
 
@@ -276,7 +308,7 @@ static int gnss_tsen_enable(int type)
 
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL0), &value);
 	GNSSCOMM_ERR("%s, TSEN_CTRL0 value read 0x%x\n", __func__, value);
-	temp = value | BIT_TSEN_CLK_SRC_SEL | BIT_TSEN_ADCLDO_EN;
+	temp = value | BIT_TSEN_ADCLDO_EN;
 	regmap_write(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL0), temp);
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL0), &value);
 	GNSSCOMM_ERR("%s, 2nd read 0x%x\n", __func__, value);
@@ -297,7 +329,7 @@ static int gnss_tsen_enable(int type)
 
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL3), &value);
 	GNSSCOMM_ERR("%s, TSEN_CTRL3 value read 0x%x\n", __func__, value);
-	temp = (value | BIT_TSEN_EN) & (~BIT_TSEN_SEL_EN);
+	temp = value | BIT_TSEN_EN;
 	temp = (temp & (~BIT_TSEN_TIME_SEL_MASK)) | BIT_TSEN_TIME_sel(2);
 	regmap_write(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL3), temp);
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL3), &value);
@@ -344,8 +376,7 @@ static int gnss_tsen_disable(int type)
 
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL0), &value);
 	GNSSCOMM_ERR("%s, TSEN_CTRL0 value read 0x%x\n", __func__, value);
-	temp = BIT_TSEN_CLK_SRC_SEL | BIT_TSEN_ADCLDO_EN;
-	temp = value & (~temp);
+	temp = value & ~BIT_TSEN_ADCLDO_EN;
 	regmap_write(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL0), temp);
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL0), &value);
 	GNSSCOMM_ERR("%s, 2nd read 0x%x\n", __func__, value);
@@ -360,7 +391,7 @@ static int gnss_tsen_disable(int type)
 
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL3), &value);
 	GNSSCOMM_ERR("%s, TSEN_CTRL3 value read 0x%x\n", __func__, value);
-	temp = (value & (~BIT_TSEN_EN)) | BIT_TSEN_SEL_EN;
+	temp = value & ~BIT_TSEN_EN;
 	regmap_write(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL3), temp);
 	regmap_read(regmap, (REGS_ANA_APB_BASE + TSEN_CTRL3), &value);
 	GNSSCOMM_ERR("%s, 2nd read 0x%x\n", __func__, value);
@@ -395,6 +426,7 @@ static void gnss_power_on(bool enable)
 		if (wcn_get_xtal_26m_clk_type() == WCN_CLOCK_TYPE_TSX)
 			gnss_tsen_disable(TSEN_EXT);
 #endif
+
 		ret = stop_marlin(gnss_common_ctl_dev.gnss_subsys);
 		if (ret != 0)
 			GNSSCOMM_INFO("%s: stop marlin failed ret=%d\n",
@@ -581,19 +613,20 @@ static ssize_t gnss_status_show(struct device *dev,
 static DEVICE_ATTR_RO(gnss_status);
 
 #ifdef CONFIG_UMW2652
-static ssize_t gnss_clktype_show(struct device *dev,
-				 struct device_attribute *attr, char *buf)
+static ssize_t gnss_uart_cfg_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
 {
-	int i = 0;
-	enum wcn_clock_type clktype = WCN_CLOCK_TYPE_UNKNOWN;
+	u32 rate;
 
-	clktype = wcn_get_xtal_26m_clk_type();
-	GNSSCOMM_INFO("%s: %d\n", __func__, clktype);
-	i = scnprintf(buf, PAGE_SIZE, "%d\n", clktype);
+	if (kstrtou32(buf, GNSS_MAX_STRING_LEN, &rate))
+		return -EINVAL;
+	gnss_uart_cfg = ((0x7e << 24) | rate);
+	GNSSCOMM_INFO("%s, rate %d\n", __func__, rate);
 
-	return i;
+	return count;
 }
-static DEVICE_ATTR_RO(gnss_clktype);
+static DEVICE_ATTR_WO(gnss_uart_cfg);
 #endif
 
 #ifndef CONFIG_SC2342_INTEG
@@ -688,7 +721,7 @@ static struct attribute *gnss_common_ctl_attrs[] = {
 	&dev_attr_gnss_status.attr,
 	&dev_attr_gnss_subsys.attr,
 #ifdef CONFIG_UMW2652
-	&dev_attr_gnss_clktype.attr,
+	&dev_attr_gnss_uart_cfg.attr,
 #endif
 #ifndef CONFIG_SC2342_INTEG
 	&dev_attr_gnss_regr.attr,

@@ -420,15 +420,8 @@ static int gnss_ext_hold_cpu(void)
 	temp = BIT_GNSS_APB_MCU_AP_RST_SOFT;
 	ret = sprdwcn_bus_reg_write(REG_GNSS_APB_MCU_AP_RST + GNSS_SET_OFFSET,
 		&temp, 4);
-	if (ret < 0) {
-		GNSSDUMP_ERR("%s write reset reg error:%d\n", __func__, ret);
-		return ret;
-	}
-	temp = GNSS_ARCH_EB_REG_BYPASS;
-	ret = sprdwcn_bus_reg_write(GNSS_ARCH_EB_REG + GNSS_SET_OFFSET,
-				    &temp, 4);
 	if (ret < 0)
-		GNSSDUMP_ERR("%s write bypass reg error:%d\n", __func__, ret);
+		GNSSDUMP_ERR("%s write reset reg error:%d\n", __func__, ret);
 
 	return ret;
 }

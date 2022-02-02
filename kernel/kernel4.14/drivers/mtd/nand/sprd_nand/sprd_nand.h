@@ -215,7 +215,7 @@
 #define SEED_TBL_SIZE 64
 #define SEED_BUF_SIZE 68
 #define PAGE2SEED_ADDR_OFFSET(pg) ((pg & GENMASK(3, 0)) << 2)
-#define SPL_MAX_SIZE BIT(16)
+#define SPL_MAX_SIZE BIT(18)
 #define SPRD_NAND_PAGE_MASK GENMASK(7, 0)
 #define SPRD_NAND_PAGE_SHIFT_0(pg) ((pg) & SPRD_NAND_PAGE_MASK)
 #define SPRD_NAND_PAGE_SHIFT_8(pg) (((pg) >> 8) & SPRD_NAND_PAGE_MASK)

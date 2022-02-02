@@ -19,6 +19,7 @@ struct sipa_eth_dtrans_stats {
 struct SIPA_ETH {
 	int state;
 	atomic_t rx_busy;
+	atomic_t rx_evt;
 	struct net_device *netdev;/* Linux net device */
 	enum sipa_nic_id nic_id;
 	struct napi_struct napi;/* Napi instance */

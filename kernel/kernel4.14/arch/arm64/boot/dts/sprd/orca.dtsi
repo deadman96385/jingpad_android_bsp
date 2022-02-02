@@ -11,6 +11,7 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/debug/busmonitor/busmonitor.h>
 #include <dt-bindings/debug/dmc_mpu/orca_dmc_mpu.h>
+#include <dt-bindings/pinctrl/pinctrl-sprd.h>
 / {
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
@@ -34,7 +35,10 @@
 		eth5 = &sipa_eth5;
 		eth6 = &sipa_eth6;
 		eth7 = &sipa_eth7;
-		eth8 = &sipa_eth8;
+		eth8 = &vpcie0;
+		eth9 = &vpcie1;
+		eth10 = &vpcie2;
+		eth11 = &vpcie3;
 		serdes0 = &serdes0;
 		serdes1 = &serdes1;
 		serdes2 = &serdes2;
@@ -951,6 +955,327 @@
 				#address-cells = <1>;
 				#size-cells = <0>;
 
+				ap-busmonitor@0{
+					compatible  = "sprd,orca-busmonitor";
+					interrupts = <GIC_SPI 56
+						IRQ_TYPE_LEVEL_HIGH>;
+					reg = <0x0>;
+					sprd,bm-num = <14>;
+					sprd,bm-name =
+						"AP_DMA", "SDIO_MST", "NANDC", "EMMC",
+						"USB3.0", "AP_AON", "IPA", "TFT",
+						"SDIO_SLV", "USB_PAM", "USB3.1", "PCIE_MSTR",
+						"PAM_WIFI", "AP_IPA_DDR";
+					sprd,bm-type =
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>;
+					sprd,bm-dap = <1>, <2>, <3>, <4>,
+						<5>, <6>, <7>, <8>, <9>, <10>,
+						<11>, <12>, <13>, <14>;
+					sprd,bm-config =
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>;
+					sprd,bm-id =
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>;
+					sprd,bm-ranges =
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>;
+				};
+
+				apcpu-busmonitor@1{
+					compatible  = "sprd,orca-busmonitor";
+					interrupts = <GIC_SPI 165
+						IRQ_TYPE_LEVEL_HIGH>;
+					reg = <0x1>;
+					sprd,bm-num = <2>;
+					sprd,bm-name =
+						"DSU", "ETR";
+					sprd,bm-type =
+						<AXI>, <AXI>;
+					sprd,bm-dap = <1>, <2>;
+					sprd,bm-config =
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>;
+					sprd,bm-id =
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>;
+					sprd,bm-ranges =
+						<0x0 0x0>,
+						<0x0 0x0>;
+				};
+
+				pscp-busmonitor@2{
+					compatible  = "sprd,orca-busmonitor";
+					interrupts = <GIC_SPI 81
+						IRQ_TYPE_LEVEL_HIGH>;
+					reg = <0x2>;
+					sprd,bm-num = <14>;
+					sprd,bm-name =
+						"R8_CACHE", "R8_LLPP", "R8_FPP0", "R8_FPP1",
+						"V3_SEC", "DMA_LINK0", "DMA_LINK_4C", "DMA",
+						"SDIO", "NR_SEC0", "NR_SEC1", "FROM_MINIAP",
+						"FROM_NRCP", "TO_DDR";
+					sprd,bm-type =
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>;
+					sprd,bm-dap = <0>, <1>, <2>, <3>,
+						<4>, <5>, <6>, <7>, <8>, <9>,
+						<10>, <11>, <12>, <13>;
+					sprd,bm-config =
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>;
+					sprd,bm-id =
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>;
+					sprd,bm-ranges =
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>;
+				};
+
+				v3phy-busmonitor@3{
+					compatible  = "sprd,orca-busmonitor";
+					interrupts = <GIC_SPI 81
+						IRQ_TYPE_LEVEL_HIGH>;
+					reg = <0x3>;
+					sprd,bm-num = <16>;
+					sprd,bm-name =
+						"PHY_R5_l2_CACHE", "PHY_DMA", "PHY_DMA_LINK", "FROM_PS",
+						"FROM_LW", "PHY_R5_LLPP", "PS_R5_L2_CACHE", "PS_SEC",
+						"PS_TFT", "PS_DMA_LINK0", "PS_DMA_LINK4C", "PS_DMA",
+						"PS_SDIO", "PS_R5_LLPP", "LW_HARQBUF", "LW_TO_DDR";
+					sprd,bm-type =
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>;
+					sprd,bm-dap = <1>, <2>, <3>, <4>,
+						<5>, <6>, <7>, <8>, <9>, <10>,
+						<11>, <12>, <13>, <14>, <15>,
+						<16>;
+					sprd,bm-config =
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>;
+					sprd,bm-id =
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>;
+					sprd,bm-ranges =
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>;
+				};
+
+				nrcp-busmonitor@4{
+					compatible  = "sprd,orca-busmonitor";
+					interrupts = <GIC_SPI 81
+						IRQ_TYPE_LEVEL_HIGH>;
+					reg = <0x4>;
+					sprd,bm-num = <14>;
+					sprd,bm-name =
+						"R8_CACHE", "R8_LLPP", "R8_FPP0", "R8_FPP1",
+						"DMA", "NR_SEC", "NR_UL", "NR_DL",
+						"NR_SYNC", "XC0_EPP", "XC0_EDP", "XC1_EPP",
+						"XC1_EDP", "ACC_DMA";
+					sprd,bm-type =
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>, <AXI>, <AXI>,
+						<AXI>, <AXI>;
+					sprd,bm-dap = <1>, <2>, <3>, <4>,
+						<5>, <6>, <7>, <8>, <9>, <10>,
+						<11>, <12>, <13>, <14>;
+					sprd,bm-config =
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>;
+					sprd,bm-id =
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>;
+					sprd,bm-ranges =
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>;
+				};
+
+				audcp-busmonitor@5{
+					compatible  = "sprd,orca-busmonitor";
+					interrupts = <GIC_SPI 81
+						IRQ_TYPE_LEVEL_HIGH>;
+					reg = <0x5>;
+					sprd,bm-num = <4>;
+					sprd,bm-name =
+						"auddsp_d", "dma_ap", "from_aon", "dma_cp";
+					sprd,bm-type =
+						<AXI>, <AXI>, <AXI>, <AXI>;
+					sprd,bm-dap = <0>, <1>, <2>, <3>;
+					sprd,bm-config =
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>,
+						<DISABLE MON_WRITE MON_INSIDE>;
+					sprd,bm-id =
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>,
+						<DISABLE 0 AXIID>;
+					sprd,bm-ranges =
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>,
+						<0x0 0x0>;
+				};
+
 				aon-busmonitor@7{
 					compatible  = "sprd,orca-busmonitor";
 					interrupts = <GIC_SPI 81
@@ -1099,13 +1424,15 @@
 					interrupt-names = "irq";
 					usb-phy = <&ssphy0>, <&ssphy0>;
 					phy_type = "utmi_wide";
-					dr_mode = "peripheral";
 					snps,usb3-u1u2-disable;
 					snps,dis_u3_susphy_quirk;
 					snps,dis_u2_susphy_quirk;
 					snps,overlap_check_quirk;
 					snps,ep_out_aligned_size_quirk;
 					snps,disconnect_event_quirk;
+					snps,usb3_slow_suspend;
+					snps,host_suspend_capable;
+					snps,dis-del-phy-power-chg-quirk;
 				};
 			};
 
@@ -1129,25 +1456,28 @@
 					usb-phy = <&ssphy1>, <&ssphy1>;
 					usb-pam = <&pamu3>;
 					phy_type = "utmi_wide";
-					dr_mode = "peripheral";
 					snps,usb3-u1u2-disable;
 					snps,dis_u3_susphy_quirk;
 					snps,dis_u2_susphy_quirk;
 					snps,overlap_check_quirk;
 					snps,ep_out_aligned_size_quirk;
 					snps,disconnect_event_quirk;
+					snps,usb3_slow_suspend;
+					snps,host_suspend_capable;
+					snps,dis-del-phy-power-chg-quirk;
 				};
 			};
 
 			pcie0: pcie0@2b100000 {
 				compatible = "sprd,pcie", "snps,dw-pcie";
 				reg = <0x0 0x2b100000 0x0 0x100000>,
-				      <0x2 0x06e00000 0x0 0x100000>;
+				      <0x2 0x07000000 0x0 0x100000>;
 				reg-names = "dbi", "config";
 				#address-cells = <3>;
 				#size-cells = <2>;
 				device_type = "pci";
-				ranges = <0x03000000 0x0 0x10000000 0x2 0x00000000 0x0 0x06000000>;
+				ranges = <0x01000000 0x0 0x00000000 0x2 0x06000000 0x0 0x01000000
+					0x03000000 0x0 0x10000000 0x2 0x00000000 0x0 0x06000000>;
 				bus-range = <0  15>;
 				num-lanes = <1>;
 				num-vectors = <256>;
@@ -1172,6 +1502,8 @@
 				num-lanes = <1>;
 				num-ib-windows = <6>;
 				num-ob-windows = <8>;
+				pcie-perst-gpios = <&eic_async 30
+						    GPIO_ACTIVE_HIGH>;
 				status = "disabled";
 			};
 
@@ -1183,10 +1515,16 @@
 				      <0 0x29100000 0 0x100000>;
 				reg-names = "pamu3_glb_regs",
 					    "dwc3_core_regs";
+				syscons = <&ap_ipa_ahb_regs
+					REG_AP_IPA_AHB_RF_AHB_RST
+					MASK_AP_IPA_AHB_RF_USB_PAM_SOFT_RST>;
+				syscon-names = "reset";
 			};
 
 			ssphy0: ssphy0@634d0000 {
 				compatible = "sprd,orca1-ssphy0";
+				reg = <0 0x634d0000 0 0x10000>;
+				reg-names = "ssphy_glb_regs";
 				sprd,syscon-aon-apb = <&aon_apb_regs>;
 				sprd,syscon-ap-ahb = <&ap_ahb_regs>;
 				sprd,syscon-ipa-ahb = <&ap_ipa_ahb_regs>;
@@ -1196,6 +1534,8 @@
 
 			ssphy1: ssphy@634e0000 {
 				compatible = "sprd,orca1-ssphy1";
+				reg = <0 0x634e0000 0 0x10000>;
+				reg-names = "ssphy_glb_regs";
 				sprd,syscon-aon-apb = <&aon_apb_regs>;
 				sprd,syscon-ap-ahb = <&ap_ahb_regs>;
 				sprd,syscon-ipa-ahb = <&ap_ipa_ahb_regs>;
@@ -1367,10 +1707,32 @@
 		sprd,mac-header;
 	};
 
-	sipa_eth8:  sipa-wifi {
+	vpcie0: sipa-vpcie0 {
 		compatible = "sprd,sipa_eth";
-		sprd,netid = <0>;
-		sprd,term-type = <0x2>;
+		sprd,netid = <1>;
+		sprd,term-type = <0x10>;
+		sprd,mac-header;
+	};
+
+	vpcie1: sipa-vpcie1 {
+		compatible = "sprd,sipa_eth";
+		sprd,netid = <2>;
+		sprd,term-type = <0x10>;
+		sprd,mac-header;
+	};
+
+	vpcie2: sipa-vpcie2 {
+		compatible = "sprd,sipa_eth";
+		sprd,netid = <3>;
+		sprd,term-type = <0x10>;
+		sprd,mac-header;
+	};
+
+	vpcie3: sipa-vpcie3 {
+		compatible = "sprd,sipa_eth";
+		sprd,netid = <4>;
+		sprd,term-type = <0x10>;
+		sprd,mac-header;
 	};
 };
 

@@ -58,5 +58,5 @@
 &ddr_dfs {
 	sprd-scene = "boost", "lcdon", "lcdoff", "camlow",
 		"camhigh", "camveryhigh";
-	sprd-freq = <1333 667 256 384 667 1333>;
+	sprd-freq = <1333 768 256 384 667 1333>;
 };

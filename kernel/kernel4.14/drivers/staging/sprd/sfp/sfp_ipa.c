@@ -271,7 +271,7 @@ void print_hash_tbl(char *p, int len)
 		}
 		off += sprintf(off, "%02x ", *(p + i));
 	}
-	FP_PRT_DBG(FP_PRT_DETAIL, "%s\n\n", str);
+	FP_PRT_DBG(FP_PRT_DETAIL, "%s\n", str);
 }
 
 static void sfp_dma_hash_tbl_init(u8 *ipa_tbl_ptr, int n)
@@ -302,7 +302,7 @@ static void sfp_dma_hash_tbl_init(u8 *ipa_tbl_ptr, int n)
 
 			FP_PRT_DBG(FP_PRT_INFO,
 				   "IPA: hash %d, idx %d, %p, %llx, %d\n",
-				   i, node_cnt, offset, haddr, cnt);
+				   i, node_cnt, offset, (u64)haddr, cnt);
 
 			if (!hash_tbl->haddr)
 				hash_tbl->haddr = htonl((u32)haddr);
@@ -360,7 +360,7 @@ static void sfp_set_hash_entry(int hash, u8 *vptr, u32 offset, int n)
 	hash_tbl->haddr = htonl(haddr);
 
 	FP_PRT_DBG(FP_PRT_INFO, "%s [%d] %p, %llx, %x, %d\n",
-		   __func__, hash, hash_tbl, haddr, offset, n);
+		   __func__, hash, hash_tbl, (u64)haddr, offset, n);
 
 	cur_entry = hlist_entry(fwd_tbl.sfp_fwd_entries[hash].first,
 				struct sfp_fwd_entry,
@@ -421,7 +421,7 @@ static int sfp_ipa_update_hash_slow(void)
 
 int sfp_ipa_hash_add(struct sfp_conn *sfp_ct)
 {
-	if (atomic_read(&fwd_tbl.entry_cnt) > 4096) {
+	if (atomic_read(&fwd_tbl.entry_cnt) >= IPA_DEFAULT_NUM - 1) {
 		FP_PRT_DBG(FP_PRT_ERR,
 			   "out of entry mem!\n");
 
@@ -529,7 +529,7 @@ static void sfp_ipa_alloc_tbl(int sz)
 
 	FP_PRT_DBG(FP_PRT_INFO,
 		   "v0 %p, h0 %llx, v1 %p, h1 %llx\n",
-		   v0, h0, v1, h1);
+		   v0, (u64)h0, v1, (u64)h1);
 
 	fwd_tbl.ipa_tbl_mgr.tbl[T0].h_tbl.v_addr = v0;
 	fwd_tbl.ipa_tbl_mgr.tbl[T0].h_tbl.handle = h0;

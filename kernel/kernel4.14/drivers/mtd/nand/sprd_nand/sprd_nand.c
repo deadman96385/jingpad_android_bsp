@@ -150,6 +150,7 @@ struct sprd_nand_host {
 	struct nand_inst inst_erase;
 
 	bool randomizer;
+	bool multi_cs;
 };
 
 #define GETCS(page)                                                            \
@@ -1835,6 +1836,8 @@ static int sprd_nand_drv_probe(struct platform_device *pdev)
 
 	host->randomizer = of_property_read_bool(pdev->dev.of_node,
 						 "sprd,random-mode");
+	host->multi_cs = of_property_read_bool(pdev->dev.of_node,
+					       "sprd,multi-cs");
 
 	sprd_nand_set_mode(host, 0, 0);
 	sprd_nand_init_reg_state0(host);
@@ -1859,29 +1862,32 @@ static int sprd_nand_drv_probe(struct platform_device *pdev)
 	sprd_nand_delect_cs(host, ret);
 
 	/*probably only flash0 used*/
-	for (i = 1; i < CFG0_CS_MAX; i++) {
-		dev_dbg(&pdev->dev, "try to probe flash%d\n", i);
-		sprd_nand_select_cs(host, i);
-		ret = sprd_nand_reset(host);
-		if (ret) {
-			sprd_nand_writel(host, CTRL_NFC_CMD_CLR, NFC_START_REG);
-			dev_warn(&pdev->dev, "flash%d reset fail\n", i);
-			break;
-		}
-		ret = sprd_nand_readid(host);
-		if (ret) {
-			dev_warn(&pdev->dev,
-				 "flash%d sprd_nand_readid fail\n", i);
+	if (host->multi_cs) {
+		for (i = 1; i < CFG0_CS_MAX; i++) {
+			dev_dbg(&pdev->dev, "try to probe flash%d\n", i);
+			sprd_nand_select_cs(host, i);
+			ret = sprd_nand_reset(host);
+			if (ret) {
+				sprd_nand_writel(host, CTRL_NFC_CMD_CLR,
+						 NFC_START_REG);
+				dev_warn(&pdev->dev, "flash%d rst fail\n", i);
+				break;
+			}
+			ret = sprd_nand_readid(host);
+			if (ret) {
+				dev_warn(&pdev->dev,
+					 "flash%d sprd_nand_readid fail\n", i);
+				sprd_nand_delect_cs(host, ret);
+				break;
+			}
+			dev_dbg(&pdev->dev, "flash%d,id is %x %x %x %x %x\n",
+				i, host->param.id[0], host->param.id[1],
+				host->param.id[2], host->param.id[3],
+				host->param.id[4]);
+			host->csnum = host->csnum + 1;
+			host->cs[i] = i;
 			sprd_nand_delect_cs(host, ret);
-			break;
 		}
-		dev_dbg(&pdev->dev, "find flash%d,id[] is %x %x %x %x %x\n",
-			i, host->param.id[0], host->param.id[1],
-			host->param.id[2], host->param.id[3],
-			host->param.id[4]);
-		host->csnum = host->csnum + 1;
-		host->cs[i] = i;
-		sprd_nand_delect_cs(host, ret);
 	}
 
 	ret = sprd_nand_param_init(host);

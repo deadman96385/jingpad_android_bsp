@@ -23,7 +23,6 @@
 #include <linux/debugfs.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/wakeup_reason.h>
 
 #define BIT_NUM_IN_PER_REG 0x20
 #define MAX_STATES_NUM_PER_REG 8
@@ -253,7 +252,6 @@ static void sprd_pm_print_wakeup_source(struct power_debug *pdebug_entry)
 
 		for (j = 0; j < BIT_NUM_IN_PER_REG; j++) {
 			if (reg_value & BIT(j)) {
-				log_wakeup_reason(i * BIT_NUM_IN_PER_REG + j);
 				dev_info(&p_power_debug_entry->pdev->dev,
 					"#--Wake up by %d(%s_%s)!\n",
 					i * BIT_NUM_IN_PER_REG + j, "INT_APCPU",

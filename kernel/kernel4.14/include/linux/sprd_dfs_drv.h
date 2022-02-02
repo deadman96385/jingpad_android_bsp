@@ -36,4 +36,5 @@ extern int set_backdoor(void);
 extern int reset_backdoor(void);
 extern int dfs_ext_vote(unsigned int freq, unsigned int magic);
 extern void dfs_ext_vote_resume(void);
+extern int dfs_vol_vote(unsigned int value);
 #endif

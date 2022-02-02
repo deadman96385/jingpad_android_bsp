@@ -270,6 +270,7 @@ struct cpudvfs_archdata {
 	u32 pmic_type_sum; /* the total number of different pmics*/
 	bool parse_done;
 	bool module_eb;
+	bool sync_idle_voltage;
 	u32 module_eb_reg;
 	u32 module_eb_bit;
 	bool i2c_used[DVFS_CLUSTER_MAX];
@@ -280,5 +281,7 @@ struct cpudvfs_archdata {
 extern int cpudvfs_sysfs_create(struct cpudvfs_archdata *pdev);
 
 extern const struct dvfs_private_data ums312_dvfs_private_data;
+
+extern const struct dvfs_private_data ud710_dvfs_private_data;
 
 #endif /* DVFS_CTRL_H */

@@ -60,7 +60,14 @@ static void tmc_etb_dump_hw(struct tmc_drvdata *drvdata)
 	bufp = drvdata->buf;
 	drvdata->len = 0;
 	barrier = barrier_pkt;
+
+	pr_info("tmc_etb_dump_hw drvdata->size=0x%x\n", drvdata->size);
+
+#ifdef CONFIG_CORESIGHT_TMC_GROUP
+	while (drvdata->len < drvdata->size) {
+#else
 	while (1) {
+#endif
 		for (i = 0; i < drvdata->memwidth; i++) {
 			read_data = readl_relaxed(drvdata->base + TMC_RRD);
 			if (read_data == 0xFFFFFFFF)
@@ -120,12 +127,14 @@ static void tmc_etf_disable_hw(struct tmc_drvdata *drvdata)
 	CS_LOCK(drvdata->base);
 }
 
+#ifndef CONFIG_CORESIGHT_TMC_GROUP
 static bool tmc_check_ctrl_enable(struct tmc_drvdata *drvdata)
 {
 	if (readl_relaxed(drvdata->base + TMC_CTL) & TMC_CTL_CAPT_EN)
 		return true;
 	return false;
 }
+#endif
 
 static int tmc_enable_etf_sink_sysfs(struct coresight_device *csdev)
 {
@@ -553,8 +562,11 @@ int tmc_read_prepare_etb(struct tmc_drvdata *drvdata)
 	 * in disable mode, it will cause etb data get failed, so
 	 * it needs to enable it for CP modem.
 	 */
+
+#ifndef CONFIG_CORESIGHT_TMC_GROUP
 	if (tmc_check_ctrl_enable(drvdata))
 		tmc_enable_etf_sink_sysfs(drvdata->csdev);
+#endif
 
 	spin_lock_irqsave(&drvdata->spinlock, flags);
 

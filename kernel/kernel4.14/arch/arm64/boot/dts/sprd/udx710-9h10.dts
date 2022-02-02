@@ -1,0 +1,279 @@
+/*
+ * Spreadtrum orca udx710 board DTS file
+ *
+ * Copyright (C) 2017,2018 Spreadtrum Communications Inc.
+ *
+ * This file is licensed under a dual GPLv2 or X11 license.
+ */
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+
+#include "udx710.dtsi"
+#include "sc2730.dtsi"
+#include "udx710-mach.dtsi"
+
+/ {
+	model = "Spreadtrum UDX710 Board";
+
+	compatible = "sprd,udx710_9h10", "sprd,udx710";
+
+	sprd,sc-id = <710 1 0x20000>;
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	memory: memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x20000000>;
+	};
+
+	chosen {
+		stdout-path = &uart0;
+		bootargs = "earlycon console=ttyS0,115200n8 loglevel=1 init=/init root=/dev/ram0 ro androidboot.hardware=udx710_9h10 androidboot.selinux=permissive swiotlb=64k androidboot.dtbo_idx=0 printk.devkmsg=on";
+	};
+
+	ion {
+		compatible = "sprd,ion";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		heap@0 {
+			reg = <0>;
+			label = "system";
+			type = <0>;
+		};
+	};
+
+	audio-mem-mgr {
+		memory-region = <&audio_reserved &audiodsp_reserved>;
+	};
+	sprd-mcd {
+		compatible = "sprd,orca-modem-ctrl";
+		cpwatchdog-gpio = <&ap_gpio 26 GPIO_ACTIVE_HIGH>;
+		cpassert-gpio = <&ap_gpio 27 GPIO_ACTIVE_HIGH>;
+		cppanic-gpio = <&ap_gpio 28 GPIO_ACTIVE_HIGH>;
+		cppoweroff-gpio = <&ap_gpio 29 GPIO_ACTIVE_HIGH>;
+	};
+
+	sprd-verify {
+		compatible = "sprd,orca-verify";
+		nvmem-names = "ap-efuse";
+		nvmem = <&ap_efuse>;
+	};
+
+	extcon_usb0: extcon_usb0 {
+		compatible = "linux,extcon-usb-gpio";
+
+		vbus-gpios = <&ap_gpio 11 GPIO_ACTIVE_HIGH>;
+	};
+
+	dvfs_dcdc_cpu0_supply: dvfs-dcdc-cpu0-supply {
+		supply-type-sel = <0x29c 0 0>;
+		top-dvfs-adi-state = <0x88 0 0xf>;
+		voltage-grade-num = <7>;
+		voltage-grade = <0 0x100 0x240 0 0x1fff>,
+			<1 0x100 0x240 9 0x1fff>,
+			<2 0x100 0x240 18 0x1fff>,
+			<3 0x100 0x244 0 0x1fff>,
+			<4 0x100 0x244 9 0x1fff>,
+			<5 0x100 0x244 18 0x1fff>,
+			<6 0x100 0x248 0 0x1fff>;
+		tuning-latency-us = <200>;
+		chnl-in-i2c = <0>;
+	};
+};
+
+&uart0 {
+	status = "ok";
+};
+
+&dmc_mpu {
+	sprd,channel-names =
+		"AP_DMA", "NR_CP1", "NR_CP2",
+		"V3_MODEM1","V3_MODEM2", "PS_CP","AG_CP",
+		"IPA", "TFT", "USB_PAM",
+		"PCIE", "CM4", "SHARED0",
+		"SHARED1", "SHARED2", "SHARED3";
+	sprd,ranges =
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>,
+		<0 0 0 0>, <0 0 0 0>;
+	sprd,chn-config =
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>,
+		<DISABLE MON_INSIDE MON_WRITE>;
+	sprd,id-config =
+		<MPUID 0x01 0>, <MPUID 0 0xffff>,
+		<MPUID 0 0xffff>, <MPUID 0 0xffff>,
+		<MPUID 0 0xffff>, <MPUID 0 0xffff>,
+		<MPUID 0 0xffff>, <MPUID 0x06 0>,
+		<MPUID 0x07 0>, <MPUID 0x0a 0>,
+		<MPUID 0x0b 0>, <MPUID 0x12 0>,
+		<MPUID 0 0xffff>, <MPUID 0 0xffff>,
+		<MPUID 0 0xffff>, <MPUID 0 0xffff>;
+	sprd,port-map = <0>, <1>, <2>, <3>, <4>,
+		<5>, <6>, <0>, <0>, <0>,
+		<0>, <0>, <0>, <0>, <0>,
+		<0>;
+	sprd,panic;
+	status = "okay";
+};
+
+&ssphy0 {
+	vdd-supply = <&vddusb33>;
+	status = "okay";
+};
+
+&usb3_0 {
+	extcon = <&extcon_usb0>;
+	status = "disabled";
+};
+
+&ssphy1 {
+	vdd-supply = <&vddusb33>;
+	extcon = <&pmic_typec>;
+	status = "okay";
+};
+
+&usb3_1 {
+	extcon = <&pmic_typec>;
+	status = "disabled";
+};
+
+&vddcamd0 {
+	status = "disabled";
+};
+
+&vddwcn {
+	status = "disabled";
+};
+
+&vddldo0 {
+	stauts = "disabled";
+};
+
+&vddrf1v25 {
+	status = "disabled";
+};
+
+&pcie1 {
+	sprd,pcie-startup-syscons =
+		<&ap_ipa_ahb_regs 0 0
+			REG_AP_IPA_AHB_RF_AHB_EB
+			MASK_AP_IPA_AHB_RF_PCIE_AUX_EB
+			0x40>,
+		<&ap_ipa_ahb_regs 0 0
+			REG_AP_IPA_AHB_RF_AHB_EB
+			MASK_AP_IPA_AHB_RF_PCIE_EB
+			0x20>,
+		<&aon_apb_regs 0 0
+			REG_AON_APB_RF_PCIE_SLV_ADDR_OFFSET
+			MASK_AON_APB_RF_PCIE_SLV_ADDR_OFFSET
+			0x1>;
+	sprd,pcie-shutdown-syscons =
+		<&ap_ipa_ahb_regs 0 0
+			REG_AP_IPA_AHB_RF_AHB_EB
+			MASK_AP_IPA_AHB_RF_PCIE_EB
+			0x0>,
+		<&ap_ipa_ahb_regs 0 0
+			REG_AP_IPA_AHB_RF_AHB_EB
+			MASK_AP_IPA_AHB_RF_PCIE_AUX_EB
+			0x0>;
+	status = "okay";
+};
+
+/* for BBAT gpio test */
+&pin_controller {
+	pinctrl-names =
+	"gpio_3", "gpio_4", "gpio_5",
+	"gpio_125","gpio_135","gpio_136",
+	"gpio_3_config", "gpio_4_config", "gpio_5_config",
+	"gpio_125_config","gpio_135_config","gpio_136_config";
+	pinctrl-0 = <&gpio_3>;
+	pinctrl-1 = <&gpio_4>;
+	pinctrl-2 = <&gpio_5>;
+	pinctrl-3 = <&gpio_125>;
+	pinctrl-4 = <&gpio_135>;
+	pinctrl-5 = <&gpio_136>;
+	pinctrl-6 = <&gpio_3_config>;
+	pinctrl-7 = <&gpio_4_config>;
+	pinctrl-8 = <&gpio_5_config>;
+	pinctrl-9 = <&gpio_125_config>;
+	pinctrl-10 = <&gpio_135_config>;
+	pinctrl-11 = <&gpio_136_config>;
+
+	gpio_3: simclk1 {
+		pins = "ORCA_SIMCLK1";
+		function = "func4";
+		gpio_3_config: simclk1_config {
+			pins = "ORCA_SIMCLK1_MISC";
+			sprd,sleep-mode = <NONE_SLEEP>;
+		};
+	};
+
+	gpio_4: simda1 {
+		pins = "ORCA_SIMDA1";
+		function = "func4";
+		gpio_4_config: simda1_config {
+			pins = "ORCA_SIMDA1_MISC";
+			sprd,sleep-mode = <NONE_SLEEP>;
+		};
+	};
+
+	gpio_5: simrst1 {
+		pins = "ORCA_SIMRST1";
+		function = "func4";
+		gpio_5_config: simrst1_config {
+			pins = "ORCA_SIMRST1_MISC";
+			sprd,sleep-mode = <NONE_SLEEP>;
+		};
+	};
+
+	gpio_125: rfctl0 {
+		pins = "ORCA_RFCTL0";
+		function = "func4";
+		gpio_125_config: rfctl0_config {
+			pins = "ORCA_RFCTL0_MISC";
+			sprd,sleep-mode = <NONE_SLEEP>;
+		};
+	};
+
+	gpio_135: rfctl10 {
+		pins = "ORCA_RFCTL10";
+		function = "func4";
+		gpio_135_config: rfctl10_config {
+			pins = "ORCA_RFCTL10_MISC";
+			sprd,sleep-mode = <NONE_SLEEP>;
+		};
+	};
+
+	gpio_136: rfctl11 {
+		pins = "ORCA_RFCTL11";
+		function = "func4";
+		gpio_136_config: rfctl11_config {
+			pins = "ORCA_RFCTL11_MISC";
+			sprd,sleep-mode = <NONE_SLEEP>;
+		};
+	};
+};
+

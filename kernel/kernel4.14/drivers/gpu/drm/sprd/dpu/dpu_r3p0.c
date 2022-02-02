@@ -11,13 +11,16 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/backlight.h>
 #include <linux/delay.h>
 #include <linux/of_address.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
+#include "sprd_bl.h"
 #include "sprd_dpu.h"
 #include "sprd_dvfs_dpu.h"
 #include "sprd_corner.h"
+#include "lt9611_i2c.h"
 
 #define DISPC_INT_FBC_PLD_ERR_MASK	BIT(8)
 #define DISPC_INT_FBC_HDR_ERR_MASK	BIT(9)
@@ -27,12 +30,19 @@
 #define DISPC_INT_MMU_VAOR_WR_MASK	BIT(17)
 #define DISPC_INT_MMU_VAOR_RD_MASK	BIT(16)
 
-#define XFBC8888_HEADER_SIZE(w, h) (ALIGN((w) * (h) / (8 * 8) / 2, 128))
-#define XFBC8888_PAYLOAD_SIZE(w, h) (w * h * 4)
+#define XFBC8888_HEADER_SIZE(w, h) (ALIGN(ALIGN(w, 8) * ALIGN(h, 8) \
+				/ (8 * 8) / 2, 128))
+#define XFBC8888_PAYLOAD_SIZE(w, h) (ALIGN(w, 8) * ALIGN(h, 8) * 4)
 #define XFBC8888_BUFFER_SIZE(w, h) (XFBC8888_HEADER_SIZE(w, h) \
 				+ XFBC8888_PAYLOAD_SIZE(w, h))
 
 #define SLP_BRIGHTNESS_THRESHOLD 0x20
+#define CABC_MODE_UI			(1 << 2)
+#define CABC_MODE_GAME			(1 << 3)
+#define CABC_MODE_VIDEO			(1 << 4)
+#define CABC_MODE_IMAGE			(1 << 5)
+#define CABC_MODE_CAMERA		(1 << 6)
+#define CABC_MODE_FULL_FRAME		(1 << 7)
 
 struct layer_reg {
 	u32 addr[4];
@@ -175,6 +185,7 @@ struct enhance_module {
 	u32 slp_en: 1;
 	u32 gamma_en: 1;
 	u32 blp_en: 1;
+	u32 cabc_en: 1;
 };
 
 struct scale_cfg {
@@ -255,12 +266,28 @@ struct dpu_cfg1 {
 	u8 awqos_high;
 };
 
+struct cabc_para {
+	u32 cabc_hist[16];
+	u16 gain;
+	u16 bl_fix;
+	u16 cur_bl;
+	u8 video_mode;
+	bool is_VSP_working;
+
+};
+
 static struct dpu_cfg1 qos_cfg = {
 	.arqos_threshold = 0x4,
 	.arqos_low = 0x1,
 	.arqos_high = 0x7,
 	.awqos_low = 0x1,
 	.awqos_high = 0x7,
+};
+
+enum {
+	CABC_WORKING,
+	CABC_STOPPING,
+	CABC_DISABLED
 };
 
 static struct scale_cfg scale_copy;
@@ -277,22 +304,32 @@ static bool need_scale;
 static bool mode_changed;
 static bool evt_update;
 static bool evt_stop;
+static int frame_no;
+static bool cabc_bl_set;
+static int cabc_disable = CABC_DISABLED;
+static int cabc_bl_set_delay;
+static struct cabc_para cabc_para;
+static struct backlight_device *backlight;
 static int wb_en;
 static int wb_xfbc_en = 1;
 static int max_vsync_count;
 static int vsync_count;
 static struct sprd_dpu_layer wb_layer;
 static struct wb_region region[3];
+static struct device_node *g_np;
 static bool sprd_corner_support;
 static int sprd_corner_radius;
+static int gsp_outstanding_thres;
 module_param(wb_xfbc_en, int, 0644);
 module_param(max_vsync_count, int, 0644);
+module_param(cabc_bl_set_delay, int, 0644);
 
 static void dpu_sr_config(struct dpu_context *ctx);
 static void dpu_enhance_reload(struct dpu_context *ctx);
 static void dpu_clean_all(struct dpu_context *ctx);
 static void dpu_layer(struct dpu_context *ctx,
 		    struct sprd_dpu_layer *hwlayer);
+static int dpu_cabc_trigger(struct dpu_context *ctx);
 
 static u32 dpu_get_version(struct dpu_context *ctx)
 {
@@ -306,6 +343,13 @@ static int dpu_parse_dt(struct dpu_context *ctx,
 {
 	struct device_node *qos_np = NULL;
 	int ret = 0;
+
+	g_np = np;
+
+	ret = of_property_read_u32(np, "sprd,gsp-outstanding-thres",
+					&gsp_outstanding_thres);
+	if (ret)
+		pr_warn("read gsp_outstanding_thres failed, use default\n");
 
 	ret = of_property_read_u32(np, "sprd,corner-radius",
 					&sprd_corner_radius);
@@ -436,6 +480,11 @@ static u32 dpu_isr(struct dpu_context *ctx)
 		/* write back feature */
 		if ((vsync_count == max_vsync_count) && wb_en)
 			work_now(&ctx->wb_work);
+
+		/* cabc update backlight */
+		if (cabc_bl_set)
+			schedule_work(&ctx->cabc_bl_update);
+
 		vsync_count++;
 	}
 
@@ -543,6 +592,9 @@ static void dpu_stop(struct dpu_context *ctx)
 		reg->dpu_ctrl |= BIT(1);
 
 	dpu_wait_stop_done(ctx);
+
+	hdmi_notifier_call_chain(SPRD_HDMI_SUSPEND, NULL);
+
 	pr_info("dpu stop\n");
 }
 
@@ -555,6 +607,8 @@ static void dpu_run(struct dpu_context *ctx)
 	ctx->is_stopped = false;
 
 	pr_info("dpu run\n");
+
+	hdmi_notifier_call_chain(SPRD_HDMI_RESUME, NULL);
 
 	if (ctx->if_type == SPRD_DISPC_IF_EDPI) {
 		/*
@@ -572,6 +626,40 @@ static void dpu_run(struct dpu_context *ctx)
 	}
 }
 
+static void dpu_cabc_work_func(struct work_struct *data)
+{
+	struct dpu_context *ctx =
+		container_of(data, struct dpu_context, cabc_work);
+	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
+
+	down(&ctx->refresh_lock);
+	dpu_cabc_trigger(ctx);
+
+	reg->dpu_ctrl |= BIT(2);
+	dpu_wait_update_done(ctx);
+
+	up(&ctx->refresh_lock);
+}
+
+static void dpu_cabc_bl_update_func(struct work_struct *data)
+{
+	if (backlight) {
+		struct sprd_backlight *bl = bl_get_data(backlight);
+		msleep(cabc_bl_set_delay);
+		if (cabc_disable == CABC_WORKING) {
+			sprd_backlight_normalize_map(backlight, &cabc_para.cur_bl);
+
+			bl->cabc_en = true;
+			bl->cabc_level = cabc_para.bl_fix *
+					cabc_para.cur_bl / 1020;
+			bl->cabc_refer_level = cabc_para.cur_bl;
+			sprd_cabc_backlight_update(backlight);
+		} else
+			backlight_update_status(backlight);
+	}
+	cabc_bl_set = false;
+}
+
 static void dpu_write_back(struct dpu_context *ctx,
 		u8 count, bool debug)
 {
@@ -583,12 +671,12 @@ static void dpu_write_back(struct dpu_context *ctx,
 	region[0].index = 0;
 	region[0].pos_x = 0;
 	region[0].pos_y = 0;
-	region[0].size_w = mode_width;
-	region[0].size_h = mode_height;
+	region[0].size_w = ALIGN(mode_width, 8);
+	region[0].size_h = ALIGN(mode_height, 8);
 
 	wb_layer.dst_w = mode_width;
 	wb_layer.dst_h = mode_height;
-	wb_layer.pitch[0] = mode_width * 4;
+	wb_layer.pitch[0] = ALIGN(mode_width, 8) * 4;
 	wb_layer.xfbc = wb_xfbc_en;
 	wb_layer.header_size_r = XFBC8888_HEADER_SIZE(mode_width, mode_height);
 
@@ -648,6 +736,18 @@ static void dpu_wb_work_func(struct work_struct *data)
 		container_of(data, struct dpu_context, wb_work);
 
 	down(&ctx->refresh_lock);
+
+	if (!ctx->is_inited) {
+		up(&ctx->refresh_lock);
+		pr_err("dpu is not initialized\n");
+		return;
+	}
+
+	if (ctx->disable_flip) {
+		up(&ctx->refresh_lock);
+		pr_warn("dpu flip is disabled\n");
+		return;
+	}
 
 	if (wb_en && (vsync_count > max_vsync_count))
 		dpu_write_back(ctx, 1, false);
@@ -804,14 +904,10 @@ static void dpu_dvfs_task_func(unsigned long data)
 	 * Every IP here may be different, so need to modify it
 	 * according to the actual dpu core clock.
 	 */
-	if (max <= 2)
-		dvfs_freq = 256000000;
-	else if (max == 3)
+	if (max <= 3)
 		dvfs_freq = 307200000;
-	else if (max == 4)
-		dvfs_freq = 384000000;
 	else
-		dvfs_freq = 468000000;
+		dvfs_freq = 384000000;
 
 	dpu_dvfs_notifier_call_chain(&dvfs_freq);
 }
@@ -840,7 +936,7 @@ static int dpu_init(struct dpu_context *ctx)
 	reg->panel_size = size;
 	reg->blend_size = size;
 
-	reg->dpu_cfg0 = 0;
+	reg->dpu_cfg0 = gsp_outstanding_thres;
 	reg->dpu_cfg1 =
 		(qos_cfg.arqos_threshold << 16)|
 		(qos_cfg.awqos_high << 12) |
@@ -869,6 +965,11 @@ static int dpu_init(struct dpu_context *ctx)
 	dpu_corner_init(ctx);
 
 	dpu_dvfs_task_init(ctx);
+
+	INIT_WORK(&ctx->cabc_work, dpu_cabc_work_func);
+	INIT_WORK(&ctx->cabc_bl_update, dpu_cabc_bl_update_func);
+
+	frame_no = 0;
 
 	return 0;
 }
@@ -923,13 +1024,13 @@ static u32 to_dpu_rotation(u32 angle)
 	case DRM_MODE_ROTATE_270:
 		rot = DPU_LAYER_ROTATION_270;
 		break;
-	case DRM_MODE_REFLECT_Y:
+	case (DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_0):
 		rot = DPU_LAYER_ROTATION_180_M;
 		break;
 	case (DRM_MODE_REFLECT_Y | DRM_MODE_ROTATE_90):
 		rot = DPU_LAYER_ROTATION_90_M;
 		break;
-	case DRM_MODE_REFLECT_X:
+	case (DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_0):
 		rot = DPU_LAYER_ROTATION_0_M;
 		break;
 	case (DRM_MODE_REFLECT_X | DRM_MODE_ROTATE_90):
@@ -1141,7 +1242,7 @@ static void dpu_layer(struct dpu_context *ctx,
 	if (hwlayer->src_w && hwlayer->src_h)
 		size = (hwlayer->src_w & 0xffff) | ((hwlayer->src_h) << 16);
 	else
-		size = (hwlayer->dst_w & 0xffff) | ((hwlayer->dst_h) << 16);
+		size = (hwlayer->dst_w & 0xffff) | ((hwlayer->dst_h ) << 16);
 
 	for (i = 0; i < hwlayer->planes; i++) {
 		addr = hwlayer->addr[i];
@@ -1162,11 +1263,6 @@ static void dpu_layer(struct dpu_context *ctx,
 	layer->alpha = hwlayer->alpha;
 
 	wd = drm_format_plane_cpp(hwlayer->format, 0);
-	if (wd == 0) {
-		pr_err("layer[%d] bytes per pixel is invalid\n", hwlayer->index);
-		return;
-	}
-
 	if (hwlayer->planes == 3)
 		/* UV pitch is 1/2 of Y pitch*/
 		layer->pitch = (hwlayer->pitch[0] / wd) |
@@ -1283,8 +1379,8 @@ static void dpu_dpi_init(struct dpu_context *ctx)
 		/* use dpi as interface */
 		reg->dpu_cfg0 &= ~BIT(0);
 
-		/* disable Halt function for SPRD DSI */
-		reg->dpi_ctrl &= ~BIT(16);
+		/* enable Halt function for SPRD DSI */
+		reg->dpi_ctrl |= BIT(16);
 
 		/* set dpi timing */
 		reg->dpi_h_timing = (ctx->vm.hsync_len << 0) |
@@ -1370,6 +1466,16 @@ static void dpu_enhance_backup(u32 id, void *param)
 		break;
 	case ENHANCE_CFG_ID_DISABLE:
 		p = param;
+		if (!cabc_disable && (*p & BIT(4))) {
+			*p &= (~BIT(4));
+
+			memset(&slp_copy, 0, sizeof(slp_copy));
+			slp_copy.brightness = 16;
+			slp_copy.brightness_step = 1;
+			slp_copy.second_bright_factor = 16;
+			slp_copy.first_max_bright_th = 48;
+		}
+		/*if hsv is disabled, hsv will bypass when dpu_enhance_reload*/
 		enhance_en &= ~(*p);
 		pr_info("enhance module disable backup: 0x%x\n", *p);
 		break;
@@ -1417,13 +1523,16 @@ static void dpu_enhance_set(struct dpu_context *ctx, u32 id, void *param)
 {
 	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
 	struct scale_cfg *scale;
-	struct cm_cfg *cm;
+	struct cm_cfg cm;
 	struct slp_cfg *slp;
 	struct gamma_lut *gamma;
 	struct hsv_lut *hsv;
 	struct epf_cfg *epf;
 	u32 *p;
 	int i;
+
+	if (id == ENHANCE_CFG_ID_HSV)
+		ctx->is_hsv_bypass = false;
 
 	if (!ctx->is_inited) {
 		dpu_enhance_backup(id, param);
@@ -1441,6 +1550,36 @@ static void dpu_enhance_set(struct dpu_context *ctx, u32 id, void *param)
 		break;
 	case ENHANCE_CFG_ID_DISABLE:
 		p = param;
+		if (!cabc_disable && (*p & BIT(4))) {
+			*p &= (~BIT(4));
+
+			memset(&slp_copy, 0, sizeof(slp_copy));
+			slp_copy.brightness = 16;
+			slp_copy.brightness_step = 1;
+			slp_copy.second_bright_factor = 16;
+			slp_copy.first_max_bright_th = 48;
+			reg->slp_cfg0 = (slp_copy.second_bright_factor << 24) |
+					(slp_copy.brightness_step << 16) |
+					(slp_copy.conversion_matrix << 8) |
+					slp_copy.brightness;
+			reg->slp_cfg1 = (slp_copy.first_max_bright_th << 8) |
+					slp_copy.first_percent_th;
+			reg->slp_cfg2 = (slp_copy.step_clip << 24) |
+					(slp_copy.high_clip << 12) |
+					slp_copy.low_clip;
+		}
+
+		if (*p & BIT(2)) {
+			*p &= (~BIT(2));
+			for (i = 0; i < 360; i++) {
+				reg->hsv_lut_addr = i;
+				udelay(1);
+				reg->hsv_lut_wdata = (1024 << 16) | i;
+			}
+			ctx->is_hsv_bypass = true;
+			pr_info("enhance hsv force bypass\n");
+		}
+
 		reg->dpu_enhance_cfg &= ~(*p);
 		pr_info("enhance module disable: 0x%x\n", *p);
 		break;
@@ -1465,13 +1604,19 @@ static void dpu_enhance_set(struct dpu_context *ctx, u32 id, void *param)
 		break;
 	case ENHANCE_CFG_ID_CM:
 		memcpy(&cm_copy, param, sizeof(cm_copy));
-		cm = &cm_copy;
-		reg->cm_coef01_00 = (cm->coef01 << 16) | cm->coef00;
-		reg->cm_coef03_02 = (cm->coef03 << 16) | cm->coef02;
-		reg->cm_coef11_10 = (cm->coef11 << 16) | cm->coef10;
-		reg->cm_coef13_12 = (cm->coef13 << 16) | cm->coef12;
-		reg->cm_coef21_20 = (cm->coef21 << 16) | cm->coef20;
-		reg->cm_coef23_22 = (cm->coef23 << 16) | cm->coef22;
+		memcpy(&cm, &cm_copy, sizeof(struct cm_cfg));
+		if (cabc_para.gain) {
+			cm.coef00 = (cm.coef00 * cabc_para.gain) / 0x400;
+			cm.coef11 = (cm.coef11 * cabc_para.gain) / 0x400;
+			cm.coef22 = (cm.coef22 * cabc_para.gain) / 0x400;
+		}
+
+		reg->cm_coef01_00 = (cm.coef01 << 16) | cm.coef00;
+		reg->cm_coef03_02 = (cm.coef03 << 16) | cm.coef02;
+		reg->cm_coef11_10 = (cm.coef11 << 16) | cm.coef10;
+		reg->cm_coef13_12 = (cm.coef13 << 16) | cm.coef12;
+		reg->cm_coef21_20 = (cm.coef21 << 16) | cm.coef20;
+		reg->cm_coef23_22 = (cm.coef23 << 16) | cm.coef22;
 		reg->dpu_enhance_cfg |= BIT(3);
 		pr_info("enhance cm set\n");
 		break;
@@ -1521,6 +1666,33 @@ static void dpu_enhance_set(struct dpu_context *ctx, u32 id, void *param)
 		reg->dpu_enhance_cfg |= BIT(1);
 		pr_info("enhance epf set\n");
 		break;
+	case ENHANCE_CFG_ID_CABC_MODE:
+		p = param;
+
+		if (*p & CABC_MODE_UI)
+			cabc_para.video_mode = 0;
+		else if (*p & CABC_MODE_FULL_FRAME)
+			cabc_para.video_mode = 1;
+		else if (*p & CABC_MODE_VIDEO)
+			cabc_para.video_mode = 2;
+		pr_info("enhance CABC mode: 0x%x\n", *p);
+		return;
+	case ENHANCE_CFG_ID_CABC_GAIN:
+		p = param;
+		cabc_para.gain = *p;
+		return;
+	case ENHANCE_CFG_ID_CABC_BL_FIX:
+		p = param;
+		cabc_para.bl_fix = *p;
+		return;
+	case ENHANCE_CFG_ID_CABC_RUN:
+		if (cabc_disable != CABC_DISABLED)
+			schedule_work(&ctx->cabc_work);
+		return;
+	case ENHANCE_CFG_ID_CABC_DISABLE:
+		p = param;
+		cabc_disable = *p;
+		return;
 	default:
 		break;
 	}
@@ -1549,6 +1721,7 @@ static void dpu_enhance_get(struct dpu_context *ctx, u32 id, void *param)
 	struct slp_cfg *slp;
 	struct gamma_lut *gamma;
 	u32 *p32;
+	u16 *p16;
 	int i, val;
 
 	switch (id) {
@@ -1645,6 +1818,29 @@ static void dpu_enhance_get(struct dpu_context *ctx, u32 id, void *param)
 		dpu_run(ctx);
 		pr_info("enhance gamma get\n");
 		break;
+	case ENHANCE_CFG_ID_CABC_HIST:
+		p32 = param;
+		for (i = 0; i < 16; i++) {
+			*p32++ = reg->cabc_hist[i];
+			udelay(1);
+		}
+		break;
+	case ENHANCE_CFG_ID_CABC_CUR_BL:
+		p16 = param;
+		*p16 = cabc_para.cur_bl;
+		break;
+	case ENHANCE_CFG_ID_VSYNC_COUNT:
+		p32 = param;
+		*p32 = vsync_count;
+		break;
+	case ENHANCE_CFG_ID_FRAME_NO:
+		p32 = param;
+		*p32 = frame_no;
+		break;
+	case ENHANCE_CFG_ID_CABC_DISABLE:
+		p32 = param;
+		*p32 = cabc_disable;
+		break;
 	default:
 		break;
 	}
@@ -1679,7 +1875,7 @@ static void dpu_enhance_reload(struct dpu_context *ctx)
 		pr_info("enhance epf reload\n");
 	}
 
-	if (enhance_en & BIT(2)) {
+	if ((enhance_en & BIT(2)) && (!ctx->is_hsv_bypass)) {
 		hsv = &hsv_copy;
 		for (i = 0; i < 360; i++) {
 			reg->hsv_lut_addr = i;
@@ -1688,6 +1884,14 @@ static void dpu_enhance_reload(struct dpu_context *ctx)
 						hsv->table[i].hue;
 		}
 		pr_info("enhance hsv reload\n");
+	}  else {
+		for (i = 0; i < 360; i++) {
+			reg->hsv_lut_addr = i;
+			udelay(1);
+			reg->hsv_lut_wdata = (1024 << 16) | i;
+		}
+		ctx->is_hsv_bypass = true;
+		pr_info("enhance hsv reload bypass\n");
 	}
 
 	if (enhance_en & BIT(3)) {
@@ -1734,6 +1938,8 @@ static void dpu_enhance_reload(struct dpu_context *ctx)
 		pr_info("enhance ltm reload\n");
 	}
 
+	/* FORCE ENABLE HSV */
+	enhance_en |=  BIT(2);
 	reg->dpu_enhance_cfg = enhance_en;
 }
 
@@ -1766,6 +1972,106 @@ static void dpu_sr_config(struct dpu_context *ctx)
 		enhance_en &= ~(BIT(0));
 		reg->dpu_enhance_cfg = enhance_en;
 	}
+}
+
+static int dpu_cabc_trigger(struct dpu_context *ctx)
+{
+	struct dpu_reg *reg = (struct dpu_reg *)ctx->base;
+	struct cm_cfg cm;
+	struct device_node *backlight_node;
+	static unsigned long vsp_pmu_addr;
+
+	if (cabc_disable) {
+		if ((cabc_disable == CABC_STOPPING) && backlight) {
+			memset(&cabc_para, 0, sizeof(cabc_para));
+			memcpy(&cm, &cm_copy, sizeof(struct cm_cfg));
+			reg->cm_coef01_00 = (cm.coef01 << 16) | cm.coef00;
+			reg->cm_coef03_02 = (cm.coef03 << 16) | cm.coef02;
+			reg->cm_coef11_10 = (cm.coef11 << 16) | cm.coef10;
+			reg->cm_coef13_12 = (cm.coef13 << 16) | cm.coef12;
+			reg->cm_coef21_20 = (cm.coef21 << 16) | cm.coef20;
+			reg->cm_coef23_22 = (cm.coef23 << 16) | cm.coef22;
+
+			cabc_bl_set = true;
+
+			cabc_disable = CABC_DISABLED;
+		}
+		return 0;
+	}
+
+	if (frame_no == 0) {
+		if (!backlight) {
+			backlight_node = of_parse_phandle(g_np,
+						 "sprd,backlight", 0);
+			if (backlight_node) {
+				backlight =
+				of_find_backlight_by_node(backlight_node);
+				of_node_put(backlight_node);
+			} else {
+				pr_warn("dpu backlight node not found\n");
+			}
+		}
+
+		vsp_pmu_addr = (unsigned long)ioremap_nocache(0x32280584, 4);
+
+		reg->dpu_enhance_cfg |= BIT(3);
+		reg->dpu_enhance_cfg |= BIT(8);
+		enhance_en |= BIT(3);
+		enhance_en |= BIT(8);
+
+		if ((enhance_en & BIT(4)) == 0) {
+			reg->dpu_enhance_cfg |= BIT(4);
+			enhance_en |= BIT(4);
+
+			slp_copy.brightness = 16;
+			slp_copy.brightness_step = 1;
+			slp_copy.second_bright_factor = 16;
+			slp_copy.first_max_bright_th = 48;
+			reg->slp_cfg0 = (slp_copy.second_bright_factor << 24) |
+					(slp_copy.brightness_step << 16) |
+					(slp_copy.conversion_matrix << 8) |
+					slp_copy.brightness;
+			reg->slp_cfg1 = (slp_copy.first_max_bright_th << 8) |
+					slp_copy.first_percent_th;
+			reg->slp_cfg2 = (slp_copy.step_clip << 24) |
+					(slp_copy.high_clip << 12) |
+					slp_copy.low_clip;
+			reg->slp_cfg3 = (slp_copy.dummy << 12) |
+					slp_copy.mask_height;
+		}
+
+		frame_no++;
+	} else {
+
+		if (frame_no == 1)
+			 cabc_para.cur_bl = backlight->props.brightness;
+		if ((*(unsigned int *)vsp_pmu_addr) & 0x00ff0000)
+			cabc_para.is_VSP_working = false;
+		else
+			cabc_para.is_VSP_working = true;
+
+		memcpy(&cm, &cm_copy, sizeof(struct cm_cfg));
+		if (cm.coef00 == 0 && cm.coef11 == 0 &&
+			cm.coef22 == 0) {
+			cm.coef00 = cm.coef11 = cm.coef22 = cabc_para.gain;
+		} else {
+			cm.coef00 = (cm.coef00 * cabc_para.gain) / 0x400;
+			cm.coef11 = (cm.coef11 * cabc_para.gain) / 0x400;
+			cm.coef22 = (cm.coef22 * cabc_para.gain) / 0x400;
+		}
+		reg->cm_coef01_00 = (cm.coef01 << 16) | cm.coef00;
+		reg->cm_coef03_02 = (cm.coef03 << 16) | cm.coef02;
+		reg->cm_coef11_10 = (cm.coef11 << 16) | cm.coef10;
+		reg->cm_coef13_12 = (cm.coef13 << 16) | cm.coef12;
+		reg->cm_coef21_20 = (cm.coef21 << 16) | cm.coef20;
+		reg->cm_coef23_22 = (cm.coef23 << 16) | cm.coef22;
+		if (backlight)
+			cabc_bl_set = true;
+
+		if (frame_no == 1)
+			frame_no++;
+	}
+	return 0;
 }
 
 static int dpu_modeset(struct dpu_context *ctx,

@@ -139,7 +139,8 @@ enum sipa_rm_res_id {
  */
 enum sipa_rm_event {
 	SIPA_RM_EVT_GRANTED,
-	SIPA_RM_EVT_RELEASED
+	SIPA_RM_EVT_RELEASED,
+	SIPA_RM_EVT_FAIL
 };
 
 
@@ -200,6 +201,10 @@ enum sipa_nic_id
 	SIPA_NIC_BB5,
 	SIPA_NIC_BB6,
 	SIPA_NIC_BB7,
+	SIPA_NIC_PCIE0,
+	SIPA_NIC_PCIE1,
+	SIPA_NIC_PCIE2,
+	SIPA_NIC_PCIE3,
 	SIPA_NIC_MAX
 };
 
@@ -218,6 +223,7 @@ struct sipa_comm_fifo_params {
 	u32 tx_intr_delay_us;
 	u32 tx_intr_threshold;
 	bool flowctrl_in_tx_full;
+	bool errcode_intr;
 	u32 flow_ctrl_cfg;
 	u32 flow_ctrl_irq_mode;
 	u32 tx_enter_flowctrl_watermark;
@@ -356,6 +362,7 @@ int sipa_disconnect(enum sipa_ep_id ep, enum sipa_disconnect_id stage);
 
 int sipa_enable_receive(enum sipa_ep_id ep_id, bool enabled);
 
+void sipa_reclaim_wiap_ul_cmn_fifo(void);
 
 /*
  * SIPA NIC interface
@@ -372,6 +379,12 @@ int sipa_nic_tx(enum sipa_nic_id nic_id, enum sipa_term_type dst,
 int sipa_nic_rx(enum sipa_nic_id nic_id, struct sk_buff **out_skb);
 
 int sipa_nic_trigger_flow_ctrl_work(enum sipa_nic_id, int err);
+
+int sipa_nic_rx_has_data(enum sipa_nic_id nic_id);
+
+int sipa_nic_check_suspend_condition(void);
+
+bool sipa_nic_check_flow_ctrl(enum sipa_nic_id nic_id);
 /*
  * IPA hash table managment
  */
@@ -442,6 +455,16 @@ int sipa_rm_set_usb_eth_up(void);
 
 void sipa_rm_set_usb_eth_down(void);
 
-int sipa_rm_enable_usb_tether(void);
+void sipa_rm_enable_usb_tether(void);
+
+bool sipa_check_cmn_fifo_complete(enum sipa_ep_id id);
+
+bool sipa_receiver_has_stop_recv(void);
+
+void sipa_receiver_clean_stop_recv(void);
+
+void sipa_prepare_modem_power_on(void);
+
+void sipa_prepare_modem_power_off(void);
 
 #endif /* _SIPA_H_ */

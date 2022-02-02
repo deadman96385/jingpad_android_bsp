@@ -102,29 +102,8 @@ int sprd_hardware_cpufreq_set_boost(int state)
 	return 0;
 }
 
-/**
- * sprd_cpufreq_set_target_index()  - cpufreq_set_target
- * @idx:        0 points to min freq, ascending order
- */
-static
-int sprd_hardware_cpufreq_set_target_index(struct cpufreq_policy *policy,
-					   unsigned int idx)
+static int cpufreq_boost_judge(struct cpufreq_policy *policy)
 {
-	struct sprd_cpudvfs_device *pdev;
-	struct sprd_cpudvfs_ops *driver;
-	unsigned long freq;
-	u32 cpu_cluster;
-	int ret;
-
-	pdev = sprd_hardware_dvfs_device_get();
-	if (!pdev) {
-		pr_err("Hardware dvfs device has not been registered.\n");
-		return -EINVAL;
-	}
-	driver = &pdev->ops;
-
-	freq = policy->freq_table[idx].frequency;
-
 	/* Never dvfs until boot_done_timestamp */
 	if ((boot_done_timestamp &&
 	     time_after(jiffies, boot_done_timestamp))) {
@@ -140,11 +119,44 @@ int sprd_hardware_cpufreq_set_target_index(struct cpufreq_policy *policy,
 	  */
 	if (boost_mode_flag) {
 		if (policy->max >= policy->cpuinfo.max_freq)
-			return 0;
+			return ON_BOOST;
 		sprd_hardware_cpufreq_set_boost(0);
 		sprd_hardware_cpufreq_driver.boost_enabled = false;
 		pr_info("Disables boost due to policy max(%d<%d)\n",
 			policy->max, policy->cpuinfo.max_freq);
+	}
+
+	return OUT_BOOST;
+}
+
+/**
+ * sprd_cpufreq_set_target_index()  - cpufreq_set_target
+ * @idx:        0 points to min freq, ascending order
+ */
+static
+int sprd_hardware_cpufreq_set_target_index(struct cpufreq_policy *policy,
+					   unsigned int idx)
+{
+	struct sprd_cpudvfs_device *pdev;
+	struct sprd_cpudvfs_ops *driver;
+	struct sprd_cpufreq_driver_data *data = policy->driver_data;
+	unsigned long freq;
+	u32 cpu_cluster;
+	int ret;
+
+	pdev = sprd_hardware_dvfs_device_get();
+	if (!pdev) {
+		pr_err("Hardware dvfs device has not been registered.\n");
+		return -EINVAL;
+	}
+	driver = &pdev->ops;
+
+	freq = policy->freq_table[idx].frequency;
+
+	if (!data->cpu_boost_disable) { /* Enable cpu boost */
+		ret = cpufreq_boost_judge(policy);
+		if (ret == ON_BOOST)
+			return ret;
 	}
 
 	cpu_cluster = topology_physical_package_id(policy->cpu);
@@ -336,6 +348,9 @@ static int sprd_hardware_cpufreq_init(struct cpufreq_policy *policy)
 			mutex_init(data->volt_lock);
 		}
 	}
+
+	if (of_property_read_bool(cpufreq_of_node, "cpufreq-boost-disable"))
+		data->cpu_boost_disable = true;
 
 	mutex_lock(data->volt_lock);
 

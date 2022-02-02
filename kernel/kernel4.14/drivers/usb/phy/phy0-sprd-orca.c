@@ -33,6 +33,7 @@
 #include <dt-bindings/soc/sprd,orca-regs.h>
 
 struct sprd_ssphy {
+	void __iomem		*base;
 	struct usb_phy		phy;
 	struct regmap		*ipa_ahb;
 	struct regmap		*ap_ahb;
@@ -81,7 +82,7 @@ static int sprd_ssphy_reset(struct usb_phy *x)
 static int sprd_ssphy_init(struct usb_phy *x)
 {
 	struct sprd_ssphy *phy = container_of(x, struct sprd_ssphy, phy);
-	u32	reg, msk;
+	u32	reg, msk, value;
 	int	ret = 0;
 
 	if (atomic_read(&phy->inited)) {
@@ -143,6 +144,16 @@ static int sprd_ssphy_init(struct usb_phy *x)
 	ret |= regmap_update_bits(phy->ana_g4,
 			REG_ANLG_PHY_G4_RF_ANALOG_USB20_0_USB20_UTMI_CTL1,
 				  msk, reg);
+
+	/* Configure USB30 PHY register */
+	value = readl_relaxed(phy->base + REG_ANALOG_USB30_CFGA_RF_ANA_CFG7);
+	value &= ~MASK_ANALOG_USB30_CFGA_RF_ANA_CFG7_CFG_DFE_RF_ANA_EN;
+	writel_relaxed(value, phy->base + REG_ANALOG_USB30_CFGA_RF_ANA_CFG7);
+
+	/* Prevent the suspend current from exceeding 2.5mA */
+	value = readl_relaxed(phy->base + REG_ANALOG_USB30_CFGA_RF_ANA_CFG13);
+	value &= ~MASK_ANALOG_USB30_CFGA_RF_ANA_CFG13_CFG_TX_LDO_IDC;
+	writel_relaxed(value, phy->base + REG_ANALOG_USB30_CFGA_RF_ANA_CFG13);
 
 	/* Reset PHY */
 	sprd_ssphy_reset_core(phy);
@@ -407,11 +418,17 @@ static int sprd_ssphy_probe(struct platform_device *pdev)
 	struct platform_device *regmap_pdev;
 	struct sprd_ssphy *phy;
 	struct device *dev = &pdev->dev;
+	struct resource *res;
 	u32 reg, msk;
 	int ret;
 
 	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
 	if (!phy)
+		return -ENOMEM;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	phy->base = devm_ioremap_resource(&pdev->dev, res);
+	if (!phy->base)
 		return -ENOMEM;
 
 	regmap_np = of_find_compatible_node(NULL, NULL, "sprd,sc27xx-syscon");

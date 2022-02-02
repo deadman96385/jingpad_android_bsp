@@ -21,3 +21,11 @@ config DRM_SPRD_HDMI
 	bool "SPRD DRM HDMI DRIVER"
 	help
 	  Choose this option when you need mipi switch hdmi.
+config LATTICE_FPGA
+	bool "LATTICE_FPGA"
+	help
+	  Choose this option when you need mipi switch hdmi.
+config GOWIN_FPGA
+	bool "GOWIN_FPGA"
+	help
+	  Choose this option when you need mipi switch hdmi.

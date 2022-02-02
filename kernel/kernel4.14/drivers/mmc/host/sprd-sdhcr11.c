@@ -162,6 +162,11 @@ static int sprd_get_delay_value(struct platform_device *pdev)
 		timing_dly->sdr104_dly = SPRD_SDHC_DLY_TIMING(dly_vl[0],
 					dly_vl[1], dly_vl[2], dly_vl[3]);
 
+	ret = of_property_read_u32_array(np, "sprd,ddr50-dly", dly_vl, 4);
+	if (!ret)
+		timing_dly->ddr50_dly = SPRD_SDHC_DLY_TIMING(dly_vl[0],
+					dly_vl[1], dly_vl[2], dly_vl[3]);
+
 	ret = of_property_read_u32_array(np, "sprd,ddr52-dly", dly_vl, 4);
 	if (!ret)
 		timing_dly->ddr52_dly = SPRD_SDHC_DLY_TIMING(dly_vl[0],
@@ -240,6 +245,15 @@ static void sprd_set_delay_value(struct sprd_sdhc_host *host)
 			dev_info(dev,
 				 "sdr104 default timing delay value 0x%08x\n",
 				 host->dll_dly);
+		}
+		break;
+	case MMC_TIMING_UHS_DDR50:
+		if (host->ios.clock == 50000000) {
+			host->dll_dly = host->timing_dly->ddr50_dly;
+			sprd_sdhc_writel(host, host->dll_dly,
+					SPRD_SDHC_REG_32_DLL_DLY);
+			pr_info("(%s) ddr50 default timing delay value 0x%08x\n",
+				host->device_name, host->dll_dly);
 		}
 		break;
 	case MMC_TIMING_MMC_DDR52:
@@ -1453,7 +1467,7 @@ static void sprd_sdhc_emmc_hw_reset(struct mmc_host *mmc)
 	val |= SPRD_SDHC_BIT_RST_EMMC;
 	sprd_sdhc_writeb(host, val, SPRD_SDHC_REG_8_RST);
 	udelay(300);
-
+	sprd_sdhc_reset(host, SPRD_SDHC_BIT_RST_ALL);
 	mmiowb();
 	spin_unlock_irqrestore(&host->lock, flags);
 	sprd_sdhc_runtime_pm_put(host);
@@ -1488,7 +1502,6 @@ static int sprd_calc_tuning_range(struct sprd_sdhc_host *host, int *value_t)
 	u32 dll_cnt = host->dll_cnt;
 	u32 mid_dll_cnt = host->mid_dll_cnt;
 	struct ranges_t *ranges = host->ranges;
-	struct device *dev = &host->pdev->dev;
 
 	/*
 	 * first: 0 <= i < mid_dll_cnt
@@ -1502,9 +1515,11 @@ static int sprd_calc_tuning_range(struct sprd_sdhc_host *host, int *value_t)
 
 		if (value_t[i] && value_t[i + dll_cnt]) {
 			ranges[range_count - 1].end = i;
-			dev_dbg(dev, "recalculate tuning ok: %d\n", i);
+			pr_debug("%s recalculate tuning ok: %d\n",
+				 host->device_name, i);
 		} else
-			dev_dbg(dev, "recalculate tuning fail: %d\n", i);
+			pr_debug("%s recalculate tuning fail: %d\n",
+				 host->device_name, i);
 
 		prev_vl = value_t[i] && value_t[i + dll_cnt];
 	}
@@ -1521,9 +1536,11 @@ static int sprd_calc_tuning_range(struct sprd_sdhc_host *host, int *value_t)
 
 		if (value_t[i]) {
 			ranges[range_count - 1].end = i;
-			dev_dbg(dev, "recalculate tuning ok: %d\n", i);
+			pr_debug("%s recalculate tuning ok: %d\n",
+				 host->device_name, i);
 		} else
-			dev_dbg(dev, "recalculate tuning fail: %d\n", i);
+			pr_debug("%s recalculate tuning fail: %d\n",
+				 host->device_name, i);
 
 		prev_vl = value_t[i];
 	}

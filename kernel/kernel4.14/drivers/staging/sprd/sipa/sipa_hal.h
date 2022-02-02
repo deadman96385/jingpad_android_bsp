@@ -115,6 +115,12 @@ struct sipa_hal_fifo_item {
 	u8 intr;
 	u32 err_code;
 	u32 reserved;
+	u8 hash;
+	__wsum csum;
+
+	bool ul_csum_en;
+	u8 ul_tcp_udp_flag;
+	u16 ul_upper_layer_hdr_offset;
 };
 
 struct sipa_reg_res_tag {
@@ -133,8 +139,6 @@ struct sipa_plat_drv_cfg;
 sipa_hal_hdl sipa_hal_init(struct device *dev, struct sipa_plat_drv_cfg *cfg);
 
 int sipa_hal_set_enabled(struct sipa_plat_drv_cfg *cfg, bool enable);
-
-int sipa_force_wakeup(struct sipa_plat_drv_cfg *cfg, bool wake);
 
 int sipa_open_common_fifo(sipa_hal_hdl hdl,
 			  enum sipa_cmn_fifo_index fifo,
@@ -176,12 +180,14 @@ int sipa_hal_put_rx_fifo_item(sipa_hal_hdl hdl,
 			      enum sipa_cmn_fifo_index fifo,
 			      struct sipa_hal_fifo_item *item);
 
-int sipa_hal_put_rx_fifo_items(sipa_hal_hdl hdl,
-			       enum sipa_cmn_fifo_index fifo_id);
+int sipa_hal_update_rx_fifo_wptr(sipa_hal_hdl hdl,
+				 enum sipa_cmn_fifo_index fifo_id,
+				 u32 num);
 
 int sipa_hal_cache_rx_fifo_item(sipa_hal_hdl hdl,
 				enum sipa_cmn_fifo_index fifo_id,
-				struct sipa_hal_fifo_item *item);
+				struct sipa_hal_fifo_item *item,
+				u32 index);
 
 bool sipa_hal_is_rx_fifo_empty(sipa_hal_hdl hdl,
 			       enum sipa_cmn_fifo_index fifo);
@@ -201,6 +207,8 @@ int sipa_hal_get_cmn_fifo_filled_depth(sipa_hal_hdl hdl,
 				       u32 *rx_filled, u32 *tx_filled);
 
 int sipa_hal_enable_wiap_dma(sipa_hal_hdl hdl, bool dma);
+
+int sipa_hal_enable_pcie_dl_dma(sipa_hal_hdl hdl, bool eb);
 
 int sipa_tft_mode_init(sipa_hal_hdl hdl);
 

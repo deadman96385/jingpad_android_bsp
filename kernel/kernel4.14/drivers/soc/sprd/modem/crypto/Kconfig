@@ -20,8 +20,17 @@ config SPRD_CRYPTO_PERFORMANCE_TEST
 	help
 	  The Testing option of spreadtrum crypto driver for verifying modem image.
 
-config SPRD_CRYPTO_SW
-	tristate "The Soft Crypto option of Spreadtrum Crypto Driver"
+choice
+	prompt "SHA256 Algorithm selection"
+	depends on SPRD_CRYPTO
 	default n
+config SPRD_CRYPTO_HASH_AHASH
+	tristate "The AHASH Crypto option of Spreadtrum Crypto Driver"
 	help
-	  The Testing option of spreadtrum crypto driver for verifying modem image.
+	  SHA256 by calling ahash API of kernel crypto module.
+
+config SPRD_CRYPTO_HASH_SW
+	tristate "The Soft Crypto option of Spreadtrum Crypto Driver"
+	help
+	  SHA256 by using software.
+endchoice

@@ -133,6 +133,9 @@ void ufs_sprd_reset(struct ufs_sprd_host *host)
 	ufs_sprd_rmwl(host->ufsutp_reg, mask, 0, REG_UTP_MISC);
 	ufs_sprd_rmwl(host->ufsutp_reg, mask, val, REG_UTP_MISC);
 
+	/* set utp FIFO size to 512 Byte */
+	ufs_sprd_rmwl(host->ufsutp_reg, 0xff, 0x4, 0x104);
+
 	mask = HCI_RST | HCI_CLOD_RST;
 	ufshcd_rmwl(host->hba, mask, 0, REG_SW_RST);
 
@@ -140,26 +143,38 @@ void ufs_sprd_reset(struct ufs_sprd_host *host)
 	ufs_sprd_rmwl(host->ufs_ao_reg, mask, val, REG_AO_SW_RST);
 	ufs_sprd_rmwl(host->ufs_ao_reg, mask, 0, REG_AO_SW_RST);
 
-	val = mask = RMMI_TX_L0_RST | RMMI_TX_L1_RST | RMMI_RX_L0_RST
-			    | RMMI_RX_L1_RST | RMMI_CB_RST | RMMI_RST;
-	ufs_sprd_rmwl(host->unipro_reg, mask, val, REG_PA_15);
-	ufs_sprd_rmwl(host->unipro_reg, mask, 0, REG_PA_15);
+	/* reset mphy signal */
+	ufs_sprd_rmwl(host->analog_reg, 1 << 3, 0x0 << 3, 0x14);
+	udelay(100);
+	ufs_sprd_rmwl(host->analog_reg, 1 << 3, 0x1 << 3, 0x14);
 
-	/* Exit hibernate after reset, and no need to care command's response. */
-	ufshcd_writel(host->hba, UIC_CMD_DME_HIBER_EXIT, REG_UIC_COMMAND);
+	ufs_sprd_rmwl(host->analog_reg, 0xff, 0xff, 0x8);
 
 	/* Fix issue failing to change speed to fast gear3 mode. */
 	val = mask = TX_FIFOMODE;
 	ufs_sprd_rmwl(host->mphy_reg, mask, val, REG_DIG_CFG35);
 
+	ufs_sprd_rmwl(host->mphy_reg, 0x1f << 16, 0x1 << 16, 0xD0);
+
 	val = mask = CDR_MONITOR_BYPASS;
 	ufs_sprd_rmwl(host->mphy_reg, mask, val, REG_DIG_CFG7);
 
+	ufs_sprd_rmwl(host->mphy_reg, 0x7 << 14, 0x4 << 14, REG_DIG_CFG7);
+
+	val = mask = RMMI_TX_L0_RST | RMMI_TX_L1_RST | RMMI_RX_L0_RST
+				| RMMI_RX_L1_RST | RMMI_CB_RST | RMMI_RST;
+	ufs_sprd_rmwl(host->unipro_reg, mask, val, REG_PA_15);
+	udelay(100);
+	ufs_sprd_rmwl(host->unipro_reg, mask, 0, REG_PA_15);
+
+	ufs_sprd_rmwl(host->unipro_reg, 0xf, 0xa, 0x18c);
+
+	/* Exit hibernate after reset, no need to care command's response. */
+	ufshcd_writel(host->hba, UIC_CMD_DME_HIBER_EXIT, REG_UIC_COMMAND);
+	udelay(100);
+
 	val = mask = RMMI_TX_DIRDY_SEL;
 	ufs_sprd_rmwl(host->unipro_reg, mask, val, REG_PA_27);
-
-	val = ufshcd_readl(host->hba, 0xa4);
-	ufshcd_writel(host->hba, val | (1 << 29), 0xa4);
 }
 
 /**
@@ -242,10 +257,19 @@ static int ufs_sprd_init(struct ufs_hba *hba)
 		return -ENODEV;
 	}
 
-	ret = ufs_sprd_get_syscon_reg(dev->of_node, &host->ap_apb_ufs_en,
-				      "ap_apb_ufs_en");
-	if (ret < 0)
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "analog_reg");
+	if (!res) {
+		dev_err(dev, "Missing analog_reg register resource\n");
 		return -ENODEV;
+	}
+	host->analog_reg = devm_ioremap_nocache(dev, res->start,
+						resource_size(res));
+	if (IS_ERR(host->analog_reg)) {
+		dev_err(dev, "%s: could not map analog_reg, err %ld\n",
+			__func__, PTR_ERR(host->analog_reg));
+		host->analog_reg = NULL;
+		return -ENODEV;
+	}
 
 	ret = ufs_sprd_get_syscon_reg(dev->of_node, &host->ap_apb_ufs_rst,
 				      "ap_apb_ufs_rst");
@@ -267,6 +291,8 @@ static int ufs_sprd_init(struct ufs_hba *hba)
 	hba->quirks |= UFSHCD_QUIRK_BROKEN_UFS_HCI_VERSION |
 		       UFSHCD_QUIRK_DELAY_BEFORE_DME_CMDS;
 
+	hba->caps |= UFSHCD_CAP_CLK_GATING | UFSHCD_CAP_HIBERN8_WITH_CLK_GATING;
+
 	return 0;
 }
 
@@ -278,10 +304,6 @@ void ufs_sprd_hw_init(struct ufs_hba *hba)
 {
 	struct ufs_sprd_host *host = ufshcd_get_variant(hba);
 
-	regmap_update_bits(host->ap_apb_ufs_en.regmap,
-			   host->ap_apb_ufs_en.reg,
-			   host->ap_apb_ufs_en.mask,
-			   host->ap_apb_ufs_en.mask);
 	ufs_sprd_reset(host);
 }
 
@@ -323,6 +345,7 @@ static int ufs_sprd_link_startup_notify(struct ufs_hba *hba,
 					enum ufs_notify_change_status status)
 {
 	int err = 0;
+	struct ufs_sprd_host *host = ufshcd_get_variant(hba);
 
 	switch (status) {
 	case PRE_CHANGE:
@@ -337,6 +360,9 @@ static int ufs_sprd_link_startup_notify(struct ufs_hba *hba,
 			err = ufshcd_dme_set(hba,
 					UIC_ARG_MIB(PA_LOCAL_TX_LCC_ENABLE),
 					0);
+
+               ufs_sprd_rmwl(host->unipro_reg, 0x1<<16, 0x0, 0x820);
+               ufs_sprd_rmwl(host->unipro_reg, 0x1<<16, (0x1<<16), 0x1e0);
 
 		break;
 	case POST_CHANGE:
@@ -363,13 +389,13 @@ static int ufs_sprd_pwr_change_notify(struct ufs_hba *hba,
 
 	switch (status) {
 	case PRE_CHANGE:
-		dev_req_params->gear_rx = UFS_PWM_G2;
-		dev_req_params->gear_tx = UFS_PWM_G2;
+		dev_req_params->gear_rx = UFS_PWM_G3;
+		dev_req_params->gear_tx = UFS_PWM_G3;
 		dev_req_params->lane_rx = 1;
 		dev_req_params->lane_tx = 1;
 		dev_req_params->pwr_rx = FAST_MODE;
 		dev_req_params->pwr_tx = FAST_MODE;
-		dev_req_params->hs_rate = PA_HS_MODE_A;
+		dev_req_params->hs_rate = PA_HS_MODE_B;
 		break;
 	case POST_CHANGE:
 		break;
@@ -401,16 +427,42 @@ static void ufs_sprd_hibern8_notify(struct ufs_hba *hba,
 			val = mask = REDESKEW_MASK;
 			ufs_sprd_rmwl(host->unipro_reg, mask, val, REG_PA_7);
 		}
+		if (cmd == UIC_CMD_DME_HIBER_EXIT)
+			/* Set soc pll as refclk before exit hibern8. */
+			ufs_sprd_rmwl(host->mphy_reg, RCLK_OUT_SEL,
+				      0, REG_DIG_CFG14);
+
 		break;
 	case POST_CHANGE:
 		if (cmd == UIC_CMD_DME_HIBER_EXIT) {
 			mask = REDESKEW_MASK;
 			ufs_sprd_rmwl(host->unipro_reg, mask, 0, REG_PA_7);
 		}
+		if (cmd == UIC_CMD_DME_HIBER_ENTER)
+			/*
+			 * Set ufs internal pll as refclk when enter hibern8,
+			 * the pll will be turned off in hibern8 to reduce
+			 * power consumption.
+			 */
+			ufs_sprd_rmwl(host->mphy_reg, RCLK_OUT_SEL,
+				      RCLK_OUT_SEL, REG_DIG_CFG14);
 		break;
 	default:
 		break;
 	}
+}
+
+static int ufs_sprd_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
+{
+	hba->rpm_lvl = UFS_PM_LVL_1;
+	hba->spm_lvl = UFS_PM_LVL_5;
+	hba->uic_link_state = UIC_LINK_OFF_STATE;
+	return 0;
+}
+
+static int ufs_sprd_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
+{
+	return 0;
 }
 
 /**
@@ -428,6 +480,8 @@ static struct ufs_hba_variant_ops ufs_hba_sprd_vops = {
 	.link_startup_notify = ufs_sprd_link_startup_notify,
 	.pwr_change_notify = ufs_sprd_pwr_change_notify,
 	.hibern8_notify = ufs_sprd_hibern8_notify,
+	.suspend = ufs_sprd_suspend,
+	.resume = ufs_sprd_resume,
 };
 
 /**
@@ -445,6 +499,7 @@ static int ufs_sprd_probe(struct platform_device *pdev)
 	err = ufshcd_pltfrm_init(pdev, &ufs_hba_sprd_vops);
 	if (err)
 		dev_err(dev, "ufshcd_pltfrm_init() failed %d\n", err);
+	device_enable_async_suspend(dev);
 
 	return err;
 }

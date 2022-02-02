@@ -181,6 +181,11 @@ struct sprd_crypto_device {
 	struct device            *p_dev;
 };
 
+sprd_crypto_err_t sprd_rsa_verify(const sprd_rsa_pubkey_t *pub_key,
+		const unsigned char *dig, unsigned int dig_size,
+		const unsigned char *sig, unsigned int sig_size,
+		sprd_rsa_padding_t padding, int *result);
+
 /* crypto test */
 #ifdef CONFIG_SPRD_CRYPTO_TEST
 int sprd_crypto_test(void);

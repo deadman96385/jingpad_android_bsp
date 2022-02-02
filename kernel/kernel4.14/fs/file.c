@@ -633,10 +633,10 @@ int __close_fd(struct files_struct *files, unsigned fd)
 	struct file *file;
 	struct fdtable *fdt;
 
+	spin_lock(&files->file_lock);
 #ifdef CONFIG_ION_SPRD
 	get_ion_user_info(fd, false);
 #endif
-	spin_lock(&files->file_lock);
 	fdt = files_fdtable(files);
 	if (fd >= fdt->max_fds)
 		goto out_unlock;

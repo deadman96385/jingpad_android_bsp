@@ -16,11 +16,16 @@
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
+#include <linux/kthread.h>
 
 struct sprd_drm {
 	struct drm_atomic_state *state;
 	struct device *dpu_dev;
 	struct device *gsp_dev;
+	struct drm_fbdev_cma *fbdev;
+	struct kthread_worker commit_kworker;
+	struct kthread_work commit_kwork;
+	struct task_struct *commit_thread;
 };
 
 int sprd_atomic_wait_for_fences(struct drm_device *dev,

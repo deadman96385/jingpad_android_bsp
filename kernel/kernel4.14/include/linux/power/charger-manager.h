@@ -43,13 +43,48 @@ enum cm_event_types {
 	CM_EVENT_EXT_PWR_IN_OUT,
 	CM_EVENT_CHG_START_STOP,
 	CM_EVENT_OTHERS,
+	CM_EVENT_FAST_CHARGE,
+};
+
+enum cm_jeita_types {
+	CM_JEITA_DCP = 0,
+	CM_JEITA_SDP,
+	CM_JEITA_CDP,
+	CM_JEITA_UNKNOWN,
+	CM_JEITA_FCHG,
+	CM_JEITA_MAX,
 };
 
 enum cm_charge_status {
-	CM_CHARGE_TEMP_ABNORMAL = BIT(0),
-	CM_CHARGE_VOLTAGE_ABNORMAL = BIT(1),
-	CM_CHARGE_HEALTH_ABNORMAL = BIT(2),
-	CM_CHARGE_DURATION_ABNORMAL = BIT(3),
+	CM_CHARGE_TEMP_OVERHEAT = BIT(0),
+	CM_CHARGE_TEMP_COLD = BIT(1),
+	CM_CHARGE_VOLTAGE_ABNORMAL = BIT(2),
+	CM_CHARGE_HEALTH_ABNORMAL = BIT(3),
+	CM_CHARGE_DURATION_ABNORMAL = BIT(4),
+};
+
+enum cm_fast_charge_command {
+	CM_FAST_CHARGE_NORMAL_CMD = 1,
+	CM_FAST_CHARGE_ENABLE_CMD,
+	CM_FAST_CHARGE_DISABLE_CMD,
+};
+
+struct wireless_data {
+	struct power_supply_desc psd;
+	struct power_supply *psy;
+	int WIRELESS_ONLINE;
+};
+
+struct ac_data {
+	struct power_supply_desc psd;
+	struct power_supply *psy;
+	int AC_ONLINE;
+};
+
+struct usb_data {
+	struct power_supply_desc psd;
+	struct power_supply *psy;
+	int USB_ONLINE;
 };
 
 /**
@@ -144,6 +179,25 @@ struct charger_jeita_table {
 	int term_volt;
 };
 
+enum cm_track_state {
+	CAP_TRACK_INIT,
+	CAP_TRACK_IDLE,
+	CAP_TRACK_UPDATING,
+	CAP_TRACK_DONE,
+	CAP_TRACK_ERR,
+};
+
+struct cm_track_capacity {
+	enum cm_track_state state;
+	int start_clbcnt;
+	int start_cap;
+	int end_vol;
+	int end_cur;
+	s64 start_time;
+	bool cap_tracking;
+	struct delayed_work track_capacity_work;
+};
+
 /**
  * struct charger_desc
  * @psy_name: the name of power-supply-class for charger manager
@@ -157,6 +211,7 @@ struct charger_jeita_table {
  * @fullbatt_uV: voltage in microvolt
  *	If VBATT >= fullbatt_uV, it is assumed to be full.
  * @fullbatt_uA: battery current in microamp
+ * @first_fullbatt_uA: battery current in microamp of first_full charged
  * @fullbatt_soc: state of Charge in %
  *	If state of Charge >= fullbatt_soc, it is assumed to be full.
  * @fullbatt_full_capacity: full capacity measure
@@ -185,8 +240,20 @@ struct charger_jeita_table {
  *	Maximum possible duration for discharging with charger cable
  *	after full-batt. If discharging duration exceed 'discharging
  *	max_duration_ms', cm start charging.
+ * @normal_charge_voltage_max:
+ *	maximum normal charge voltage in microVolts
+ * @normal_charge_voltage_drop:
+ *	drop voltage in microVolts to allow restart normal charging
+ * @fast_charge_voltage_max:
+ *	maximum fast charge voltage in microVolts
+ * @fast_charge_voltage_drop:
+ *	drop voltage in microVolts to allow restart fast charging
  * @charger_status: Recording state of charge
+ * @charger_type: Recording type of charge
+ * @first_trigger_cnt: The number of times the battery is first_fully charged
  * @trigger_cnt: The number of times the battery is fully charged
+ * @low_temp_trigger_cnt: The number of times the battery temperature
+ *	is less than 10 degree.
  * @cap_one_time: The percentage of electricity is not
  *	allowed to change by 1% in cm->desc->cap_one_time
  * @trickle_time_out: If 99% lasts longer than it , will force set full statu
@@ -204,6 +271,21 @@ struct charger_jeita_table {
  *	adjust the charging current according to the battery temperature.
  * @jeita_tab_size: Specify the size of jeita temperature table.
  * @jeita_disabled: disable jeita function when needs
+ * @jeita_tab_array: Specify the jeita temperature table array, which is used to
+ *	save the point of adjust the charging current according to the battery temperature.
+ * @temperature: the battery temperature
+ * @internal_resist: the battery internal resistance in mOhm
+ * @cap_table_len: the length of ocv-capacity table
+ * @cap_table: capacity table with corresponding ocv
+ * @is_fast_charge: if it is support fast charge or not
+ * @enable_fast_charge: if is it start fast charge or not
+ * @fast_charge_enable_count: to count the number that satisfy start
+ *	fast charge condition.
+ * @fast_charge_disable_count: to count the number that satisfy stop
+ *	fast charge condition.
+ * @double_IC_total_limit_current: if it use two charge IC to support
+ *	fast charge, we use total limit current to campare with thermal_val,
+ *	to limit the thermal_val under total limit current.
  */
 struct charger_desc {
 	const char *psy_name;
@@ -215,12 +297,14 @@ struct charger_desc {
 	unsigned int fullbatt_vchkdrop_uV;
 	unsigned int fullbatt_uV;
 	unsigned int fullbatt_uA;
+	unsigned int first_fullbatt_uA;
 	unsigned int fullbatt_soc;
 	unsigned int fullbatt_full_capacity;
 
 	enum data_source battery_present;
 
 	const char **psy_charger_stat;
+	const char **psy_fast_charger_stat;
 
 	int num_charger_regulators;
 	struct charger_regulator *charger_regulators;
@@ -241,9 +325,17 @@ struct charger_desc {
 
 	u32 charge_voltage_max;
 	u32 charge_voltage_drop;
+	u32 normal_charge_voltage_max;
+	u32 normal_charge_voltage_drop;
+	u32 fast_charge_voltage_max;
+	u32 fast_charge_voltage_drop;
 
 	int charger_status;
+	u32 charger_type;
 	int trigger_cnt;
+	int first_trigger_cnt;
+	int uvlo_trigger_cnt;
+	int low_temp_trigger_cnt;
 
 	u32 cap_one_time;
 
@@ -264,6 +356,19 @@ struct charger_desc {
 	struct charger_jeita_table *jeita_tab;
 	u32 jeita_tab_size;
 	bool jeita_disabled;
+	struct charger_jeita_table *jeita_tab_array[CM_JEITA_MAX];
+
+	int temperature;
+
+	int internal_resist;
+	int cap_table_len;
+	struct power_supply_battery_ocv_table *cap_table;
+
+	bool is_fast_charge;
+	bool enable_fast_charge;
+	u32 fast_charge_enable_count;
+	u32 fast_charge_disable_count;
+	u32 double_ic_total_limit_current;
 };
 
 #define PSY_NAME_MAX	30
@@ -305,6 +410,7 @@ struct charger_manager {
 	unsigned long fullbatt_vchk_jiffies_at;
 	struct delayed_work fullbatt_vchk_work;
 	struct delayed_work cap_update_work;
+	struct delayed_work uvlo_work;
 	int emergency_stop;
 
 	char psy_name_buf[PSY_NAME_MAX + 1];
@@ -314,6 +420,8 @@ struct charger_manager {
 	u64 charging_start_time;
 	u64 charging_end_time;
 	u32 charging_status;
+	struct cm_track_capacity track;
+	struct wakeup_source charge_ws;
 };
 
 #ifdef CONFIG_CHARGER_MANAGER
@@ -324,3 +432,21 @@ static inline void cm_notify_event(struct power_supply *psy,
 				enum cm_event_types type, char *msg) { }
 #endif
 #endif /* _CHARGER_MANAGER_H */
+
+/*get battery id from cmdline*/
+static int get_battery_id(void)
+{
+	extern char *saved_command_line;
+	char result[2] = {'\0'};
+	char *match = strstr(saved_command_line, "bat.id=");
+
+	if (match) {
+	memcpy(result, (match + strlen("bat.id=")), sizeof(result) - 1);
+	if (result[0] == '0')
+		return 0;
+	else
+		return 1;
+	}
+	return 0;
+
+};

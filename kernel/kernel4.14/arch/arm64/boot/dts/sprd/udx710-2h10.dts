@@ -31,7 +31,7 @@
 
 	chosen {
 		stdout-path = &uart0;
-		bootargs = "earlycon console=ttyS0,115200n8 loglevel=8 init=/init root=/dev/ram0 ro androidboot.hardware=udx710_2h10 androidboot.selinux=permissive swiotlb=64k androidboot.dtbo_idx=0 printk.devkmsg=on";
+		bootargs = "earlycon console=ttyS0,115200n8 loglevel=1 init=/init root=/dev/ram0 ro androidboot.hardware=udx710_2h10 androidboot.selinux=permissive swiotlb=64k androidboot.dtbo_idx=0 printk.devkmsg=on";
 	};
 
 	ion {
@@ -53,7 +53,7 @@
 	};
 	sprd-sysdump {
 		memory-region = <&memory>;
-		memory-region-re = <&ddrbist_reserved>, <&cp_reserved>, <&smem_reserved>;
+		memory-region-re = <&ddrbist_reserved>, <&cp_reserved>, <&scproc_pubpm>, <&smem_reserved>;
 	};
 
 	dvfs_dcdc_cpu0_supply: dvfs-dcdc-cpu0-supply {
@@ -93,22 +93,22 @@
 &ipa_local {
 	sprd,sipa-bypass-mode = <0>;
 
-	sprd,usb-dl-tx = <0 2048>;
-	sprd,usb-dl-rx = <0 2048>;
+	sprd,usb-dl-tx = <0 4096>;
+	sprd,usb-dl-rx = <0 4096>;
 	sprd,usb-ul-tx = <0 2048>;
 	sprd,usb-ul-rx = <0 2048>;
 	sprd,wifi-dl-tx = <1 128>;
 	sprd,wifi-dl-rx = <1 128>;
 	sprd,wifi-ul-tx = <1 128>;
 	sprd,wifi-ul-rx = <1 128>;
-	sprd,ap-eth-dl-tx = <0 2048>;
-	sprd,ap-eth-dl-rx = <0 2048>;
+	sprd,ap-eth-dl-tx = <0 1024>;
+	sprd,ap-eth-dl-rx = <0 1024>;
 	sprd,ap-eth-ul-tx = <0 2048>;
 	sprd,ap-eth-ul-rx = <0 2048>;
 	sprd,ap-ip-dl-tx = <0 2048>;
 	sprd,ap-ip-dl-rx = <0 2048>;
-	sprd,ap-ip-ul-tx = <0 2048>;
-	sprd,ap-ip-ul-rx = <0 2048>;
+	sprd,ap-ip-ul-tx = <0 1024>;
+	sprd,ap-ip-ul-rx = <0 1024>;
 	sprd,cp-dl-tx = <0 0>;
 	sprd,cp-dl-rx = <0 0>;
 	sprd,cp-ul-tx = <0 0>;

@@ -173,6 +173,8 @@ struct sprd_adi_variant_data pike2_data = {
 	.wdt_clk = SC2720_CLK_EN,
 };
 
+static struct sprd_adi *sadi_debug;
+
 static int sprd_adi_check_paddr(struct sprd_adi *sadi, u32 paddr)
 {
 	if (paddr < sadi->slave_pbase || paddr >
@@ -375,7 +377,7 @@ static int sprd_adi_transfer_one(struct spi_controller *ctlr,
 
 static void sprd_adi_set_wdt_rst_mode(struct sprd_adi *sadi)
 {
-#ifdef CONFIG_SPRD_WATCHDOG
+#if IS_ENABLED(CONFIG_SPRD_WATCHDOG) || IS_ENABLED(CONFIG_SPRD_WATCHDOG_FIQ)
 	u32 val;
 
 	/* Init watchdog reset mode */
@@ -447,9 +449,9 @@ static int sprd_adi_restart_handler(struct notifier_block *this,
 	sprd_adi_write(sadi, wdt_base + REG_WDG_CTRL, val);
 
 	/* Load the watchdog timeout value, 50ms is always enough. */
+	sprd_adi_write(sadi, wdt_base + REG_WDG_LOAD_HIGH, 0);
 	sprd_adi_write(sadi, wdt_base + REG_WDG_LOAD_LOW,
 		       WDG_LOAD_VAL & WDG_LOAD_MASK);
-	sprd_adi_write(sadi, wdt_base + REG_WDG_LOAD_HIGH, 0);
 
 	/* Start the watchdog to reset system */
 	sprd_adi_read(sadi, wdt_base + REG_WDG_CTRL, &val);
@@ -510,6 +512,55 @@ static void sprd_adi_hw_init(struct sprd_adi *sadi)
 			writel_relaxed(value, sadi->base + REG_ADI_CHN_EN1);
 		}
 	}
+}
+
+int sprd_adi_write_for_poweroff(u32 reg, u32 val)
+{
+	u32 timeout = ADI_FIFO_DRAIN_TIMEOUT;
+	unsigned long vreg;
+	//u32 pmic_addr;
+	int ret;
+	u32 tval;
+
+	/*
+	 * Get the physical register address need to write and convert
+	 * the physical address to virtual address. Since we need
+	 * virtual register address to write.
+	 */
+	vreg = reg + sadi_debug->slave_vbase;
+
+	/* set adi clock 101K, clcok source 26M, 26M / 0xff = 101k. */
+	tval = readl_relaxed(sadi_debug->base + REG_ADI_GSSI_CFG1);
+	tval = (tval & 0xfffffc03) | (0xff << 2);
+	writel_relaxed(tval, sadi_debug->base + REG_ADI_GSSI_CFG1);
+
+	//ret = sprd_adi_write(sadi_debug, pmic_addr, val);
+	ret = sprd_adi_drain_fifo(sadi_debug);
+	if (ret < 0)
+		goto out;
+
+	/*
+	 * we should wait for write fifo is empty before writing data to PMIC
+	 * registers.
+	 */
+	do {
+		if (!sprd_adi_fifo_is_full(sadi_debug)) {
+			/* write pd reg until poweroff successful. */
+			while (1) {
+				writel_relaxed(val, (void __iomem *)vreg);
+			}
+		}
+		cpu_relax();
+	} while (--timeout);
+
+	if (timeout == 0) {
+		dev_err(sadi_debug->dev, "write fifo is full\n");
+		ret = -EBUSY;
+	}
+
+out:
+
+	return ret;
 }
 
 static int sprd_adi_probe(struct platform_device *pdev)
@@ -598,6 +649,8 @@ static int sprd_adi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "can not register restart handler\n");
 		goto put_ctlr;
 	}
+
+	sadi_debug = sadi;
 
 	return 0;
 

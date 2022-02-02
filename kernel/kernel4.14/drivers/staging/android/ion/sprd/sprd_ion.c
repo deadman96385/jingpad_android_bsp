@@ -28,6 +28,7 @@
 
 static int num_heaps;
 struct ion_heap **heaps;
+unsigned int batchsize;
 
 static struct ion_buffer *get_ion_buffer(int fd, struct dma_buf *dmabuf)
 {
@@ -338,6 +339,10 @@ static struct ion_platform_heap *sprd_ion_parse_dt(struct platform_device *pdev)
 			    GFP_KERNEL);
 	if (!ion_heaps)
 		return ERR_PTR(-ENOMEM);
+
+	ret = of_property_read_u32(parent, "batchsize", &batchsize);
+	if (!ret)
+		pr_info("%s: ion batchsize is %u\n", __func__, batchsize);
 
 	for_each_child_of_node(parent, child) {
 		new_dev = of_platform_device_create(child, NULL, &pdev->dev);

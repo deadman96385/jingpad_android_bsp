@@ -14,8 +14,6 @@
 #define IPA_PASTE1(x, y) x ## y
 #define IPA_PASTE(x, y) IPA_PASTE1(x, y)
 
-#define IPA_GET_LOW32(val) ((u32)(val & 0x00000000FFFFFFFF))
-#define IPA_GET_HIGH32(val) ((u32)((val >> 32) & 0x00000000FFFFFFFF))
 #define IPA_STI_64BIT(l_val, h_val) ((u64)(l_val | ((u64)h_val << 32)))
 
 #define SIPA_FIFO_REG_SIZE	0x80
@@ -41,6 +39,62 @@ struct sipa_node_description_tag {
 	u8	indx : 1;
 	u8	err_code : 4;
 	u32 reserved : 22;
+} __attribute__((__packed__));
+
+struct sipa_recv_node_description_tag {
+	/*soft need to set*/
+	u64 address : 40;
+	/*soft need to set*/
+	u32 length : 20;
+	/*soft need to set*/
+	u16 offset : 12;
+	/*soft need to set*/
+	u8 net_id;
+	/*soft need to set*/
+	u8 src : 5;
+	/*soft need to set*/
+	u8 dst : 5;
+	u8 prio : 3;
+	u8 bear_id : 7;
+	/*soft need to set*/
+	u8 intr : 1;
+	/*soft need to set*/
+	u8 indx : 1;
+	u8 err_code : 4;
+	u8 reserved : 2;
+	u8 hash : 4;
+	u16 pld_checksum;
+} __attribute__((__packed__));
+
+struct sipa_send_node_description_tag {
+	/*soft need to set*/
+	u64 address : 40;
+	/*soft need to set*/
+	u32 length : 20;
+	/*soft need to set*/
+	u16 offset : 12;
+	/*soft need to set*/
+	u8 net_id;
+	/*soft need to set*/
+	u8 src : 5;
+	/*soft need to set*/
+	u8 dst : 5;
+	u8 prio : 3;
+	u8 bear_id : 7;
+	/*soft need to set*/
+	u8 intr : 1;
+	/*soft need to set*/
+	u8 indx : 1;
+	u8 err_code : 4;
+
+	u8 ipv6_ext_hdr : 1;
+	u8 ipv6_frag : 1;
+	u8 ipv6_first_frag : 1;
+	u8 reserved : 1;
+	u8 tcp_udp_flag : 1;
+	u8 csum_en : 1;
+	u8 upper_layer_protocol;
+	u8 upper_layer_hdr_offset;
 } __attribute__((__packed__));
 
 struct sipa_cmn_fifo_tag {
@@ -80,6 +134,9 @@ struct sipa_common_fifo_cfg_tag {
 	struct sipa_cmn_fifo_tag rx_fifo;
 	struct sipa_cmn_fifo_tag tx_fifo;
 
+	u32 enter_flow_ctrl_cnt;
+	u32 exit_flow_ctrl_cnt;
+
 	sipa_hal_notify_cb fifo_irq_callback;
 };
 
@@ -91,14 +148,6 @@ struct sipa_hal_fifo_ops {
 		     struct sipa_common_fifo_cfg_tag *cfg_base);
 	u32 (*reset)(enum sipa_cmn_fifo_index id,
 		     struct sipa_common_fifo_cfg_tag *cfg_base);
-	u32 (*rx_fill)(enum sipa_cmn_fifo_index id,
-		       struct sipa_common_fifo_cfg_tag *cfg_base,
-		       struct sipa_node_description_tag *node,
-		       u32 num);
-	u32 (*tx_fill)(enum sipa_cmn_fifo_index id,
-		       struct sipa_common_fifo_cfg_tag *cfg_base,
-		       struct sipa_node_description_tag *node,
-		       u32 num);
 	u32 (*set_rx_depth)(enum sipa_cmn_fifo_index id,
 			    struct sipa_common_fifo_cfg_tag *cfg_base,
 			    u32 depth);
@@ -124,6 +173,10 @@ struct sipa_hal_fifo_ops {
 				   u32 tx_rd);
 	struct sipa_node_description_tag *
 		(*get_tx_fifo_node)(enum sipa_cmn_fifo_index id,
+				    struct sipa_common_fifo_cfg_tag *cfg_base,
+				    u32 index);
+	struct sipa_node_description_tag *
+		(*get_rx_fifo_node)(enum sipa_cmn_fifo_index id,
 				    struct sipa_common_fifo_cfg_tag *cfg_base,
 				    u32 index);
 	u32 (*set_interrupt_error_code)(enum sipa_cmn_fifo_index id,
@@ -189,7 +242,7 @@ struct sipa_hal_fifo_ops {
 				   struct sipa_common_fifo_cfg_tag *cfg_base,
 				   struct sipa_node_description_tag *node,
 				   u32 force_intr, u32 num);
-	u32 (*put_node_to_rx_fifo)(struct device *dev,
+	int (*put_node_to_rx_fifo)(struct device *dev,
 				   enum sipa_cmn_fifo_index id,
 				   struct sipa_common_fifo_cfg_tag *cfg_base,
 				   struct sipa_node_description_tag *node,
@@ -217,6 +270,12 @@ struct sipa_hal_fifo_ops {
 			    bool stop);
 	int (*reclaim_node_desc)(enum sipa_cmn_fifo_index id,
 				 struct sipa_common_fifo_cfg_tag *cfg_base);
+	void (*reclaim_wiap_ul_cmn_fifo)(struct sipa_common_fifo_cfg_tag
+					 *cfg_base);
+	int (*update_rx_fifo_wptr)(struct device *dev,
+				   enum sipa_cmn_fifo_index id,
+				   struct sipa_common_fifo_cfg_tag *cfg_base,
+				   u32 num);
 };
 
 struct sipa_hal_global_ops {
@@ -245,6 +304,8 @@ struct sipa_hal_global_ops {
 				      u32 enable);
 	u32 (*enable_wiap_ul_dma)(void __iomem *reg_base,
 				  u32 enable);
+	bool (*ctrl_pcie_dl_dma)(void __iomem *reg_base,
+				 bool enable);
 	u32 (*enable_def_flowctrl_to_src_blk)(void __iomem *reg_base);
 	u32 (*enable_to_pcie_no_mac)(void __iomem *reg_base, bool enable);
 	u32 (*enable_from_pcie_no_mac)(void __iomem *reg_base, bool enable);
@@ -260,7 +321,8 @@ struct sipa_hal_global_ops {
 	bool (*get_resume_status)(void __iomem *reg_base);
 	bool (*get_pause_status)(void __iomem *reg_base);
 	void (*enable_pcie_intr_write_reg_mode)(void __iomem *reg_base,
-						bool enable);
+						bool enable, const u64 *reg,
+						const u32 *pattern);
 };
 
 struct sipa_sys_ops {

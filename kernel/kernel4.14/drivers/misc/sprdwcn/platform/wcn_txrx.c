@@ -236,7 +236,7 @@ int mdbg_log_cb(int channel, struct mbuf_t *head, struct mbuf_t *tail, int num)
 	struct mbuf_t *mbuf_node;
 	int i;
 
-	WCN_INFO("%s:type=0x%x,seq=0x%x, num=%d\n", __func__,
+	WCN_DBG("%s:type=0x%x,seq=0x%x, num=%d\n", __func__,
 		 *(head->buf + 7), *((u32 *)(head->buf + 12)), num);
 
 	if ((atomic_read(&ring_reg_flag)) == 0) {

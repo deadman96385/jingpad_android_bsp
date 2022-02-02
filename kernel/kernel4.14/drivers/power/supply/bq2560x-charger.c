@@ -85,6 +85,7 @@ struct bq2560x_charger_info {
 	u32 charger_pd_mask;
 	struct gpio_desc *gpiod;
 	struct extcon_dev *edev;
+	int termination_cur;
 };
 
 static int
@@ -202,10 +203,12 @@ bq2560x_charger_set_termina_cur(struct bq2560x_charger_info *info, u32 cur)
 static int bq2560x_charger_hw_init(struct bq2560x_charger_info *info)
 {
 	struct power_supply_battery_info bat_info = { };
-	int voltage_max_microvolt, current_max_ua;
+	int voltage_max_microvolt;
 	int ret;
+	int bat_id = 0;
 
-	ret = power_supply_get_battery_info(info->psy_usb, &bat_info);
+	bat_id = get_battery_id();
+	ret = power_supply_get_battery_info(info->psy_usb, &bat_info, bat_id);
 	if (ret) {
 		dev_warn(info->dev, "no battery information is supplied\n");
 
@@ -234,7 +237,7 @@ static int bq2560x_charger_hw_init(struct bq2560x_charger_info *info)
 
 		voltage_max_microvolt =
 			bat_info.constant_charge_voltage_max_uv / 1000;
-		current_max_ua = bat_info.constant_charge_current_max_ua / 1000;
+		info->termination_cur = bat_info.charge_term_current_ua / 1000;
 		power_supply_put_battery_info(info->psy_usb, &bat_info);
 
 		ret = bq2560x_update_bits(info, BQ2560X_REG_B,
@@ -258,7 +261,7 @@ static int bq2560x_charger_hw_init(struct bq2560x_charger_info *info)
 			return ret;
 		}
 
-		ret = bq2560x_charger_set_termina_cur(info, current_max_ua);
+		ret = bq2560x_charger_set_termina_cur(info, info->termination_cur);
 		if (ret) {
 			dev_err(info->dev, "set bq2560x terminal cur failed\n");
 			return ret;
@@ -282,6 +285,9 @@ static int bq2560x_charger_start_charge(struct bq2560x_charger_info *info)
 	if (ret)
 		dev_err(info->dev, "enable bq2560x charge failed\n");
 
+	ret = bq2560x_charger_set_termina_cur(info, info->termination_cur);
+	if (ret)
+		dev_err(info->dev, "set bq2560x terminal cur failed\n");
 	return ret;
 }
 
@@ -504,7 +510,7 @@ static int bq2560x_charger_usb_get_property(struct power_supply *psy,
 					    union power_supply_propval *val)
 {
 	struct bq2560x_charger_info *info = power_supply_get_drvdata(psy);
-	u32 cur, online, health;
+	u32 cur, online, health, enabled = 0;
 	enum usb_charger_type type;
 	int ret = 0;
 
@@ -585,6 +591,16 @@ static int bq2560x_charger_usb_get_property(struct power_supply *psy,
 
 		break;
 
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
+		ret = regmap_read(info->pmic, info->charger_pd, &enabled);
+		if (ret) {
+			dev_err(info->dev, "get bq2560x charge status failed\n");
+			goto out;
+		}
+
+		val->intval = !!!enabled;
+		break;
+
 	default:
 		ret = -EINVAL;
 	}
@@ -599,7 +615,7 @@ static int bq2560x_charger_usb_set_property(struct power_supply *psy,
 				const union power_supply_propval *val)
 {
 	struct bq2560x_charger_info *info = power_supply_get_drvdata(psy);
-	int ret;
+	int ret = 0;
 
 	mutex_lock(&info->lock);
 
@@ -633,6 +649,16 @@ static int bq2560x_charger_usb_set_property(struct power_supply *psy,
 			dev_err(info->dev, "failed to set terminate voltage\n");
 		break;
 
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
+		if (val->intval == true) {
+			ret = bq2560x_charger_start_charge(info);
+			if (ret)
+				dev_err(info->dev, "start charge failed\n");
+		} else if (val->intval == false) {
+			bq2560x_charger_stop_charge(info);
+		}
+		break;
+
 	default:
 		ret = -EINVAL;
 	}
@@ -650,6 +676,7 @@ static int bq2560x_charger_property_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
 	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
 	case POWER_SUPPLY_PROP_STATUS:
+	case POWER_SUPPLY_PROP_CHARGE_ENABLED:
 		ret = 1;
 		break;
 
@@ -678,6 +705,7 @@ static enum power_supply_property bq2560x_usb_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_USB_TYPE,
+	POWER_SUPPLY_PROP_CHARGE_ENABLED,
 };
 
 static const struct power_supply_desc bq2560x_charger_desc = {

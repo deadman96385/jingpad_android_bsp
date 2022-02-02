@@ -1177,4 +1177,9 @@ config SND_SOC_TPA6130A2
 	tristate "Texas Instruments TPA6130A2 headphone amplifier"
 	depends on I2C
 
+config SND_SMARTPA_AW881XX
+	tristate "SoC Audio for awinic aw881xxseries"
+	depends on I2C
+	help
+	  This option enables support for aw881xx series Smart PA.
 endmenu

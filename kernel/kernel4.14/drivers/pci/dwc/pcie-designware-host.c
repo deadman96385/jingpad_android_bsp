@@ -47,12 +47,6 @@ static int dw_pcie_wr_own_conf(struct pcie_port *pp, int where, int size,
 
 static void dwc_irq_ack(struct irq_data *d)
 {
-	struct msi_desc *msi = irq_data_get_msi_desc(d);
-	struct pcie_port *pp = msi_desc_to_pci_sysdata(msi);
-	int pos = d->hwirq % 32;
-	int i = d->hwirq / 32;
-
-	dw_pcie_wr_own_conf(pp, PCIE_MSI_INTR0_STATUS + i * 12, 4, BIT(pos));
 }
 
 static struct irq_chip dw_msi_irq_chip = {
@@ -67,21 +61,23 @@ static struct irq_chip dw_msi_irq_chip = {
 /* MSI int handler */
 irqreturn_t dw_handle_msi_irq(struct pcie_port *pp)
 {
-	u32 val;
-	int i, pos, irq;
+	int irq;
+	unsigned long val, i, pos;
 	irqreturn_t ret = IRQ_NONE;
 
 	for (i = 0; i < MAX_MSI_CTRLS; i++) {
 		dw_pcie_rd_own_conf(pp, PCIE_MSI_INTR0_STATUS + i * 12, 4,
-				    &val);
+				    (u32 *)&val);
 		if (!val)
 			continue;
 
 		ret = IRQ_HANDLED;
 		pos = 0;
-		while ((pos = find_next_bit((unsigned long *) &val, 32,
+		while ((pos = find_next_bit(&val, 32,
 					    pos)) != 32) {
 			irq = irq_find_mapping(pp->irq_domain, i * 32 + pos);
+			dw_pcie_wr_own_conf(pp, PCIE_MSI_INTR0_STATUS + i * 12,
+					    4, BIT(pos));
 			generic_handle_irq(irq);
 			pos++;
 		}
@@ -590,6 +586,12 @@ static struct pci_ops dw_pcie_ops = {
 static u8 dw_pcie_iatu_unroll_enabled(struct dw_pcie *pci)
 {
 	u32 val;
+
+	/*
+	 * PCIE_ATU_VIEWPORT is for old PCIE IP,  and it is invalid now,
+	 * to prevent potential unknown issue, we ignore ATU_VIEWPORT.
+	 */
+	return 1;
 
 	val = dw_pcie_readl_dbi(pci, PCIE_ATU_VIEWPORT);
 	if (val == 0xffffffff)

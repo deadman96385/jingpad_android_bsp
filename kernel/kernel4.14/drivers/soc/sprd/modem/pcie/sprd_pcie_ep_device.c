@@ -12,6 +12,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/debugfs.h>
 #include <linux/fs.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
@@ -26,6 +27,8 @@
 #include <uapi/linux/sched/types.h>
 #include <linux/soc/sprd/sprd_pcie_ep_device.h>
 
+#include "../include/sprd_pcie_resource.h"
+
 #define DRV_MODULE_NAME		"sprd-pcie-ep-device"
 
 enum dev_pci_barno {
@@ -39,9 +42,12 @@ enum dev_pci_barno {
 };
 
 #define MAX_SUPPORT_IRQ	32
-#define REQUEST_BASE_IRQ	16
-#define REQUEST_MAX_IRQ	(REQUEST_BASE_IRQ + PCIE_EP_MAX_IRQ)
 #define IPA_HW_IRQ_CNT 4
+#define IPA_HW_IRQ_BASE 16
+#define IPA_HW_IRQ_BASE_DEFECT 0
+
+#define REQUEST_BASE_IRQ (IPA_HW_IRQ_BASE + IPA_HW_IRQ_CNT)
+#define REQUEST_BASE_IRQ_DEFECT 16
 
 #ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
 /* the bar0 and the bar1 are used for ipa */
@@ -99,6 +105,10 @@ enum dev_pci_barno {
 
 /* bar4 + 0x10000 has map to ep base + 0x18000 ((0x3 << 15)) */
 #define PCIE_ATU_IB_REGION(region) (((region) << 9) | (0x1 << 8))
+#define PCIE_ATU_OB_REGION(region) ((region) << 9)
+
+#define PCIE_SAVE_REGION_NUM	(IATU_MAX_REGION * 2)
+#define PCIE_SAVE_REG_NUM	8
 
 struct sprd_ep_dev_notify {
 	void  (*notify)(int event, void *data);
@@ -112,39 +122,55 @@ struct sprd_pci_ep_dev {
 	spinlock_t	bar_lock;	/* bar spinlock */
 	spinlock_t	set_irq_lock;	/* set irq spinlock */
 	spinlock_t	set_bar_lock;	/* set bar spinlock */
-	unsigned long	bar_res;
 
+	u32	base_irq;
+	u32	ipa_base_irq;
+	u32	bak_irq_status;
 	u8	iatu_unroll_enabled;
 	u8	ep;
 	u8	irq_cnt;
-	u8	can_notify;
+	bool	need_backup;
 
 	struct resource	*bar[BAR_CNT];
 	void __iomem	*bar_vir[BAR_MAX];
 	void __iomem	*cpu_vir[BAR_MAX];
-#ifdef CONFIG_SPRD_SIPA
-	phys_addr_t		ipa_cpu_addr[BAR_MAX];
-#endif
-
+	dma_addr_t		src_addr[BAR_MAX];
+	dma_addr_t		target_addr[BAR_MAX];
+	size_t		map_size[BAR_MAX];
+	int	event;
 };
 
+struct sprd_pci_ep_dev_save {
+	bool		save_succ;
+	void __iomem	*bar_vir[BAR_MAX];
+	void __iomem	*cpu_vir[BAR_MAX];
+	dma_addr_t		src_addr[BAR_MAX];
+	dma_addr_t		target_addr[BAR_MAX];
+	size_t		map_size[BAR_MAX];
+	u32		doorbell_enable;
+	u32		doorbell_status;
+	void __iomem	*cfg_base;
+	u32	save_reg[PCIE_SAVE_REGION_NUM][PCIE_SAVE_REG_NUM];
+};
+
+static struct sprd_pci_ep_dev_save g_ep_save[PCIE_EP_NR];
 static struct sprd_pci_ep_dev *g_ep_dev[PCIE_EP_NR];
-static irq_handler_t ep_dev_handler[PCIE_EP_NR][PCIE_EP_MAX_IRQ];
-static void *ep_dev_handler_data[PCIE_EP_NR][PCIE_EP_MAX_IRQ];
+static irq_handler_t ep_dev_handler[PCIE_EP_NR][PCIE_MSI_MAX_IRQ];
+static void *ep_dev_handler_data[PCIE_EP_NR][PCIE_MSI_MAX_IRQ];
 static struct sprd_ep_dev_notify g_ep_dev_notify[PCIE_EP_NR];
 
 static int sprd_ep_dev_get_bar(int ep);
-static int sprd_ep_dev_put_bar(int ep, int bar);
 static int sprd_ep_dev_adjust_region(struct sprd_pci_ep_dev *ep_dev,
-				     int bar, dma_addr_t *cpu_addr_ptr,
+				     int bar, dma_addr_t *target_addr_ptr,
 				     size_t *size_ptr, dma_addr_t *offset_ptr);
 static int sprd_ep_dev_just_map_bar(struct sprd_pci_ep_dev *ep_dev, int bar,
-				    dma_addr_t cpu_addr, size_t size);
+				    dma_addr_t target_addr, size_t size);
 static int sprd_ep_dev_just_unmap_bar(struct sprd_pci_ep_dev *ep_dev, int bar);
 static void __iomem *sprd_ep_dev_map_bar(int ep, int bar,
-					 dma_addr_t cpu_addr,
+					 dma_addr_t target_addr,
 					 size_t size);
 static int sprd_ep_dev_unmap_bar(int ep, int bar);
+static void sprd_pci_ep_dev_backup(struct sprd_pci_ep_dev *ep_dev);
 
 int sprd_ep_dev_register_notify(int ep,
 				void (*notify)(int event, void *data),
@@ -181,28 +207,72 @@ EXPORT_SYMBOL_GPL(sprd_ep_dev_unregister_notify);
 int sprd_ep_dev_register_irq_handler(int ep, int irq,
 				     irq_handler_t handler, void *data)
 {
-	if (ep < PCIE_EP_NR && irq < PCIE_EP_MAX_IRQ) {
-		ep_dev_handler[ep][irq] = handler;
-		ep_dev_handler_data[ep][irq] = data;
-		return 0;
+	struct sprd_pci_ep_dev *ep_dev;
+
+	if (ep >= PCIE_EP_NR || irq >= PCIE_MSI_MAX_IRQ)
+		return -EINVAL;
+
+	ep_dev_handler[ep][irq] = handler;
+	ep_dev_handler_data[ep][irq] = data;
+	ep_dev = g_ep_dev[ep];
+
+	if (handler && ep_dev &&
+	    (BIT(irq) & ep_dev->bak_irq_status)) {
+		ep_dev->bak_irq_status &= ~BIT(irq);
+		handler(irq, data);
 	}
-	return -EINVAL;
+
+	return 0;
 }
 EXPORT_SYMBOL_GPL(sprd_ep_dev_register_irq_handler);
 
 int sprd_ep_dev_unregister_irq_handler(int ep, int irq)
 {
-	if (ep < PCIE_EP_NR && irq < PCIE_EP_MAX_IRQ) {
+	if (ep < PCIE_EP_NR && irq < PCIE_MSI_MAX_IRQ) {
 		ep_dev_handler[ep][irq] = NULL;
 		ep_dev_handler_data[ep][irq] = NULL;
 		return 0;
 	}
+
 	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(sprd_ep_dev_unregister_irq_handler);
 
+int sprd_ep_dev_register_irq_handler_ex(int ep,
+					int from_irq,
+					int to_irq,
+					irq_handler_t handler,
+					void *data)
+{
+	int i, ret;
+
+	for (i = from_irq; i < to_irq + 1; i++) {
+		ret = sprd_ep_dev_register_irq_handler(ep,
+							i, handler, data);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+int sprd_ep_dev_unregister_irq_handler_ex(int ep,
+					  int from_irq,
+					  int to_irq)
+{
+	int i, ret;
+
+	for (i = from_irq; i < to_irq + 1; i++) {
+		ret = sprd_ep_dev_unregister_irq_handler(ep, i);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 void __iomem *sprd_ep_map_memory(int ep,
-				 phys_addr_t cpu_addr,
+				 phys_addr_t target_addr,
 				 size_t size)
 {
 	int bar;
@@ -214,10 +284,9 @@ void __iomem *sprd_ep_map_memory(int ep,
 		return NULL;
 	}
 
-	bar_addr = sprd_ep_dev_map_bar(ep, bar, cpu_addr, size);
+	bar_addr = sprd_ep_dev_map_bar(ep, bar, target_addr, size);
 	if (!bar_addr) {
-		pr_err("%s: map bar err\n", __func__);
-		sprd_ep_dev_put_bar(ep, bar);
+		pr_err("%s: map bar = %d err!\n", __func__, bar);
 		return NULL;
 	}
 
@@ -238,12 +307,30 @@ void sprd_ep_unmap_memory(int ep, const void __iomem *bar_addr)
 	for (bar = 0; bar < BAR_MAX; bar++) {
 		if (bar_addr == ep_dev->cpu_vir[bar]) {
 			sprd_ep_dev_unmap_bar(ep, bar);
-			sprd_ep_dev_put_bar(ep, bar);
 			break;
 		}
 	}
 }
 EXPORT_SYMBOL_GPL(sprd_ep_unmap_memory);
+
+phys_addr_t sprd_ep_virtophy(int ep, const void __iomem *vir)
+{
+	int bar;
+	struct sprd_pci_ep_dev *ep_dev;
+
+	if (ep >= PCIE_EP_NR || !g_ep_dev[ep])
+		return 0;
+
+	ep_dev = g_ep_dev[ep];
+
+	for (bar = 0; bar < BAR_MAX; bar++) {
+		if (vir == ep_dev->cpu_vir[bar])
+			return ep_dev->src_addr[bar];
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sprd_ep_virtophy);
 
 #ifdef CONFIG_SPRD_SIPA
 phys_addr_t sprd_ep_ipa_map(int type, phys_addr_t target_addr, size_t size)
@@ -273,7 +360,7 @@ phys_addr_t sprd_ep_ipa_map(int type, phys_addr_t target_addr, size_t size)
 #endif
 	res = &pdev->resource[bar];
 
-	dev_dbg(dev, "ep: ipa map type=%d, addr=0x%lx, size=0x%lx\n",
+	dev_info(dev, "ep: ipa map type=%d, addr=0x%lx, size=0x%lx\n",
 		type,
 		(unsigned long)target_addr,
 		(unsigned long)size);
@@ -288,7 +375,9 @@ phys_addr_t sprd_ep_ipa_map(int type, phys_addr_t target_addr, size_t size)
 		return 0;
 
 	/* save for unmap */
-	ep_dev->ipa_cpu_addr[bar] = res->start + offset;
+	ep_dev->src_addr[bar] = res->start + offset;
+	ep_dev->target_addr[bar] = target_addr;
+	ep_dev->map_size[bar] = size;
 
 	/*  return the cpu phy address */
 	return res->start + offset;
@@ -297,38 +386,106 @@ phys_addr_t sprd_ep_ipa_map(int type, phys_addr_t target_addr, size_t size)
 int sprd_ep_ipa_unmap(int type, const phys_addr_t cpu_addr)
 {
 	int bar, ep = PCIE_EP_MODEM;
+	bool find_bar = false;
 	struct sprd_pci_ep_dev *ep_dev;
 	struct pci_dev *pdev;
-	struct resource *res;
 
 	ep_dev = g_ep_dev[ep];
 	if (!ep_dev)
 		return -EINVAL;
 
 	pdev = ep_dev->pdev;
-	res = &pdev->resource[bar];
+
+	dev_info(&pdev->dev, "ep: ipa unmap cpu_addr=0x%lx\n",
+		(unsigned long)cpu_addr);
 
 #ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
 	bar = type == PCIE_IPA_TYPE_MEM ? IPA_MEM_BAR : IPA_REG_BAR;
-	if (ep_dev->ipa_cpu_addr[bar] == cpu_addr) {
-		ep_dev->ipa_cpu_addr[bar] = 0;
-		return sprd_ep_dev_just_unmap_bar(ep_dev, bar);
-	}
+	if (ep_dev->src_addr[bar] == cpu_addr)
+		find_bar = true;
 #else
 	for (bar = 0; bar < BAR_MAX; bar++) {
-		if (cpu_addr == ep_dev->ipa_cpu_addr[bar]) {
-			sprd_ep_dev_put_bar(ep, bar);
-			ep_dev->ipa_cpu_addr[bar] = 0;
-			return sprd_ep_dev_just_unmap_bar(ep_dev, bar);
+		if (cpu_addr == ep_dev->src_addr[bar]) {
+			find_bar = true;
+			break;
 		}
 	}
 #endif
 
-	return -EINVAL;
+	if (!find_bar) {
+		dev_err(&pdev->dev, "ep: ipa unmap can't find bar!");
+		return -EINVAL;
+	}
+
+	ep_dev->src_addr[bar] = 0;
+	ep_dev->target_addr[bar] = 0;
+	ep_dev->map_size[bar] = 0;
+	return sprd_ep_dev_just_unmap_bar(ep_dev, bar);
 }
 #endif
 
 int sprd_ep_dev_raise_irq(int ep, int irq)
+{
+	struct pci_dev *pdev;
+	struct device *dev;
+	struct sprd_pci_ep_dev *ep_dev;
+	void __iomem	*base;
+	u32 value;
+
+	if (ep >= PCIE_EP_NR || !g_ep_dev[ep]) {
+		pr_err("pcie res: raise irq err, nodev irq=%d", irq);
+		return -ENODEV;
+	}
+
+	ep_dev = g_ep_dev[ep];
+	pdev = ep_dev->pdev;
+	dev = &pdev->dev;
+
+	dev_dbg(dev, "ep: raise, ep=%d, irq=%d\n", ep, irq);
+
+	if (irq >= DOOR_BELL_IRQ_CNT) {
+		dev_err(&pdev->dev, "raise err, irq=%d\n", irq);
+		return -EINVAL;
+	}
+
+	spin_lock(&ep_dev->set_irq_lock);
+	base = ep_dev->cfg_base + DOOR_BELL_BASE;
+	value = readl_relaxed(base + DOOR_BELL_STATUS);
+	writel_relaxed(value | DOOR_BELL_IRQ_VALUE(irq),
+		       base + DOOR_BELL_STATUS);
+	spin_unlock(&ep_dev->set_irq_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sprd_ep_dev_raise_irq);
+
+int sprd_ep_dev_raise_irq_ex(int ep, u32 value)
+{
+	struct pci_dev *pdev;
+	struct device *dev;
+	struct sprd_pci_ep_dev *ep_dev;
+	void __iomem	*base;
+
+	if (ep >= PCIE_EP_NR || !g_ep_dev[ep]) {
+		pr_err("pcie res: raise irq err, nodev value=%d", value);
+		return -ENODEV;
+	}
+
+	ep_dev = g_ep_dev[ep];
+	pdev = ep_dev->pdev;
+	dev = &pdev->dev;
+
+	dev_dbg(dev, "ep: raise, ep=%d, value=0x%x\n", ep, value);
+
+	spin_lock(&ep_dev->set_irq_lock);
+	base = ep_dev->cfg_base + DOOR_BELL_BASE;
+	writel_relaxed(value, base + DOOR_BELL_STATUS);
+	spin_unlock(&ep_dev->set_irq_lock);
+
+	return 0;
+}
+
+int sprd_ep_dev_clear_doolbell_irq(int ep, int irq)
 {
 	struct pci_dev *pdev;
 	struct device *dev;
@@ -343,7 +500,7 @@ int sprd_ep_dev_raise_irq(int ep, int irq)
 	pdev = ep_dev->pdev;
 	dev = &pdev->dev;
 
-	dev_dbg(dev, "ep: raise, ep=%d, irq0=%d\n", ep, irq);
+	dev_dbg(dev, "ep: clear doorbell, ep=%d, irq=%d\n", ep, irq);
 
 	if (irq >= DOOR_BELL_IRQ_CNT)
 		return -EINVAL;
@@ -351,13 +508,13 @@ int sprd_ep_dev_raise_irq(int ep, int irq)
 	spin_lock(&ep_dev->set_irq_lock);
 	base = ep_dev->cfg_base + DOOR_BELL_BASE;
 	value = readl_relaxed(base + DOOR_BELL_STATUS);
-	writel_relaxed(value | DOOR_BELL_IRQ_VALUE(irq),
-		       base + DOOR_BELL_STATUS);
+	if (value & DOOR_BELL_IRQ_VALUE(irq))
+		writel_relaxed(value & (~DOOR_BELL_IRQ_VALUE(irq)),
+			       base + DOOR_BELL_STATUS);
 	spin_unlock(&ep_dev->set_irq_lock);
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(sprd_ep_dev_raise_irq);
 
 static inline u32 sprd_pci_ep_iatu_readl(struct sprd_pci_ep_dev *ep_dev,
 					 u32 offset)
@@ -383,8 +540,7 @@ static int sprd_ep_dev_get_bar(int ep)
 	ep_dev = g_ep_dev[ep];
 	spin_lock(&ep_dev->bar_lock);
 	for (bar = BAR_MIN; bar < BAR_MAX; bar++) {
-		if (ep_dev->bar[bar] && !test_bit(bar, &ep_dev->bar_res)) {
-			set_bit(bar, &ep_dev->bar_res);
+		if (ep_dev->bar[bar] && !ep_dev->src_addr[bar]) {
 			ret = bar;
 			break;
 		}
@@ -394,26 +550,9 @@ static int sprd_ep_dev_get_bar(int ep)
 	return ret;
 }
 
-static int sprd_ep_dev_put_bar(int ep, int bar)
-{
-	int ret = -ENODEV;
-	struct sprd_pci_ep_dev *ep_dev;
-
-	if (ep >= PCIE_EP_NR || !g_ep_dev[ep])
-		return -ENODEV;
-
-	ep_dev = g_ep_dev[ep];
-	spin_lock(&ep_dev->bar_lock);
-	if (test_and_clear_bit(bar, &ep_dev->bar_res))
-		ret = bar;
-	spin_unlock(&ep_dev->bar_lock);
-
-	return ret;
-}
-
 static int sprd_ep_dev_unr_set_bar(struct sprd_pci_ep_dev *ep_dev,
 				   int bar,
-				   dma_addr_t cpu_addr, size_t size)
+				   dma_addr_t target_addr, size_t size)
 {
 	u32 retries, val;
 	struct pci_dev *pdev = ep_dev->pdev;
@@ -424,11 +563,11 @@ static int sprd_ep_dev_unr_set_bar(struct sprd_pci_ep_dev *ep_dev,
 	sprd_pci_ep_iatu_writel(ep_dev,
 				PCIE_ATU_IB_REGION(bar) +
 				PCIE_ATU_UNR_LOWER_TARGET,
-				lower_32_bits(cpu_addr));
+				lower_32_bits(target_addr));
 	sprd_pci_ep_iatu_writel(ep_dev,
 				PCIE_ATU_IB_REGION(bar) +
 				PCIE_ATU_UNR_UPPER_TARGET,
-				upper_32_bits(cpu_addr));
+				upper_32_bits(target_addr));
 
 	sprd_pci_ep_iatu_writel(ep_dev,
 				PCIE_ATU_IB_REGION(bar) +
@@ -482,48 +621,52 @@ static int sprd_ep_dev_unr_clear_bar(struct sprd_pci_ep_dev *ep_dev, int bar)
 }
 
 static int sprd_ep_dev_adjust_region(struct sprd_pci_ep_dev *ep_dev, int bar,
-					     dma_addr_t *cpu_addr_ptr,
+					     dma_addr_t *target_addr_ptr,
 					     size_t *size_ptr,
 					     dma_addr_t *offset_ptr)
 {
-	dma_addr_t cpu_addr, base, offset;
+	dma_addr_t target_addr, base, offset;
 	resource_size_t bar_size, size;
 	struct pci_dev *pdev = ep_dev->pdev;
 	struct resource *res = &pdev->resource[bar];
 
 	size = (resource_size_t)*size_ptr;
-	cpu_addr = *cpu_addr_ptr;
+	target_addr = *target_addr_ptr;
 	bar_size = resource_size(res);
 
 	/* size must align with page */
 	size = PAGE_ALIGN(size);
 
 	/* base must be divisible by bar size for bar match mode */
-	base = cpu_addr / bar_size * bar_size;
-	offset = cpu_addr - base;
+	base = target_addr / bar_size * bar_size;
+	offset = target_addr - base;
 	size += PAGE_ALIGN(offset);
 
 	/* size must < bar size  */
 	if (size > bar_size) {
 		dev_err(&pdev->dev,
-			"bar[%d]:size=0x%llx > 0x%llx\n",
-			bar, size, bar_size);
+			"bar[%d]:size=0x%lx > 0x%lx\n",
+			bar,
+			(unsigned long)size,
+			(unsigned long)bar_size);
 		return -EINVAL;
 	}
 
-	dev_dbg(&pdev->dev,
-		"bar[%d]: base=0x%llx,size=0x%llx,offset=0x%llx\n",
-		bar, base, size, offset);
+	dev_info(&pdev->dev,
+		"bar[%d]: base=0x%lx,size=0x%lx,offset=0x%lx\n",
+		bar, (unsigned long)base,
+		(unsigned long)size,
+		(unsigned long)offset);
 
 	*size_ptr = (size_t)size;
 	*offset_ptr = offset;
-	*cpu_addr_ptr = base;
+	*target_addr_ptr = base;
 
 	return 0;
 }
 
 static int sprd_ep_dev_just_map_bar(struct sprd_pci_ep_dev *ep_dev, int bar,
-			 dma_addr_t cpu_addr, size_t size)
+			 dma_addr_t target_addr, size_t size)
 {
 	u32 retries, val;
 	struct pci_dev *pdev;
@@ -534,11 +677,11 @@ static int sprd_ep_dev_just_map_bar(struct sprd_pci_ep_dev *ep_dev, int bar,
 
 	dev_dbg(dev, "ep: map bar=%d, addr=0x%lx, size=0x%lx\n",
 		bar,
-		(unsigned long)cpu_addr,
+		(unsigned long)target_addr,
 		(unsigned long)size);
 
 	if (ep_dev->iatu_unroll_enabled)
-		return sprd_ep_dev_unr_set_bar(ep_dev, bar, cpu_addr, size);
+		return sprd_ep_dev_unr_set_bar(ep_dev, bar, target_addr, size);
 
 	spin_lock(&ep_dev->set_bar_lock);
 
@@ -547,9 +690,9 @@ static int sprd_ep_dev_just_map_bar(struct sprd_pci_ep_dev *ep_dev, int bar,
 				PCIE_ATU_VIEWPORT,
 				PCIE_ATU_REGION_INBOUND | bar);
 	sprd_pci_ep_iatu_writel(ep_dev, PCIE_ATU_LOWER_TARGET,
-				lower_32_bits(cpu_addr));
+				lower_32_bits(target_addr));
 	sprd_pci_ep_iatu_writel(ep_dev, PCIE_ATU_UPPER_TARGET,
-				upper_32_bits(cpu_addr));
+				upper_32_bits(target_addr));
 	sprd_pci_ep_iatu_writel(ep_dev,
 				PCIE_ATU_CR1,
 				PCIE_ATU_TYPE_MEM);
@@ -604,7 +747,7 @@ static int sprd_ep_dev_just_unmap_bar(struct sprd_pci_ep_dev *ep_dev, int bar)
 }
 
 static void __iomem *sprd_ep_dev_map_bar(int ep, int bar,
-			 dma_addr_t cpu_addr, size_t size)
+			 dma_addr_t target_addr, size_t size)
 {
 	resource_size_t offset;
 	struct pci_dev *pdev;
@@ -621,11 +764,14 @@ static void __iomem *sprd_ep_dev_map_bar(int ep, int bar,
 	dev = &pdev->dev;
 
 	/* bar is be used */
-	if (ep_dev->bar_vir[bar])
+	if (ep_dev->bar_vir[bar]) {
+		dev_err(dev, "ep: bar[%d] is used!", bar);
 		return NULL;
+	}
 
 	/* 1st, adjust the map region */
-	if (sprd_ep_dev_adjust_region(ep_dev, bar, &cpu_addr, &size, &offset))
+	if (sprd_ep_dev_adjust_region(ep_dev, bar, &target_addr,
+				      &size, &offset))
 		return NULL;
 
 	/* than, ioremap, if map failed, no need to set bar */
@@ -634,19 +780,22 @@ static void __iomem *sprd_ep_dev_map_bar(int ep, int bar,
 	if (!bar_vir) {
 		dev_err(dev, "ep: map error, bar=%d, addr=0x%lx, size=0x%lx\n",
 			bar,
-			(unsigned long)cpu_addr,
+			(unsigned long)target_addr,
 			(unsigned long)size);
 		return NULL;
 	}
 
-	if (sprd_ep_dev_just_map_bar(ep_dev, bar, cpu_addr, size)) {
+	if (sprd_ep_dev_just_map_bar(ep_dev, bar, target_addr, size)) {
 		dev_err(dev, "ep: map bar =%d\n", bar);
-		iounmap(ep_dev->bar_vir[bar]);
+		iounmap(bar_vir);
 		return NULL;
 	}
 
 	ep_dev->bar_vir[bar] = (void __iomem *)bar_vir;
 	ep_dev->cpu_vir[bar] = (void __iomem *)(bar_vir + offset);
+	ep_dev->src_addr[bar] = res->start + offset;
+	ep_dev->target_addr[bar] = target_addr;
+	ep_dev->map_size[bar] = size;
 
 	return ep_dev->cpu_vir[bar];
 }
@@ -674,22 +823,12 @@ static int sprd_ep_dev_unmap_bar(int ep, int bar)
 	iounmap(ep_dev->bar_vir[bar]);
 	ep_dev->bar_vir[bar] = NULL;
 	ep_dev->cpu_vir[bar] = NULL;
+	ep_dev->src_addr[bar] = 0;
+	ep_dev->target_addr[bar] = 0;
+	ep_dev->map_size[bar] = 0;
 
 	return 0;
 }
-
-#ifdef CONFIG_SPRD_SIPA
-void sprd_ep_dev_unmap_ipa_bar(struct sprd_pci_ep_dev *ep_dev)
-{
-	int bar;
-
-	for (bar = 0; bar < BAR_MAX; bar++)
-		if (ep_dev->ipa_cpu_addr[bar]) {
-			ep_dev->ipa_cpu_addr[bar] = 0;
-			sprd_ep_dev_just_unmap_bar(ep_dev, bar);
-		}
-}
-#endif
 
 static irqreturn_t sprd_pci_ep_dev_irqhandler(int irq, void *dev_ptr)
 {
@@ -700,17 +839,115 @@ static irqreturn_t sprd_pci_ep_dev_irqhandler(int irq, void *dev_ptr)
 
 	dev_dbg(dev, "ep: irq handler. irq = %d\n",  irq);
 
-	irq -= (pdev->irq + REQUEST_BASE_IRQ);
-	if (irq >= PCIE_EP_MAX_IRQ) {
+	irq -= (pdev->irq + ep_dev->base_irq);
+	if (irq >= PCIE_MSI_MAX_IRQ || irq < 0) {
 		dev_err(dev, "ep: error, irq = %d", irq);
 		return IRQ_HANDLED;
 	}
 
 	handler = ep_dev_handler[ep_dev->ep][irq];
-	if (handler && ep_dev->can_notify)
+	if (handler)
 		handler(irq, ep_dev_handler_data[ep_dev->ep][irq]);
+	else
+		ep_dev->bak_irq_status |= BIT(irq);
 
 	return IRQ_HANDLED;
+}
+
+static void sprd_pci_ep_save_reg(struct sprd_pci_ep_dev *ep_dev)
+{
+	int i, j;
+	u32 (*save_reg)[PCIE_SAVE_REG_NUM];
+	static struct sprd_pci_ep_dev_save *ep_save;
+
+	ep_save = &g_ep_save[ep_dev->ep];
+	save_reg = ep_save->save_reg;
+
+	for (i = 0; i < PCIE_SAVE_REGION_NUM; i += 2) {
+		for (j = 0; j < PCIE_SAVE_REG_NUM; j++) {
+			save_reg[i][j] =
+				sprd_pci_ep_iatu_readl(ep_dev,
+						       PCIE_ATU_OB_REGION(i) +
+						       j * sizeof(u32));
+			save_reg[i + 1][j] =
+				sprd_pci_ep_iatu_readl(ep_dev,
+						       PCIE_ATU_IB_REGION(i) +
+						       j * sizeof(u32));
+		}
+	}
+
+	ep_save->doorbell_enable = sprd_pci_ep_iatu_readl(ep_dev,
+							  DOOR_BELL_BASE +
+							  DOOR_BELL_ENABLE);
+	ep_save->doorbell_status = sprd_pci_ep_iatu_readl(ep_dev,
+							  DOOR_BELL_BASE +
+							  DOOR_BELL_STATUS);
+	ep_save->cfg_base = ep_dev->cfg_base;
+
+	ep_save->save_succ = true;
+}
+
+static void sprd_pci_ep_dev_backup(struct sprd_pci_ep_dev *ep_dev)
+{
+	struct pci_dev *pdev = ep_dev->pdev;
+	struct device *dev = &pdev->dev;
+	struct sprd_pci_ep_dev_save *ep_save;
+	int i;
+
+	ep_save = &g_ep_save[ep_dev->ep];
+
+	/* save some member */
+	for (i = 0; i < BAR_MAX; i++) {
+		if (!ep_dev->src_addr[i])
+			continue;
+
+		dev_info(dev, "ep: backup bar=%d, addr=0x%lx, size=0x%lx\n",
+			 i,
+			 (unsigned long)ep_save->target_addr[i],
+			 (unsigned long)ep_save->map_size[i]);
+
+		ep_save->bar_vir[i] =  ep_dev->bar_vir[i];
+		ep_save->cpu_vir[i] =  ep_dev->cpu_vir[i];
+		ep_save->src_addr[i] =  ep_dev->src_addr[i];
+		ep_save->target_addr[i] =  ep_dev->target_addr[i];
+		ep_save->map_size[i] =  ep_dev->map_size[i];
+	}
+
+	/* save ep reg */
+	sprd_pci_ep_save_reg(ep_dev);
+}
+
+static void sprd_pci_ep_dev_restore(struct sprd_pci_ep_dev *ep_dev)
+{
+	struct pci_dev *pdev = ep_dev->pdev;
+	struct device *dev = &pdev->dev;
+	struct sprd_pci_ep_dev_save *ep_save;
+	int i;
+
+	ep_save = &g_ep_save[ep_dev->ep];
+
+	/* save some member */
+	for (i = 0; i < BAR_MAX; i++) {
+		if (!ep_save->src_addr[i])
+			continue;
+
+		ep_dev->bar_vir[i] =  ep_save->bar_vir[i];
+		ep_dev->cpu_vir[i] =  ep_save->cpu_vir[i];
+		ep_dev->src_addr[i] = ep_save->src_addr[i];
+		ep_dev->target_addr[i] =  ep_save->target_addr[i];
+		ep_dev->map_size[i] = ep_save->map_size[i];
+
+		dev_info(dev, "ep: restore bar=%d, addr=0x%lx, size=0x%lx\n",
+			 i,
+			 (unsigned long)ep_dev->target_addr[i],
+			 (unsigned long)ep_dev->map_size[i]);
+
+		if (sprd_ep_dev_just_map_bar(ep_dev,
+					     i,
+					     ep_dev->target_addr[i],
+					     ep_dev->map_size[i]))
+			dev_err(dev, "ep: restore map err i = %d.\n", i);
+	}
 }
 
 static int sprd_pci_ep_dev_probe(struct pci_dev *pdev,
@@ -723,6 +960,8 @@ static int sprd_pci_ep_dev_probe(struct pci_dev *pdev,
 	struct sprd_pci_ep_dev *ep_dev;
 	struct resource *res;
 	struct sprd_ep_dev_notify *notify;
+
+	dev_info(dev, "ep: probe\n");
 
 	if (pci_is_bridge(pdev))
 		return -ENODEV;
@@ -764,7 +1003,7 @@ static int sprd_pci_ep_dev_probe(struct pci_dev *pdev,
 	irq_cnt = pci_enable_msi_range(pdev, 1, MAX_SUPPORT_IRQ);
 #endif
 
-	if (irq_cnt < REQUEST_MAX_IRQ) {
+	if (irq_cnt < MAX_SUPPORT_IRQ) {
 		err = irq_cnt < 0 ? irq_cnt : -EINVAL;
 		dev_err(dev, "ep: failed to get MSI interrupts, err=%d\n", err);
 		goto err_disable_msi;
@@ -775,29 +1014,17 @@ static int sprd_pci_ep_dev_probe(struct pci_dev *pdev,
 		 pdev->irq,
 		 ep_dev->irq_cnt);
 
-	for (i = REQUEST_BASE_IRQ; i < REQUEST_MAX_IRQ; i++) {
-		err = devm_request_irq(dev, pdev->irq + i,
-				       sprd_pci_ep_dev_irqhandler,
-				       IRQF_SHARED, DRV_MODULE_NAME, ep_dev);
-		if (err)
-			dev_warn(dev,
-				"ep: failed to request IRQ %d for MSI %d\n",
-				pdev->irq + i, i + 1);
+	if (sprd_pcie_is_defective_chip()) {
+		ep_dev->base_irq = REQUEST_BASE_IRQ_DEFECT;
+		ep_dev->ipa_base_irq = IPA_HW_IRQ_BASE_DEFECT;
+	} else {
+		ep_dev->base_irq = REQUEST_BASE_IRQ;
+		ep_dev->ipa_base_irq = IPA_HW_IRQ_BASE;
 	}
-
-#ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
-	for (i = 0; i < IPA_HW_IRQ_CNT; i++) {
-		err = devm_request_irq(dev, pdev->irq + i,
-				       sprd_pci_ep_dev_irqhandler,
-				       IRQF_SHARED, DRV_MODULE_NAME, ep_dev);
-		if (!err)
-			sprd_pcie_teardown_msi_irq(pdev->irq + i);
-	}
-#endif
 
 	for (bar = BAR_0; bar <= BAR_5; bar++) {
 		res = &pdev->resource[bar];
-		dev_info(dev, "ep: BAR[%d] %pR\n", bar, res);
+		dev_dbg(dev, "ep: BAR[%d] %pR\n", bar, res);
 		/* only save mem bar */
 		if (resource_type(res) == IORESOURCE_MEM)
 			ep_dev->bar[bar] = res;
@@ -805,13 +1032,13 @@ static int sprd_pci_ep_dev_probe(struct pci_dev *pdev,
 
 	ep_dev->cfg_base = pci_ioremap_bar(pdev, EP_CFG_BAR);
 	if (!ep_dev->cfg_base) {
-		dev_err(dev, "ep: failed to read cfg bar\n");
+		dev_err(dev, "ep: failed to map cfg bar.\n");
 		err = -ENOMEM;
-		goto err_free_irq;
+		goto err_disable_msi;
 	}
 
-	/* enable all 32 bit door bell */
-	writel_relaxed(0xffffffff,
+	/* clear all 32 bit door bell */
+	writel_relaxed(0x0,
 		       ep_dev->cfg_base + DOOR_BELL_BASE + DOOR_BELL_STATUS);
 
 	pci_set_drvdata(pdev, ep_dev);
@@ -823,36 +1050,54 @@ static int sprd_pci_ep_dev_probe(struct pci_dev *pdev,
 	dev_info(dev, "ep: atu_view_port val = 0x%x", val);
 	ep_dev->iatu_unroll_enabled = val == 0xffffffff;
 
-	/* default , set can_notify to 1 */
-	ep_dev->can_notify = 1;
-
+	/* default , PCIE_EP_PROBE */
+	ep_dev->event = PCIE_EP_PROBE;
 	g_ep_dev[ep_dev->ep] = ep_dev;
 
+	if (!ep_dev->bar[BAR_1] || !ep_dev->bar[BAR_3]) {
+		/* only 2 bar, set PCIE_EP_PROBE_BEFORE_SPLIT_BAR */
+		ep_dev->event = PCIE_EP_PROBE_BEFORE_SPLIT_BAR;
+		dev_info(dev, "ep:bar not ready, wait the next probe!");
+	}
+
+	/* restore all the config */
+	if (ep_dev->event == PCIE_EP_PROBE) {
+		ep_dev->need_backup = true;
+		sprd_pci_ep_dev_restore(ep_dev);
+	}
+
+	/* probe notify */
+	notify = &g_ep_dev_notify[ep_dev->ep];
+	if (notify->notify)
+		notify->notify(ep_dev->event, notify->data);
+
+	for (i = ep_dev->base_irq;
+		 i < ep_dev->base_irq + PCIE_MSI_MAX_IRQ;
+		 i++) {
+		err = devm_request_irq(dev, pdev->irq + i,
+					   sprd_pci_ep_dev_irqhandler,
+					   IRQF_SHARED, DRV_MODULE_NAME,
+					   ep_dev);
+		if (err)
+			dev_warn(dev,
+				"ep: failed to request IRQ %d for MSI %d\n",
+				pdev->irq + i, i + 1);
+	}
+
 #ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
-	/*
-	 * IPA_REG_BAR is null, don't notify the sipc mudule,
-	 * wait the 2nd probe
-	 */
-	if (!ep_dev->bar[IPA_REG_BAR]) {
-		ep_dev->can_notify = 0;
-		dev_info(dev, "ep: wait the next probe!");
+	for (i = ep_dev->ipa_base_irq;
+		 i < ep_dev->ipa_base_irq + IPA_HW_IRQ_CNT;
+		 i++) {
+		err = devm_request_irq(dev, pdev->irq + i,
+					   sprd_pci_ep_dev_irqhandler,
+					   IRQF_SHARED, DRV_MODULE_NAME,
+					   ep_dev);
+		if (!err)
+			sprd_pcie_teardown_msi_irq(pdev->irq + i);
 	}
 #endif
 
-	notify = &g_ep_dev_notify[ep_dev->ep];
-	if (notify->notify && ep_dev->can_notify)
-		notify->notify(PCIE_EP_PROBE, notify->data);
-
 	return 0;
-
-err_free_irq:
-	for (i = REQUEST_BASE_IRQ; i < REQUEST_MAX_IRQ; i++)
-		devm_free_irq(&pdev->dev, pdev->irq + i, ep_dev);
-
-#ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
-	for (i = 0; i < IPA_HW_IRQ_CNT; i++)
-		devm_free_irq(&pdev->dev, pdev->irq + i, ep_dev);
-#endif
 
 err_disable_msi:
 	pci_disable_msi(pdev);
@@ -867,38 +1112,39 @@ err_disable_pdev:
 static void sprd_pci_ep_dev_remove(struct pci_dev *pdev)
 {
 	u32 i;
-	enum dev_pci_barno bar;
 	struct sprd_ep_dev_notify *notify;
 	struct sprd_pci_ep_dev *ep_dev = pci_get_drvdata(pdev);
 
-	for (bar = 0; bar < BAR_MAX; bar++)
-		sprd_ep_dev_unmap_bar(ep_dev->ep, bar);
+	/*  first set it to null to stop some api use the free member. */
+	g_ep_dev[ep_dev->ep] = NULL;
 
-#ifdef CONFIG_SPRD_SIPA
-	sprd_ep_dev_unmap_ipa_bar(ep_dev);
-#endif
+	dev_info(&pdev->dev, "ep: remove\n");
+
+	/* first notify PCIE_EP_REMOVE */
+	notify = &g_ep_dev_notify[ep_dev->ep];
+	if (notify->notify)
+		notify->notify(PCIE_EP_REMOVE, notify->data);
+
+	/* back up some config before remove */
+	if (ep_dev->need_backup)
+		sprd_pci_ep_dev_backup(ep_dev);
 
 	if (ep_dev->cfg_base)
-		pci_iounmap(pdev, ep_dev->cfg_base);
+		iounmap(ep_dev->cfg_base);
 
-	for (i = REQUEST_BASE_IRQ; i < REQUEST_MAX_IRQ; i++)
+	for (i = ep_dev->base_irq; i < ep_dev->base_irq + PCIE_MSI_MAX_IRQ; i++)
 		devm_free_irq(&pdev->dev, pdev->irq + i, ep_dev);
 
 #ifdef CONFIG_SPRD_IPA_PCIE_WORKROUND
-	for (i = 0; i < IPA_HW_IRQ_CNT; i++)
+	for (i = ep_dev->ipa_base_irq;
+	     i < ep_dev->ipa_base_irq + IPA_HW_IRQ_CNT;
+	     i++)
 		devm_free_irq(&pdev->dev, pdev->irq + i, ep_dev);
 #endif
 
 	pci_disable_msi(pdev);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
-
-	notify = &g_ep_dev_notify[ep_dev->ep];
-	if (notify->notify && ep_dev->can_notify)
-		notify->notify(PCIE_EP_REMOVE, notify->data);
-
-	g_ep_dev[ep_dev->ep] = NULL;
-	ep_dev->bar_res = 0;
 }
 
 static const struct pci_device_id sprd_pci_ep_dev_tbl[] = {
@@ -912,6 +1158,8 @@ static int sprd_pci_ep_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	int rc;
+
+	dev_info(dev, "suspend\n");
 
 	/* Exec pci PCI_D3cold one time */
 	if (pdev->current_state != PCI_D0) {
@@ -947,6 +1195,8 @@ static int sprd_pci_ep_resume(struct device *dev)
 	struct pci_dev *pdev = to_pci_dev(dev);
 	int rc;
 
+	dev_info(dev, "resume\n");
+
 	/* Set the power state of a PCI device. */
 	rc = pci_set_power_state(pdev, PCI_D0);
 	if (rc) {
@@ -977,6 +1227,181 @@ static struct pci_driver sprd_pci_ep_dev_driver = {
 	}
 };
 module_pci_driver(sprd_pci_ep_dev_driver);
+
+#if defined(CONFIG_DEBUG_FS)
+static void sprd_pci_ep_dev_save_show(struct seq_file *m,
+				      struct sprd_pci_ep_dev_save *ep_save,
+				      int ep)
+{
+	u32 i;
+
+	seq_printf(m, "ep-save-%d configs:\n", ep);
+
+	for (i = 0; i < BAR_MAX; i++) {
+		seq_printf(m, "src_addr[%d] = 0x%lx\n",
+			   i,
+			   (unsigned long)ep_save->src_addr[i]);
+		seq_printf(m, "target_addr[%d] = 0x%lx\n",
+			   i,
+			   (unsigned long)ep_save->target_addr[i]);
+		seq_printf(m, "map_size[%d] = 0x%lx\n",
+			   i,
+			   ep_save->map_size[i]);
+	}
+}
+
+static void sprd_pci_ep_dev_config_show(struct seq_file *m,
+					struct sprd_pci_ep_dev *ep_dev)
+{
+	u32 i;
+	void __iomem *base;
+
+	seq_printf(m, "ep-%d configs:\n", ep_dev->ep);
+
+	/* doorbell regs */
+	seq_puts(m, "door bell regs:\n");
+	base = ep_dev->cfg_base + DOOR_BELL_BASE;
+
+	seq_printf(m, "irq_enable = 0x%08x\n irq_status = 0x%08x\n",
+		   readl_relaxed(base + DOOR_BELL_ENABLE),
+		   readl_relaxed(base + DOOR_BELL_STATUS));
+
+	/* iatu reg regs */
+	seq_puts(m, "iatu regs reg:\n");
+	for (i = 0; i < IATU_MAX_REGION * 2; i++) {
+		base = ep_dev->cfg_base + IATU_REG_BASE + i * 0x100;
+		seq_printf(m, "IATU[%d]:\n", i);
+		seq_printf(m, "0x%p: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			   base,
+			   readl_relaxed(base + 0x0),
+			   readl_relaxed(base + 0x4),
+			   readl_relaxed(base + 0x8),
+			   readl_relaxed(base + 0xc));
+		base += 0x10;
+		seq_printf(m, "0x%p: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			   base,
+			   readl_relaxed(base + 0x0),
+			   readl_relaxed(base + 0x4),
+			   readl_relaxed(base + 0x8),
+			   readl_relaxed(base + 0x10));
+	}
+}
+
+static void sprd_pci_ep_dev_backup_show(struct seq_file *m,
+					struct sprd_pci_ep_dev_save *ep_save,
+					int ep)
+{
+	int i;
+	u32 (*save_reg)[PCIE_SAVE_REG_NUM];
+	void __iomem *base;
+
+	save_reg = ep_save->save_reg;
+
+	seq_printf(m, "ep-%d backup configs:\n", ep);
+
+	/* doorbell regs */
+	seq_puts(m, "door bell regs:\n");
+	seq_printf(m, "irq_enable = 0x%08x\n irq_status = 0x%08x\n",
+		   ep_save->doorbell_enable,
+		   ep_save->doorbell_status);
+
+	/* iatu reg regs */
+	seq_puts(m, "iatu regs reg:\n");
+	for (i = 0; i < PCIE_SAVE_REGION_NUM; i++) {
+		seq_printf(m, "IATU[%d]:\n", i);
+		base = ep_save->cfg_base + IATU_REG_BASE + i * 0x100;
+
+		seq_printf(m, "0x%p: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			   base,
+			   save_reg[i][0],
+			   save_reg[i][1],
+			   save_reg[i][2],
+			   save_reg[i][3]);
+		base += 0x10;
+		seq_printf(m, "0x%p: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			   base,
+			   save_reg[i][4],
+			   save_reg[i][5],
+			   save_reg[i][6],
+			   save_reg[i][7]);
+	}
+}
+
+static int sprd_pci_ep_dev_show(struct seq_file *m, void *unused)
+{
+	u32 i;
+	struct sprd_pci_ep_dev *ep_dev;
+	struct sprd_pci_ep_dev_save *ep_save;
+
+	for (i = 0; i < PCIE_EP_NR; i++) {
+		/* ep_save configus */
+		ep_save = &g_ep_save[i];
+		ep_dev = g_ep_dev[i];
+
+		if (!ep_dev)
+			continue;
+
+		if (ep_save)
+			sprd_pci_ep_dev_save_show(m, ep_save, i);
+
+		if (ep_dev)
+			sprd_pci_ep_dev_config_show(m, ep_dev);
+		else if (ep_save->save_succ)
+			sprd_pci_ep_dev_backup_show(m, ep_save, i);
+	}
+
+	return 0;
+}
+
+static int sprd_pci_ep_dev_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sprd_pci_ep_dev_show, NULL);
+}
+
+static const struct file_operations sprd_pci_ep_dev_fops = {
+	.owner = THIS_MODULE,
+	.open = sprd_pci_ep_dev_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static struct dentry *g_ep_debugfs_root;
+
+static int sprd_pci_ep_dev_init_debugfs(void)
+{
+	struct dentry *g_ep_debugfs_root = debugfs_create_dir("ep_dev", NULL);
+
+	if (!g_ep_debugfs_root)
+		return -ENXIO;
+
+	debugfs_create_file("ep", 0444,
+			    g_ep_debugfs_root,
+			    NULL, &sprd_pci_ep_dev_fops);
+	return 0;
+}
+
+static void sprd_pci_ep_dev_remove_debugfs(void)
+{
+	debugfs_remove_recursive(g_ep_debugfs_root);
+}
+
+static int __init sprd_pci_ep_dev_init(void)
+{
+
+	sprd_pci_ep_dev_init_debugfs();
+
+	return 0;
+}
+
+static void __exit sprd_pci_ep_dev_exit(void)
+{
+	sprd_pci_ep_dev_remove_debugfs();
+}
+
+module_init(sprd_pci_ep_dev_init);
+module_exit(sprd_pci_ep_dev_exit);
+#endif
 
 MODULE_DESCRIPTION("SPRD PCI EP DEVICE HOST DRIVER");
 MODULE_AUTHOR("Wenping Zhou <wenping.zhou@unisoc.com>");

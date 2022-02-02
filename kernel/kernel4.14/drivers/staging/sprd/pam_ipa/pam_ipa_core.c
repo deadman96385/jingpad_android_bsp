@@ -13,6 +13,8 @@
 #include <linux/regmap.h>
 #include <linux/sipc.h>
 #include <linux/mfd/syscon.h>
+#include <linux/workqueue.h>
+#include <linux/pm_runtime.h>
 #include "pam_ipa_core.h"
 #include "../sipa_delegate/sipa_delegate.h"
 
@@ -27,6 +29,9 @@ static const struct of_device_id pam_ipa_plat_drv_match[] = {
 	{ .compatible = "sprd,pam-ipa", },
 	{}
 };
+
+static void pam_ipa_prepare_suspend(struct device *dev);
+static int pam_ipa_prepare_resume(struct device *dev);
 
 static int pam_ipa_alloc_buf(struct pam_ipa_cfg_tag *cfg)
 {
@@ -177,12 +182,7 @@ static int pam_ipa_connect_ipa(void)
 	cfg->pam_local_param.recv_param.buf_size = PAM_AKB_BUF_SIZE;
 
 	cfg->pam_local_param.id = SIPA_EP_VCP;
-	ret = sipa_pam_connect(&cfg->pam_local_param);
-	if (ret) {
-		dev_err(&cfg->pdev->dev, "local ipa connect failed\n");
-		return ret;
-	}
-	cfg->connected = true;
+	cfg->ready = true;
 
 	return 0;
 }
@@ -197,7 +197,7 @@ int pam_ipa_on_miniap_ready(struct sipa_to_pam_info *remote_cfg)
 
 	memcpy(&cfg->remote_cfg, remote_cfg, sizeof(*remote_cfg));
 
-	if (!cfg->connected) {
+	if (!cfg->ready) {
 		ret = pam_ipa_connect_ipa();
 		if (ret) {
 			dev_err(&cfg->pdev->dev,
@@ -207,9 +207,179 @@ int pam_ipa_on_miniap_ready(struct sipa_to_pam_info *remote_cfg)
 		}
 	}
 
-	ret = pam_ipa_init(cfg);
-	if (ret) {
-		dev_err(&cfg->pdev->dev, "PAM_IPA init hw failed\n");
+	return 0;
+}
+EXPORT_SYMBOL(pam_ipa_on_miniap_ready);
+
+static void pam_ipa_prepare_suspend(struct device *dev)
+{
+	int ret;
+	struct pam_ipa_cfg_tag *cfg = dev_get_drvdata(dev);
+
+	if (!(cfg->suspend_stage & PAM_IPA_REG_SUSPEND)) {
+		sipa_disconnect(SIPA_EP_VCP, SIPA_DISCONNECT_START);
+		cfg->hal_ops.resume(cfg->reg_base, false);
+		cfg->suspend_stage |= PAM_IPA_REG_SUSPEND;
+		sipa_disconnect(SIPA_EP_VCP, SIPA_DISCONNECT_END);
+	}
+
+	if (!(cfg->suspend_stage & PAM_IPA_EB_SUSPEND)) {
+		pam_ipa_set_enabled(cfg, false);
+		cfg->suspend_stage |= PAM_IPA_EB_SUSPEND;
+	}
+
+	if (!(cfg->suspend_stage & PAM_IPA_FORCE_SUSPEND)) {
+		ret = pm_runtime_put_sync(&cfg->pdev->dev);
+		if (ret < 0)
+			dev_err(&cfg->pdev->dev,
+				"pm runtime put err, ret = %d\n",
+				ret);
+		cfg->suspend_stage |= PAM_IPA_FORCE_SUSPEND;
+	}
+}
+
+static int pam_ipa_prepare_resume(struct device *dev)
+{
+	int ret;
+	struct pam_ipa_cfg_tag *cfg = dev_get_drvdata(dev);
+
+	if (cfg->suspend_stage & PAM_IPA_FORCE_SUSPEND) {
+		ret = pm_runtime_get_sync(&cfg->pdev->dev);
+		if (ret) {
+			pm_runtime_put(&cfg->pdev->dev);
+			dev_err(&cfg->pdev->dev,
+				"pm runtime get sync err, ret = %d\n",
+				ret);
+			return ret;
+		}
+		cfg->suspend_stage &= ~PAM_IPA_FORCE_SUSPEND;
+	}
+
+	if (cfg->suspend_stage & PAM_IPA_EB_SUSPEND) {
+		pam_ipa_set_enabled(cfg, true);
+		cfg->suspend_stage &= ~PAM_IPA_EB_SUSPEND;
+	}
+
+	if (!(cfg->suspend_stage & PAM_IPA_REG_SUSPEND))
+		goto out;
+
+	if (!cfg->hal_ops.get_start_status(cfg->reg_base)) {
+		if (!cfg->ready) {
+			dev_err(&cfg->pdev->dev,
+				"pam ipa not ready\n");
+			return -EINPROGRESS;
+		}
+
+		ret = sipa_pam_connect(&cfg->pam_local_param);
+		if (ret) {
+			dev_err(&cfg->pdev->dev,
+				"local ipa connect failed\n");
+			return ret;
+		}
+
+		ret = pam_ipa_init(cfg);
+		if (ret) {
+			dev_err(&cfg->pdev->dev,
+				"PAM_IPA init hw failed\n");
+			return ret;
+		}
+	} else {
+		ret = sipa_pam_connect(&cfg->pam_local_param);
+		if (ret) {
+			dev_err(&cfg->pdev->dev,
+				"local ipa connect failed\n");
+			return ret;
+		}
+
+		cfg->hal_ops.resume(cfg->reg_base, true);
+	}
+
+	cfg->suspend_stage &= ~PAM_IPA_REG_SUSPEND;
+
+out:
+	sipa_rm_notify_completion(SIPA_RM_EVT_GRANTED,
+				  SIPA_RM_RES_PROD_PAM_IPA);
+
+	return 0;
+}
+
+static void pam_ipa_power_work(struct work_struct *work)
+{
+	struct pam_ipa_cfg_tag *cfg = container_of((struct delayed_work *)work,
+						   struct pam_ipa_cfg_tag,
+						   power_work);
+
+	if (cfg->power_status) {
+		if (pam_ipa_prepare_resume(&cfg->pdev->dev) &&
+		    cfg->power_status) {
+			dev_warn(&cfg->pdev->dev,
+				 "pam ipa resume fail, resume again\n");
+			queue_delayed_work(cfg->power_wq, &cfg->power_work,
+					   msecs_to_jiffies(200));
+		}
+	} else {
+		pam_ipa_prepare_suspend(&cfg->pdev->dev);
+	}
+}
+
+static int pam_ipa_req_res(void *priv)
+{
+	struct pam_ipa_cfg_tag *cfg = dev_get_drvdata((struct device *)priv);
+
+	cfg->power_status = true;
+
+	cancel_delayed_work(&cfg->power_work);
+	queue_delayed_work(cfg->power_wq, &cfg->power_work, 0);
+
+	return -EINPROGRESS;
+}
+
+static int pam_ipa_rel_res(void *priv)
+{
+	struct pam_ipa_cfg_tag *cfg = dev_get_drvdata((struct device *)priv);
+
+	cfg->power_status = false;
+
+	cancel_delayed_work(&cfg->power_work);
+	queue_delayed_work(cfg->power_wq, &cfg->power_work, 0);
+
+	return 0;
+}
+
+static int pam_ipa_create_prod(struct device *dev)
+{
+	int ret;
+	struct sipa_rm_create_params rm_params = {};
+
+	/* create prod */
+	rm_params.name = SIPA_RM_RES_PROD_PAM_IPA;
+	rm_params.floor_voltage = 0;
+	rm_params.reg_params.notify_cb = NULL;
+	rm_params.reg_params.user_data = dev;
+	rm_params.request_resource = pam_ipa_req_res;
+	rm_params.release_resource = pam_ipa_rel_res;
+	ret = sipa_rm_create_resource(&rm_params);
+	if (ret)
+		return ret;
+
+	/* add dependencys */
+	ret = sipa_rm_add_dependency(SIPA_RM_RES_CONS_WWAN_UL,
+				     SIPA_RM_RES_PROD_PAM_IPA);
+	if (ret < 0 && ret != -EINPROGRESS) {
+		dev_err(dev, "pam ipa add_dependency WWAN_UL fail.\n");
+		sipa_rm_delete_resource(SIPA_RM_RES_PROD_PAM_IPA);
+
+		return ret;
+	}
+
+	ret = sipa_rm_add_dependency(SIPA_RM_RES_CONS_WWAN_DL,
+				     SIPA_RM_RES_PROD_PAM_IPA);
+	if (ret < 0 && ret != -EINPROGRESS) {
+		dev_err(dev, "pam ipa add_dependency WWAN_DL fail.\n");
+		sipa_rm_delete_dependency(SIPA_RM_RES_CONS_WWAN_UL,
+					  SIPA_RM_RES_PROD_PAM_IPA);
+		sipa_rm_delete_resource(SIPA_RM_RES_PROD_PAM_IPA);
+
 		return ret;
 	}
 
@@ -218,6 +388,7 @@ int pam_ipa_on_miniap_ready(struct sipa_to_pam_info *remote_cfg)
 
 static int pam_ipa_plat_drv_probe(struct platform_device *pdev_p)
 {
+	int ret;
 	struct pam_ipa_cfg_tag *cfg;
 
 	cfg = devm_kzalloc(&pdev_p->dev, sizeof(*cfg),
@@ -227,14 +398,32 @@ static int pam_ipa_plat_drv_probe(struct platform_device *pdev_p)
 
 	pam_ipa_cfg = cfg;
 	cfg->pdev = pdev_p;
-	pam_ipa_parse_dts_configuration(pdev_p, cfg);
-	cfg->connected = false;
+	ret = pam_ipa_parse_dts_configuration(pdev_p, cfg);
+	if (ret)
+		return ret;
+
+	cfg->ready = false;
 	cfg->pcie_offset = PAM_IPA_STI_64BIT(PAM_IPA_DDR_MAP_OFFSET_L,
 					     PAM_IPA_DDR_MAP_OFFSET_H);
 	cfg->pcie_rc_base = PAM_IPA_STI_64BIT(PAM_IPA_PCIE_RC_BASE_L,
 					      PAM_IPA_PCIE_RC_BASE_H);
+	cfg->suspend_stage = PAM_IPA_SUSPEND_STAGE;
 
 	pam_ipa_init_api(&cfg->hal_ops);
+	dev_set_drvdata(&pdev_p->dev, cfg);
+	ret = pam_ipa_create_prod(&pdev_p->dev);
+	if (ret)
+		return ret;
+
+	INIT_DELAYED_WORK(&cfg->power_work, pam_ipa_power_work);
+
+	cfg->power_wq = create_workqueue("pam_ipa_power_wq");
+	if (!cfg->power_wq) {
+		dev_err(&pdev_p->dev, "pam ipa power wq create failed\n");
+		return -ENOMEM;
+	}
+
+	pm_runtime_enable(&pdev_p->dev);
 
 	return 0;
 }
@@ -276,6 +465,7 @@ static void __exit pam_ipa_module_exit(void)
 {
 	pr_debug("PAM-IPA module exit\n");
 
+	destroy_workqueue(pam_ipa_cfg->power_wq);
 	platform_driver_unregister(&pam_ipa_plat_drv);
 }
 

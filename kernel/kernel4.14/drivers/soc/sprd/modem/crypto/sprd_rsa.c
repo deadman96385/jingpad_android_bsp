@@ -18,6 +18,7 @@
 
 #include <linux/printk.h>
 #include <linux/string.h>
+#include <linux/slab.h>
 #include "sprd_pkcs_padding.h"
 #include "sprd_rsa.h"
 
@@ -430,10 +431,26 @@ static void __bignum_read_radix(SBigInt *out,
 static void bignum_read_radix(SBigInt *out,
 		unsigned char *str, int str_length)
 {
-	bignum_reverse(str, str_length);
-	__bignum_read_radix(out, str, str_length >> 2);
-	/* recovery the original input */
-	bignum_reverse(str, str_length);
+	unsigned char *buf = NULL;
+
+	if (!out || !str || str_length <= 0) {
+		pr_err("Parameter error\n");
+		return;
+	}
+
+	buf = kmalloc(str_length, GFP_KERNEL);
+	if (!buf) {
+		pr_err("fail to kmalloc\n");
+		return;
+	}
+
+	memcpy(buf, str,  str_length);
+
+	bignum_reverse(buf, str_length);
+
+	__bignum_read_radix(out, buf, str_length >> 2);
+
+	kfree(buf);
 }
 
 static void rsa_trans(SBigInt *s_out, SBigInt *s_in,

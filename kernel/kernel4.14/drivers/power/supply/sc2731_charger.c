@@ -358,6 +358,7 @@ static int sc2731_charger_hw_init(struct sc2731_charger_info *info)
 	struct power_supply_battery_info bat_info = { };
 	u32 term_currrent, term_voltage, cur_val, vol_val;
 	int ret;
+	int bat_id = 0;
 
 	/* Enable charger module */
 	ret = regmap_update_bits(info->regmap, SC2731_MODULE_EN1,
@@ -365,7 +366,8 @@ static int sc2731_charger_hw_init(struct sc2731_charger_info *info)
 	if (ret)
 		return ret;
 
-	ret = power_supply_get_battery_info(info->psy_usb, &bat_info);
+	bat_id = get_battery_id();
+	ret = power_supply_get_battery_info(info->psy_usb, &bat_info, bat_id);
 	if (ret) {
 		dev_warn(info->dev, "no battery information is supplied\n");
 

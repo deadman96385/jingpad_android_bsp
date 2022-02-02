@@ -91,12 +91,13 @@ enum {
 	SPRD_CODEC_PA_ORDER = 99,
 	SPRD_CODEC_DEPOP_ORDER = 100,
 	SPRD_CODEC_BUF_SWITCH_ORDER = 101,
-	SPRD_CODEC_SWITCH_ORDER = 102,
-	SPRD_CODEC_DA_EN_ORDER = 103,
-	SPRD_CODEC_DC_OS_SWITCH_ORDER = 104,
-	SPRD_CODEC_DC_OS_ORDER = 105,
-	SPRD_CODEC_RCV_DEPOP_ORDER = 106,
-	SPRD_CODEC_MIXER_ORDER = 110,/* Must be the last one */
+	SPRD_CODEC_SWITCH_ORDER = 105,
+	SPRD_CODEC_SWITCHR_ORDER = 106,
+	SPRD_CODEC_DA_EN_ORDER = 110,
+	SPRD_CODEC_DC_OS_SWITCH_ORDER = 120,
+	SPRD_CODEC_DC_OS_ORDER = 130,
+	SPRD_CODEC_RCV_DEPOP_ORDER = 140,
+	SPRD_CODEC_MIXER_ORDER = 150,/* Must be the last one */
 };
 
 enum {
@@ -1844,6 +1845,17 @@ static int hp_buf_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int hpdrv_switch_event(struct snd_soc_dapm_widget *w,
+			    struct snd_kcontrol *kcontrol, int event)
+{
+	/*
+	 * To avoid FM chip temperature change fast,
+	 * here we should wait some time, this is the requirement
+	 * from HW.
+	 */
+	sprd_codec_wait(10);
+	return 0;
+}
 
 static int hp_path_event(struct snd_soc_dapm_widget *w,
 				struct snd_kcontrol *kcontrol, int event)
@@ -2440,6 +2452,11 @@ static const struct snd_soc_dapm_widget sprd_codec_dapm_widgets[] = {
 		0, 0,
 		chan_event,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_ADC_E("Capture RECOGNISE", "Capture-DSP-RECOGNISE",
+		FUN_REG(SPRD_CODEC_CAPTRUE),
+		0, 0,
+		chan_event,
+		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 /* DA route */
 	SND_SOC_DAPM_DAC_E("DAC", "Normal-Playback-AP01",
 		FUN_REG(SPRD_CODEC_PLAYBACK), 0,
@@ -2550,10 +2567,10 @@ static const struct snd_soc_dapm_widget sprd_codec_dapm_widgets[] = {
 		hp_buf_event, SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_PGA_S("HPL Switch", SPRD_CODEC_SWITCH_ORDER,
 		SOC_REG(ANA_CDC10), HPL_EN_S, 0,
-		NULL, 0),
-	SND_SOC_DAPM_PGA_S("HPR Switch", SPRD_CODEC_SWITCH_ORDER,
+		hpdrv_switch_event, SND_SOC_DAPM_POST_PMU),
+	SND_SOC_DAPM_PGA_S("HPR Switch", SPRD_CODEC_SWITCHR_ORDER,
 		SOC_REG(ANA_CDC10), HPR_EN_S, 0,
-		NULL, 0),
+		hpdrv_switch_event, SND_SOC_DAPM_POST_PMU),
 	SND_SOC_DAPM_SUPPLY_S("CP AD Cali", 5, SND_SOC_NOPM,
 		0, 0, cp_ad_cmp_cali_event,
 		SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
@@ -2786,6 +2803,8 @@ static const struct snd_soc_dapm_route sprd_codec_intercon[] = {
 	{"ADC DSP_C_fm_test", NULL, "AUD ADC0R"},
 	{"ADC Voice", NULL, "AUD ADC0L"},
 	{"ADC Voice", NULL, "AUD ADC0R"},
+	{"Capture RECOGNISE", NULL, "AUD ADC0L"},
+	{"Capture RECOGNISE", NULL, "AUD ADC0R"},
 	{"ADC Voip", NULL, "AUD ADC0L"},
 	{"ADC Voip", NULL, "AUD ADC0R"},
 	{"ADC CODEC_TEST", NULL, "AUD ADC0L"},
@@ -2808,6 +2827,8 @@ static const struct snd_soc_dapm_route sprd_codec_intercon[] = {
 	{"ADC DSP_C_fm_test", NULL, "AUD ADC1R"},
 	{"ADC Voice", NULL, "AUD ADC1L"},
 	{"ADC Voice", NULL, "AUD ADC1R"},
+	{"Capture RECOGNISE", NULL, "AUD ADC1L"},
+	{"Capture RECOGNISE", NULL, "AUD ADC1R"},
 	{"ADC Voip", NULL, "AUD ADC1L"},
 	{"ADC Voip", NULL, "AUD ADC1R"},
 	{"ADC CODEC_TEST", NULL, "AUD ADC1L"},
@@ -2828,6 +2849,7 @@ static const struct snd_soc_dapm_route sprd_codec_intercon[] = {
 	{"ADC DSP_C_btsco_test", NULL, "CLK_ADC"},
 	{"ADC DSP_C_fm_test", NULL, "CLK_ADC"},
 	{"ADC Voice", NULL, "CLK_ADC"},
+	{"Capture RECOGNISE", NULL, "CLK_ADC"},
 	{"ADC Voip", NULL, "CLK_ADC"},
 	{"ADC CODEC_TEST", NULL, "CLK_ADC"},
 	{"ADC LOOP", NULL, "CLK_ADC"},
@@ -3770,6 +3792,19 @@ static struct snd_soc_dai_driver sprd_codec_dai[] = {
 		},
 		.ops = &sprd_codec_dai_ops,
 	},
+
+	/* 15: CAPTURE_DSP_RECOGNISE */
+	{
+		.name = "sprd-codec-capture-dsp-recognise",
+		.capture = {
+			.stream_name = "Capture-DSP-RECOGNISE",
+			.channels_min = 1,
+			.channels_max = 2,
+			.rates = SPRD_CODEC_PCM_AD_RATES,
+			.formats = SPRD_CODEC_PCM_FATMATS,
+		},
+		.ops = &sprd_codec_dai_ops,
+	},
 };
 
 static void codec_reconfig_dai_rate(struct snd_soc_codec *codec)
@@ -3838,6 +3873,7 @@ static int sprd_codec_soc_probe(struct snd_soc_codec *codec)
 	snd_soc_dapm_ignore_suspend(dapm, "Fm-Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "Voice-Playback");
 	snd_soc_dapm_ignore_suspend(dapm, "Voice-Capture");
+	snd_soc_dapm_ignore_suspend(dapm, "Capture-DSP-RECOGNISE");
 
 	/*
 	 * Even without headset driver, codec could work well.

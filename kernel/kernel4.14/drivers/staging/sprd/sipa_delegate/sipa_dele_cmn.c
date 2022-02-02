@@ -125,8 +125,22 @@ static void sipa_dele_wq_handler(struct work_struct *work)
 
 	ret = smsg_send(smsg_work->delegator->dst,
 			&smsg_work->msg, -1);
-	if (ret)
-		pr_err("smsg send fail %d\n", ret);
+	if (ret) {
+		enum sipa_rm_res_id prod_id = smsg_work->delegator->prod_id;
+
+		if (smsg_work->msg.flag == SMSG_FLG_DELE_REQUEST)
+			sipa_rm_notify_completion(SIPA_RM_EVT_FAIL, prod_id);
+		pr_err("smsg send fail %d prod_id = %d\n", ret, prod_id);
+	}
+}
+
+static void sipa_dele_notify_handler(struct work_struct *work)
+{
+	struct sipa_delegator *delegator =
+		container_of(work, struct sipa_delegator, notify_work);
+
+	pr_debug("sipa dele notify fail\n");
+	sipa_rm_notify_completion(SIPA_RM_EVT_FAIL, delegator->prod_id);
 }
 
 void sipa_dele_start_req_work(struct sipa_delegator *delegator)
@@ -141,7 +155,8 @@ void sipa_dele_start_req_work(struct sipa_delegator *delegator)
 	work->msg.flag = SMSG_FLG_DELE_REQUEST;
 	work->msg.value = 0;
 
-	queue_work(delegator->smsg_wq, (struct work_struct *)work);
+	if (delegator->stat != SIPA_DELE_POWER_OFF)
+		queue_work(delegator->smsg_wq, (struct work_struct *)work);
 }
 
 void sipa_dele_start_rls_work(struct sipa_delegator *delegator)
@@ -156,7 +171,8 @@ void sipa_dele_start_rls_work(struct sipa_delegator *delegator)
 	work->msg.flag = SMSG_FLG_DELE_RELEASE;
 	work->msg.value = 0;
 
-	queue_work(delegator->smsg_wq, (struct work_struct *)work);
+	if (delegator->stat != SIPA_DELE_POWER_OFF)
+		queue_work(delegator->smsg_wq, (struct work_struct *)work);
 }
 
 void sipa_dele_start_done_work(struct sipa_delegator *delegator,
@@ -173,7 +189,8 @@ void sipa_dele_start_done_work(struct sipa_delegator *delegator,
 	work->msg.flag = flag;
 	work->msg.value = val;
 
-	queue_work(delegator->smsg_wq, (struct work_struct *)work);
+	if (delegator->stat != SIPA_DELE_POWER_OFF)
+		queue_work(delegator->smsg_wq, (struct work_struct *)work);
 }
 
 void sipa_dele_r_user_req_cons(struct sipa_delegator *delegator)
@@ -316,6 +333,9 @@ int sipa_dele_local_rls_r_prod(void *user_data)
 	case SIPA_DELE_RELEASING:
 		ret = -EINPROGRESS;
 		break;
+	case SIPA_DELE_POWER_OFF:
+		ret = 0;
+		break;
 	case SIPA_DELE_RELEASED:
 		ret = 0;
 		break;
@@ -351,6 +371,10 @@ int sipa_dele_local_req_r_prod(void *user_data)
 		delegator->stat = SIPA_DELE_REQUESTING;
 		if (delegator->connected)
 			sipa_dele_start_req_work(delegator);
+		ret = -EINPROGRESS;
+		break;
+	case SIPA_DELE_POWER_OFF:
+		queue_work(delegator->smsg_wq, &delegator->notify_work);
 		ret = -EINPROGRESS;
 		break;
 	default:
@@ -391,6 +415,7 @@ int sipa_delegator_init(struct sipa_delegator *delegator,
 	delegator->dst = params->dst;
 	delegator->chan = params->chan;
 	delegator->connected = false;
+	delegator->is_powered = true;
 	atomic_set(&delegator->requesting_cons, 0);
 	delegator->on_open = sipa_dele_on_open;
 	delegator->on_close = sipa_dele_on_close;
@@ -399,6 +424,7 @@ int sipa_delegator_init(struct sipa_delegator *delegator,
 	delegator->on_evt = sipa_dele_on_event;
 	delegator->local_request_prod = sipa_dele_local_req_r_prod;
 	delegator->local_release_prod = sipa_dele_local_rls_r_prod;
+	INIT_WORK(&delegator->notify_work, sipa_dele_notify_handler);
 	spin_lock_init(&delegator->lock);
 
 	delegator->smsg_wq = create_singlethread_workqueue("dele_smsg_wq");
@@ -419,6 +445,14 @@ int sipa_delegator_init(struct sipa_delegator *delegator,
 	}
 
 	return 0;
+}
+
+void sipa_delegator_exit(struct sipa_delegator *delegator)
+{
+	if (delegator) {
+		destroy_workqueue(delegator->smsg_wq);
+		kthread_stop(delegator->thread);
+	}
 }
 
 int sipa_delegator_start(struct sipa_delegator *delegator)

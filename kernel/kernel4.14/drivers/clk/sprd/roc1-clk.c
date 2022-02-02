@@ -162,8 +162,8 @@ static struct clk_bit_field f_mpll1[PLL_FACT_MAX] = {
 	{ .shift = 113,	.width = 1 },	/* mod_en	*/
 	{ .shift = 122,	.width = 1 },	/* sdm_en	*/
 	{ .shift = 0,	.width = 0 },	/* refin	*/
-	{ .shift = 5,	.width = 7 },	/* icp		*/
-	{ .shift = 8,	.width = 18 },	/* n		*/
+	{ .shift = 5,	.width = 3 },	/* icp		*/
+	{ .shift = 8,	.width = 11},	/* n		*/
 	{ .shift = 87,	.width = 7 },	/* nint		*/
 	{ .shift = 64,	.width = 23},	/* kint		*/
 	{ .shift = 0,	.width = 0 },	/* prediv	*/
@@ -266,7 +266,7 @@ static struct clk_bit_field f_mpll2[PLL_FACT_MAX] = {
 	{ .shift = 144,	.width = 1 },	/* postdiv	*/
 };
 
-static SPRD_PLL_WITH_ITABLE_K_FVCO(mpll2_clk, "mpll2", "mpll2-gate", 0x9c,
+static SPRD_PLL_WITH_ITABLE_K_FVCO(mpll2_clk, "mpll2", "mpll2-gate", 0x0,
 				   5, mpll2_ftable, f_mpll2, 240,
 				   1000, 1000, 1, 1000000000ULL);
 
@@ -351,15 +351,15 @@ static SPRD_PLL_WITH_ITABLE_K_FVCO(gpll_clk, "gpll", "gpll-gate", 0x2c,
 static struct clk_bit_field f_isppll[PLL_FACT_MAX] = {
 	{ .shift = 0,	.width = 0 },	/* lock_done	*/
 	{ .shift = 75,	.width = 1 },	/* div_s	*/
-	{ .shift = 64,	.width = 1 },	/* mod_en	*/
-	{ .shift = 65,	.width = 1 },	/* sdm_en	*/
+	{ .shift = 32,	.width = 1 },	/* mod_en	*/
+	{ .shift = 33,	.width = 1 },	/* sdm_en	*/
 	{ .shift = 0,	.width = 0 },	/* refin	*/
 	{ .shift = 0,	.width = 0 },	/* icp		*/
 	{ .shift = 5,	.width = 11 },	/* n		*/
 	{ .shift = 57,	.width = 7 },	/* nint		*/
 	{ .shift = 34,	.width = 23},	/* kint		*/
 	{ .shift = 0,	.width = 0 },	/* prediv	*/
-	{ .shift = 96,	.width = 1 },	/* postdiv	*/
+	{ .shift = 64,	.width = 1 },	/* postdiv	*/
 };
 
 static SPRD_PLL_WITH_ITABLE_K_FVCO(isppll_clk, "isppll", "isppll-gate", 0x40,
@@ -375,7 +375,7 @@ static struct clk_bit_field f_apll[PLL_FACT_MAX] = {
 	{ .shift = 82,	.width = 1 },	/* sdm_en	*/
 	{ .shift = 0,	.width = 0 },	/* refin	*/
 	{ .shift = 36,	.width = 3 },	/* icp		*/
-	{ .shift = 8,	.width = 11 },	/* n		*/
+	{ .shift = 40,	.width = 11 },	/* n		*/
 	{ .shift = 23,	.width = 7 },	/* nint		*/
 	{ .shift = 0,	.width = 23},	/* kint		*/
 	{ .shift = 0,	.width = 0 },	/* prediv	*/
@@ -1345,12 +1345,13 @@ static SPRD_MUX_CLK(fd_clk, "fd-clk", fd_parents, 0x3c,
 			0, 2, ROC1_MUX_FLAG);
 
 static const char * const dcam_if_parents[] = { "twpll-192m", "twpll-256m",
-					"twpll-307m2", "twpll-384m" };
+						"twpll-307m2", "twpll-384m",
+						"isppll-468m" };
 static SPRD_MUX_CLK(dcam_if_clk, "dcam-if-clk", dcam_if_parents, 0x40,
-			0, 2, ROC1_MUX_FLAG);
+			0, 3, ROC1_MUX_FLAG);
 
 static const char * const dcam_axi_parents[] = { "twpll-256m", "twpll-307m2",
-					"twpll-384m", "lpll-468m" };
+						 "twpll-384m", "isppll-468m" };
 static SPRD_MUX_CLK(dcam_axi_clk, "dcam-axi-clk", dcam_axi_parents, 0x44,
 			0, 2, ROC1_MUX_FLAG);
 
@@ -2151,6 +2152,14 @@ static SPRD_SC_GATE_CLK(ce_sec_eb,	"ce-sec-eb",	"ext-26m", 0x0,
 		     0x1000, BIT(30), CLK_IGNORE_UNUSED, 0);
 static SPRD_SC_GATE_CLK(ce_pub_eb,	"ce-pub-eb",	"ext-26m", 0x0,
 		     0x1000, BIT(31), CLK_IGNORE_UNUSED, 0);
+static SPRD_SC_GATE_CLK(ufs_eb, "ufs-eb", "ext-26m", 0x10,
+		     0x1000, BIT(0), CLK_IGNORE_UNUSED, 0);
+static SPRD_SC_GATE_CLK(ufs_unipro_eb, "ufs-unipro-eb", "ext-26m", 0x10,
+		     0x1000, BIT(1), CLK_IGNORE_UNUSED, 0);
+static SPRD_SC_GATE_CLK(ufs_hci_eb, "ufs-hci-eb", "ext-26m", 0x10,
+		     0x1000, BIT(2), CLK_IGNORE_UNUSED, 0);
+static SPRD_SC_GATE_CLK(ufs_utp_eb, "ufs-utp-eb", "ext-26m", 0x10,
+		     0x1000, BIT(3), CLK_IGNORE_UNUSED, 0);
 
 static struct sprd_clk_common *roc1_apapb_gate[] = {
 	/* address base is 0x71000000 */
@@ -2182,6 +2191,10 @@ static struct sprd_clk_common *roc1_apapb_gate[] = {
 	&emmc_eb.common,
 	&ce_sec_eb.common,
 	&ce_pub_eb.common,
+	&ufs_eb.common,
+	&ufs_unipro_eb.common,
+	&ufs_hci_eb.common,
+	&ufs_utp_eb.common,
 };
 
 static struct clk_hw_onecell_data roc1_apapb_gate_hws = {
@@ -2214,6 +2227,10 @@ static struct clk_hw_onecell_data roc1_apapb_gate_hws = {
 		[CLK_EMMC_EB]		= &emmc_eb.common.hw,
 		[CLK_CE_SEC_EB]		= &ce_sec_eb.common.hw,
 		[CLK_CE_PUB_EB]		= &ce_pub_eb.common.hw,
+		[CLK_UFS_EB]		= &ufs_eb.common.hw,
+		[CLK_UFS_UNIPRO_EB]	= &ufs_unipro_eb.common.hw,
+		[CLK_UFS_HCI_EB]	= &ufs_hci_eb.common.hw,
+		[CLK_UFS_UTP_EB]	= &ufs_utp_eb.common.hw,
 	},
 	.num	= CLK_AP_APB_GATE_NUM,
 };

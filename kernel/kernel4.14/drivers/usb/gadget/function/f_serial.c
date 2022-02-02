@@ -188,6 +188,10 @@ static void gser_disable(struct usb_function *f)
 
 static void gser_setup_complete(struct usb_ep *ep, struct usb_request *req)
 {
+	struct usb_composite_dev *cdev;
+
+	cdev = req->context;
+	cdev->setup_pending = false;
 }
 
 /*
@@ -220,10 +224,13 @@ static int gser_setup(struct usb_function *f,
 		cdev->req->zero = value < w_length;
 		cdev->req->length = value;
 		cdev->req->complete = gser_setup_complete;
+		cdev->req->context = cdev;
 		rc = usb_ep_queue(cdev->gadget->ep0, cdev->req, GFP_ATOMIC);
 		if (rc < 0)
 			dev_err(&cdev->gadget->dev,
 				"setup response queue error\n");
+		else
+			cdev->setup_pending = true;
 	}
 
 	if (value == -EOPNOTSUPP) {

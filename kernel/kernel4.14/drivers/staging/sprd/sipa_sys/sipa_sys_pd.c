@@ -26,6 +26,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/sipa.h>
+#include <linux/debugfs.h>
 
 #define DRV_NAME "sprd-sipa-sys"
 
@@ -76,7 +77,6 @@ struct sipa_sys_pd_drv {
 	struct clk *ipa_core_clk;
 	struct clk *ipa_core_parent;
 	struct clk *ipa_core_default;
-	bool regu_on;
 	bool pd_on;
 	struct sipa_sys_register regs[0];
 };
@@ -103,18 +103,20 @@ static int sipa_sys_wait_power_on(struct sipa_sys_register *reg_info)
 	int ret = 0;
 	u32 val;
 
-	if (reg_info->rmap)
+	if (reg_info->rmap) {
+		pr_info("sipa start poll ipa sys power status\n");
 		ret = regmap_read_poll_timeout(reg_info->rmap,
 					       reg_info->reg,
 					       val,
 					       !(val & reg_info->mask),
 					       SPRD_IPA_POWERON_POLL_US,
 					       SPRD_IPA_POWERON_TIMEOUT);
-	else
+	} else {
 		usleep_range((SPRD_IPA_POWERON_TIMEOUT >> 2) + 1, 5000);
+	}
 
 	if (ret)
-		pr_err("Polling check power on reg timed out: %x\n", val);
+		pr_err("sipa polling check power on reg timed out: %x\n", val);
 
 	return ret;
 }
@@ -124,7 +126,7 @@ static int sipa_sys_do_power_on(struct sipa_sys_pd_drv *drv)
 	struct sipa_sys_register *reg_info = &drv->regs[IPA_SYS_FORCEWAKEUP];
 	int ret = 0;
 
-	dev_dbg(drv->dev, "do power on\n");
+	dev_info(drv->dev, "sipa do power on\n");
 	if (reg_info->rmap) {
 		ret = regmap_update_bits(reg_info->rmap,
 					 reg_info->reg,
@@ -186,7 +188,7 @@ static int sipa_sys_do_power_off(struct sipa_sys_pd_drv *drv)
 	struct sipa_sys_register *reg_info = &drv->regs[IPA_SYS_FORCEWAKEUP];
 	int ret = 0;
 
-	dev_dbg(drv->dev, "do power off\n");
+	dev_info(drv->dev, "sipa do power off\n");
 	/* set ipa core clock to default */
 	if (drv->ipa_core_clk && drv->ipa_core_default)
 		clk_set_parent(drv->ipa_core_clk, drv->ipa_core_default);
@@ -205,75 +207,12 @@ static int sipa_sys_do_power_off(struct sipa_sys_pd_drv *drv)
 
 static int sipa_sys_update_power_state(struct sipa_sys_pd_drv *drv)
 {
-	if (drv->regu_on || drv->pd_on)
+	if (drv->pd_on)
 		sipa_sys_do_power_on(drv);
 	else
 		sipa_sys_do_power_off(drv);
 
 	return 0;
-}
-
-static int sipa_sys_regu_enable(struct regulator_dev *dev)
-{
-	struct sipa_sys_pd_drv *drv = rdev_get_drvdata(dev);
-
-	drv->regu_on = true;
-	sipa_sys_update_power_state(drv);
-	dev_dbg(drv->dev, "regu power on\n");
-
-	return 0;
-}
-
-static int sipa_sys_regu_disable(struct regulator_dev *dev)
-{
-	struct sipa_sys_pd_drv *drv = rdev_get_drvdata(dev);
-
-	drv->regu_on = false;
-	sipa_sys_update_power_state(drv);
-	dev_dbg(drv->dev, "regu power off\n");
-
-	return 0;
-}
-
-static int sipa_sys_regu_is_enabled(struct regulator_dev *dev)
-{
-	struct sipa_sys_pd_drv *drv = rdev_get_drvdata(dev);
-
-	return drv->regu_on;
-}
-
-static const struct regulator_ops sipa_sys_regu_ops = {
-	.enable = sipa_sys_regu_enable,
-	.disable = sipa_sys_regu_disable,
-	.is_enabled = sipa_sys_regu_is_enabled,
-};
-
-static const struct regulator_desc sipa_sys_regu_desc = {
-	.name = "vdd-ipa",
-	.of_match = "vdd-ipa",
-	.type = REGULATOR_VOLTAGE,
-	.owner = THIS_MODULE,
-	.ops = &sipa_sys_regu_ops,
-	.fixed_uV = 5000000,
-	.n_voltages = 1,
-};
-
-static int sipa_sys_register_regulator(struct sipa_sys_pd_drv *drv)
-{
-	struct regulator_config cfg = {};
-	struct regulator_dev *reg;
-	int ret = 0;
-
-	cfg.dev = drv->dev;
-	cfg.driver_data = drv;
-	reg = devm_regulator_register(drv->dev,
-				      &sipa_sys_regu_desc, &cfg);
-	if (IS_ERR(reg)) {
-		ret = PTR_ERR(reg);
-		dev_err(drv->dev, "Can't reg_info regulator:%d\n", ret);
-	}
-
-	return ret;
 }
 
 static int sipa_sys_parse_dts(struct sipa_sys_pd_drv *drv)
@@ -387,6 +326,67 @@ static int sipa_sys_register_power_domain(struct sipa_sys_pd_drv *drv)
 	return ret;
 }
 
+#ifdef CONFIG_DEBUG_FS
+static int sipa_sys_debug_show(struct seq_file *s, void *unused)
+{
+	struct pm_domain_data *pdd;
+	struct sipa_sys_pd_drv *drv = (struct sipa_sys_pd_drv *)s->private;
+
+	seq_puts(s, "status:\n");
+	seq_puts(s, "\t0: active 1: power off\n\n");
+	seq_puts(s, "power status:\n");
+	seq_puts(s, "\t0: active 1: resuming 2: suspended 3: suspending\n\n");
+
+	seq_printf(s, "pd_on = %d sd_count = %d status = %d\n",
+		   drv->pd_on,
+		   atomic_read(&drv->gpd.sd_count),
+		   drv->gpd.status);
+
+	seq_printf(s, "device_count = %d suspended_count = %d prepared_count = %d\n",
+		   drv->gpd.device_count, drv->gpd.suspended_count,
+		   drv->gpd.prepared_count);
+
+	list_for_each_entry(pdd, &drv->gpd.dev_list, list_node)
+		seq_printf(s,
+			   "%s power status = %d, disable_depth = %d usage_cnt = %d\n",
+			   dev_name(pdd->dev), pdd->dev->power.runtime_status,
+			   pdd->dev->power.disable_depth,
+			   atomic_read(&pdd->dev->power.usage_count));
+
+	debugfs_create_symlink("sprd-sipa-sys", NULL,
+			       "/sys/kernel/debug/sprd-sipa-sys/power_domain");
+
+	return 0;
+}
+
+static int sipa_sys_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, sipa_sys_debug_show, inode->i_private);
+}
+
+static const struct file_operations sipa_sys_debug_fops = {
+	.open = sipa_sys_debug_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int sipa_sys_init_debugfs(struct platform_device *pdev)
+{
+	struct dentry *root;
+	struct sipa_sys_pd_drv *drv = platform_get_drvdata(pdev);
+
+	root = debugfs_create_dir(DRV_NAME, NULL);
+	if (!root)
+		return -ENOMEM;
+
+	debugfs_create_file("power_domain", 0444, root, drv,
+			    &sipa_sys_debug_fops);
+
+	return 0;
+}
+#endif
+
 static int sipa_sys_drv_probe(struct platform_device *pdev_p)
 {
 	int ret;
@@ -409,13 +409,15 @@ static int sipa_sys_drv_probe(struct platform_device *pdev_p)
 	if (ret)
 		return ret;
 
-	ret = sipa_sys_register_regulator(drv);
-	if (ret)
-		dev_warn(drv->dev, "sipa sys reg regulator fail!");
-
 	ret = sipa_sys_register_power_domain(drv);
 	if (ret)
 		dev_warn(drv->dev, "sipa sys reg power domain fail!");
+
+#ifdef CONFIG_DEBUG_FS
+	ret = sipa_sys_init_debugfs(pdev_p);
+	if (ret)
+		dev_warn(drv->dev, "sipa_sys init debug fs fail\n");
+#endif
 
 	sipa_sys_init(drv);
 

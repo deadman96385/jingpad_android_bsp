@@ -542,6 +542,13 @@ int sprd_asoc_card_parse_smartamp_boost(struct device *dev,
 	return 0;
 }
 
+extern int sprd_audio_sense_put(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol);
+extern int sprd_audio_sense_get(
+    struct snd_kcontrol *kcontrol,
+    struct snd_ctl_elem_value *ucontrol);
+
 #define BOARD_CODEC_FUNC(xname, xreg) \
 	SOC_SINGLE_EXT(xname, FUN_REG(xreg), \
 		0, 1, 0, board_func_get, board_func_set)
@@ -571,6 +578,9 @@ static const struct snd_kcontrol_new _sprd_asoc_card_controls[] = {
 	/*smart amp boost function select*/
 	SOC_ENUM_EXT("SmartAmp Boost", smartamp_boost_enum, smartamp_boost_get,
 				smartamp_boost_set),
+
+    SOC_SINGLE_EXT("Audio Sense", 0, 0, INT_MAX, 0,
+        sprd_audio_sense_get, sprd_audio_sense_put),
 };
 
 struct sprd_array_size sprd_asoc_card_controls = {

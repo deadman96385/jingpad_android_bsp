@@ -21,6 +21,21 @@
 
 #include "sprd_bl.h"
 
+#define U_MAX_LEVEL	255
+#define U_MIN_LEVEL	0
+
+void sprd_backlight_normalize_map(struct backlight_device *bd, u16 *level)
+{
+	struct sprd_backlight *bl = bl_get_data(bd);
+
+	if (!bl->num) {
+		*level = DIV_ROUND_CLOSEST_ULL((bl->max_level - bl->min_level) *
+			(bd->props.brightness - U_MIN_LEVEL),
+			U_MAX_LEVEL - U_MIN_LEVEL) + bl->min_level;
+	} else
+		*level = bl->levels[bd->props.brightness];
+}
+
 int sprd_cabc_backlight_update(struct backlight_device *bd)
 {
 	struct sprd_backlight *bl = bl_get_data(bd);
@@ -54,10 +69,9 @@ static int sprd_pwm_backlight_update(struct backlight_device *bd)
 	struct sprd_backlight *bl = bl_get_data(bd);
 	struct pwm_state state;
 	u64 duty_cycle;
-	u32 level;
+	u16 level;
 
-	level = DIV_ROUND_CLOSEST_ULL(bd->props.brightness *
-			(bl->max_level - bl->min_level), 255);
+	sprd_backlight_normalize_map(bd, &level);
 
 	if (bd->props.power != FB_BLANK_UNBLANK ||
 	    bd->props.fb_blank != FB_BLANK_UNBLANK ||
@@ -97,11 +111,34 @@ static int sprd_backlight_parse_dt(struct device *dev,
 			struct sprd_backlight *bl)
 {
 	struct device_node *node = dev->of_node;
+	struct property *prop;
 	u32 value;
+	int length;
 	int ret;
 
 	if (!node)
 		return -ENODEV;
+
+	/* determine the number of brightness levels */
+	prop = of_find_property(node, "brightness-levels", &length);
+	if (prop) {
+		bl->num = length / sizeof(u32);
+
+		/* read brightness levels from DT property */
+		if (bl->num > 0) {
+			size_t size = sizeof(*bl->levels) * bl->num;
+
+			bl->levels = devm_kzalloc(dev, size, GFP_KERNEL);
+			if (!bl->levels)
+				return -ENOMEM;
+
+			ret = of_property_read_u32_array(node,
+							"brightness-levels",
+							bl->levels, bl->num);
+			if (ret < 0)
+				return ret;
+		}
+	}
 
 	ret = of_property_read_u32(node, "sprd,max-brightness-level", &value);
 	if (!ret)
@@ -195,6 +232,7 @@ static int sprd_backlight_probe(struct platform_device *pdev)
 
 static const struct of_device_id sprd_backlight_of_match[] = {
 	{ .compatible = "sprd,sharkl5pro-backlight" },
+	{ .compatible = "sprd,roc1-backlight" },
 	{ }
 };
 

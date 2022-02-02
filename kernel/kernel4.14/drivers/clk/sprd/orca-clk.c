@@ -973,11 +973,11 @@ static SPRD_SC_GATE_CLK(sd2_cfg_eb, "sd2-cfg-eb", "ext-26m", 0x0,
 static SPRD_SC_GATE_CLK(sd2_ref_eb, "sd2-ref-eb", "ext-26m", 0x0,
 		     0x1000, BIT(24), CLK_IGNORE_UNUSED, 0);
 static SPRD_SC_GATE_CLK(serdes0_eb, "serdes0-eb", "ext-26m", 0x0,
-		     0x1000, BIT(25), CLK_IGNORE_UNUSED, 0);
+		     0x1000, BIT(25), 0, 0);
 static SPRD_SC_GATE_CLK(serdes1_eb, "serdes1-eb", "ext-26m", 0x0,
-		     0x1000, BIT(26), CLK_IGNORE_UNUSED, 0);
+		     0x1000, BIT(26), 0, 0);
 static SPRD_SC_GATE_CLK(serdes2_eb, "serdes2-eb", "ext-26m", 0x0,
-		     0x1000, BIT(27), CLK_IGNORE_UNUSED, 0);
+		     0x1000, BIT(27), 0, 0);
 static SPRD_SC_GATE_CLK(rtm_eb, "rtm-eb", "ext-26m", 0x0,
 		     0x1000, BIT(28), CLK_IGNORE_UNUSED, 0);
 static SPRD_SC_GATE_CLK(rtm_atb_eb, "rtm-atb-eb", "ext-26m", 0x0,

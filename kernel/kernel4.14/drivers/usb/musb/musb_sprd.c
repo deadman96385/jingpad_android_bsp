@@ -34,6 +34,7 @@
 #include <linux/wait.h>
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
+#include <linux/usb/sprd_usbm.h>
 
 #include "musb_core.h"
 #include "sprd_musbhsdma.h"
@@ -55,6 +56,7 @@ struct sprd_glue {
 	struct regulator	*vbus;
 	struct wakeup_source	pd_wake_lock;
 	struct regmap		*pmu;
+	struct regmap		*aon_apb;
 
 	enum usb_dr_mode		dr_mode;
 	enum usb_dr_mode		wq_mode;
@@ -69,6 +71,7 @@ struct sprd_glue {
 	struct notifier_block		hot_plug_nb;
 	struct notifier_block		vbus_nb;
 	struct notifier_block		id_nb;
+	struct notifier_block		audio_nb;
 
 	bool		bus_active;
 	bool		vbus_active;
@@ -82,6 +85,11 @@ struct sprd_glue {
 };
 
 static int boot_charging;
+#if IS_ENABLED(CONFIG_SPRD_USBM)
+static const bool is_slave = true;
+#else
+static const bool is_slave = false;
+#endif
 
 static void sprd_musb_enable(struct musb *musb)
 {
@@ -137,6 +145,10 @@ static irqreturn_t sprd_musb_interrupt(int irq, void *__hci)
 	u32 reg_dma;
 	u16 mask16;
 	u8 mask8;
+	u8 int_usb;
+	u16 int_rx;
+	u16 int_tx;
+
 
 	spin_lock(&glue->lock);
 
@@ -149,19 +161,15 @@ static irqreturn_t sprd_musb_interrupt(int irq, void *__hci)
 
 	spin_lock(&musb->lock);
 	mask8 = musb_readb(musb->mregs, MUSB_INTRUSBE);
-	musb->int_usb = musb_readb(musb->mregs, MUSB_INTRUSB) & mask8;
+	int_usb = musb->int_usb = musb_readb(musb->mregs, MUSB_INTRUSB) & mask8;
 
 	mask16 = musb_readw(musb->mregs, MUSB_INTRTXE);
-	musb->int_tx = musb_readw(musb->mregs, MUSB_INTRTX) & mask16;
+	int_tx = musb->int_tx = musb_readw(musb->mregs, MUSB_INTRTX) & mask16;
 
 	mask16 = musb_readw(musb->mregs, MUSB_INTRRXE);
-	musb->int_rx = musb_readw(musb->mregs, MUSB_INTRRX) & mask16;
+	int_rx = musb->int_rx = musb_readw(musb->mregs, MUSB_INTRRX) & mask16;
 
 	reg_dma = musb_readl(musb->mregs, MUSB_DMA_INTR_MASK_STATUS);
-
-	dev_dbg(musb->controller, "%s usb%04x tx%04x rx%04x dma%x\n", __func__,
-			musb->int_usb, musb->int_tx, musb->int_rx, reg_dma);
-
 
 	if (musb->int_usb || musb->int_tx || musb->int_rx)
 		retval = musb_interrupt(musb);
@@ -172,6 +180,9 @@ static irqreturn_t sprd_musb_interrupt(int irq, void *__hci)
 	spin_unlock(&musb->lock);
 	spin_unlock(&glue->lock);
 
+	dev_dbg(musb->controller, "%s usb%04x tx%04x rx%04x dma%x\n", __func__,
+			int_usb, int_tx, int_rx, reg_dma);
+
 	return retval;
 }
 
@@ -181,7 +192,8 @@ static int sprd_musb_init(struct musb *musb)
 
 	musb->phy = glue->phy;
 	musb->xceiv = glue->xceiv;
-	sprd_musb_enable(musb);
+	if (!is_slave)
+		sprd_musb_enable(musb);
 
 	musb->isr = sprd_musb_interrupt;
 
@@ -398,13 +410,89 @@ static struct musb_fifo_cfg sprd_musb_host_mode_cfg[] = {
 	MUSB_EP_FIFO_DOUBLE(15, FIFO_TX, 8),
 	MUSB_EP_FIFO_DOUBLE(15, FIFO_RX, 8),
 };
+static struct musb_fifo_cfg sprd_musb_device_mode_cfg_single[] = {
+	MUSB_EP_FIFO_DOUBLE(1, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(1, FIFO_RX, 512),
+	MUSB_EP_FIFO_DOUBLE(2, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(2, FIFO_RX, 512),
+	MUSB_EP_FIFO_DOUBLE(3, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(3, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(4, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(4, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(5, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(5, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(6, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(6, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(7, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(7, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(8, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(8, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(9, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(9, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(10, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(10, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(11, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(11, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(12, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(12, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(13, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(13, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(14, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(14, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(15, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(15, FIFO_RX, 512),
+};
+static struct musb_fifo_cfg sprd_musb_host_mode_cfg_single[] = {
+	MUSB_EP_FIFO_SINGLE(1, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(1, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(2, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(2, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(3, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(3, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(4, FIFO_TX, 1024),
+	MUSB_EP_FIFO_SINGLE(4, FIFO_RX, 4096),
+	MUSB_EP_FIFO_SINGLE(5, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(5, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(6, FIFO_TX, 1024),
+	MUSB_EP_FIFO_SINGLE(6, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(7, FIFO_TX, 1024),
+	MUSB_EP_FIFO_SINGLE(7, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(8, FIFO_TX, 1024),
+	MUSB_EP_FIFO_SINGLE(8, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(9, FIFO_TX, 1024),
+	MUSB_EP_FIFO_SINGLE(9, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(10, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(10, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(11, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(11, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(12, FIFO_TX, 512),
+	MUSB_EP_FIFO_SINGLE(12, FIFO_RX, 512),
+	MUSB_EP_FIFO_SINGLE(13, FIFO_TX, 8),
+	MUSB_EP_FIFO_SINGLE(13, FIFO_RX, 8),
+	MUSB_EP_FIFO_SINGLE(14, FIFO_TX, 8),
+	MUSB_EP_FIFO_SINGLE(14, FIFO_RX, 8),
+	MUSB_EP_FIFO_SINGLE(15, FIFO_TX, 8),
+	MUSB_EP_FIFO_SINGLE(15, FIFO_RX, 8),
+};
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 static struct musb_hdrc_config sprd_musb_hdrc_config = {
 	.fifo_cfg = sprd_musb_device_mode_cfg,
 	.host_fifo_cfg = sprd_musb_host_mode_cfg,
-	.fifo_cfg_size = ARRAY_SIZE(sprd_musb_device_mode_cfg),
+	.fifo_cfg_size = (unsigned)ARRAY_SIZE(sprd_musb_device_mode_cfg),
+	.multipoint = false,
+	.dyn_fifo = true,
+	.soft_con = true,
+	.num_eps = SPRD_MUSB_MAX_EP_NUM,
+	.ram_bits = SPRD_MUSB_RAM_BITS,
+	.dma = 0,
+};
+
+static struct musb_hdrc_config sprd_musb_hdrc_config_single = {
+	.fifo_cfg = sprd_musb_device_mode_cfg_single,
+	.host_fifo_cfg = sprd_musb_host_mode_cfg_single,
+	.fifo_cfg_size = ARRAY_SIZE(sprd_musb_device_mode_cfg_single),
 	.multipoint = false,
 	.dyn_fifo = true,
 	.soft_con = true,
@@ -419,6 +507,11 @@ static int musb_sprd_vbus_notifier(struct notifier_block *nb,
 {
 	struct sprd_glue *glue = container_of(nb, struct sprd_glue, vbus_nb);
 	unsigned long flags;
+
+	if (is_slave) {
+		dev_info(glue->dev, "%s, event(%ld) ignored in slave mode\n", __func__, event);
+		return 0;
+	}
 
 	if (event) {
 		spin_lock_irqsave(&glue->lock, flags);
@@ -461,6 +554,11 @@ static int musb_sprd_id_notifier(struct notifier_block *nb,
 	struct sprd_glue *glue = container_of(nb, struct sprd_glue, id_nb);
 	unsigned long flags;
 
+	if (is_slave) {
+		dev_info(glue->dev, "%s, event(%ld) ignored in slave mode\n", __func__, event);
+		return 0;
+	}
+
 	if (event) {
 		spin_lock_irqsave(&glue->lock, flags);
 		if (glue->vbus_active == 1 || glue->dr_mode == USB_DR_MODE_PERIPHERAL) {
@@ -491,6 +589,49 @@ static int musb_sprd_id_notifier(struct notifier_block *nb,
 		spin_unlock_irqrestore(&glue->lock, flags);
 		dev_info(glue->dev,
 			"host disconnect detected from ID GPIO.\n");
+	}
+
+	return 0;
+}
+
+/* implement the notifier_call func */
+static int musb_sprd_audio_notifier(struct notifier_block *nb,
+				unsigned long event, void *data)
+
+{
+	struct sprd_glue *glue = container_of(nb, struct sprd_glue, audio_nb);
+	unsigned long flags;
+
+	dev_info(glue->dev, "%s, event(%ld)\n", __func__, event);
+
+	if (event) {
+		spin_lock_irqsave(&glue->lock, flags);
+		if (glue->vbus_active == 1 || glue->dr_mode == USB_DR_MODE_PERIPHERAL) {
+			spin_unlock_irqrestore(&glue->lock, flags);
+			dev_info(glue->dev, "ignore host connection detected from audio.\n");
+			return 0;
+		}
+
+		glue->vbus_active = 1;
+		glue->wq_mode = USB_DR_MODE_HOST;
+		queue_work(system_unbound_wq, &glue->work);
+		spin_unlock_irqrestore(&glue->lock, flags);
+		dev_info(glue->dev,
+			"host connection detected from audio.\n");
+	} else {
+		spin_lock_irqsave(&glue->lock, flags);
+		if (glue->vbus_active == 0 || glue->dr_mode == USB_DR_MODE_PERIPHERAL) {
+			spin_unlock_irqrestore(&glue->lock, flags);
+			dev_info(glue->dev, "ignore host disconnect detected from audio.\n");
+			return 0;
+		}
+
+		glue->vbus_active = 0;
+		glue->wq_mode = USB_DR_MODE_HOST;
+		queue_work(system_unbound_wq, &glue->work);
+		spin_unlock_irqrestore(&glue->lock, flags);
+		dev_info(glue->dev,
+			"host disconnect detected from audio.\n");
 	}
 
 	return 0;
@@ -648,7 +789,8 @@ static void sprd_musb_work(struct work_struct *work)
 
 	if (IS_ENABLED(CONFIG_USB_MUSB_DUAL_ROLE) &&
 		(current_mode == USB_DR_MODE_HOST) &&
-		!musb->gadget_driver)
+		!musb->gadget_driver &&
+		glue->dr_mode == USB_DR_MODE_UNKNOWN)
 		musb_host_start(musb);
 
 	glue->dr_mode = current_mode;
@@ -930,6 +1072,56 @@ static struct attribute *musb_sprd_attrs[] = {
 };
 ATTRIBUTE_GROUPS(musb_sprd);
 
+static bool musb_check_singlefifo(struct platform_device *pdev,
+				struct sprd_glue *glue)
+{
+	u32 offset, mask, value, check;
+	u32 buf[2];
+	int ret;
+
+	glue->aon_apb = syscon_regmap_lookup_by_name(pdev->dev.of_node,
+						     "chip_id");
+	if (IS_ERR(glue->aon_apb)) {
+		dev_warn(&pdev->dev, "get sys regmap fail!\n");
+		glue->aon_apb = NULL;
+		goto end;
+	} else {
+		ret = syscon_get_args_by_name(pdev->dev.of_node,
+					      "chip_id", 2, buf);
+		if (ret != 2) {
+			dev_warn(&pdev->dev,
+				 "failed to go get syscon parameters\n");
+			glue->aon_apb = NULL;
+			goto end;
+		} else {
+			offset = buf[0];
+			mask = buf[1];
+		}
+	}
+
+	if (of_property_read_u32_index(pdev->dev.of_node,
+			"usb-checksingle", 0, &check)) {
+		dev_warn(&pdev->dev, "fail to get usb-checksingle\n");
+		goto end;
+	}
+
+	if (glue->aon_apb != NULL) {
+		ret = regmap_read(glue->aon_apb, offset,
+				  &value);
+		if (ret) {
+			dev_warn(&pdev->dev, "read regmap error !\n");
+			goto end;
+		}
+	}
+
+	if (glue->aon_apb != NULL &&
+	    (value & mask) == check)
+		return true;
+
+end:
+	return false;
+}
+
 static int musb_sprd_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1005,8 +1197,13 @@ static int musb_sprd_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, glue);
 
+	if (musb_check_singlefifo(pdev, glue)) {
+		pdata.config = &sprd_musb_hdrc_config_single;
+		dev_info(&pdev->dev, "config to singlefifo\n");
+	} else {
+		pdata.config = &sprd_musb_hdrc_config;
+	}
 	pdata.platform_ops = &sprd_musb_ops;
-	pdata.config = &sprd_musb_hdrc_config;
 	glue->power_always_on = of_property_read_bool(node, "wakeup-source");
 	pdata.board_data = &glue->power_always_on;
 	glue->is_suspend = false;
@@ -1073,6 +1270,13 @@ static int musb_sprd_probe(struct platform_device *pdev)
 		}
 	}
 
+	glue->audio_nb.notifier_call = musb_sprd_audio_notifier;
+	ret = register_sprd_usbm_notifier(&glue->audio_nb, SPRD_USBM_EVENT_HOST_MUSB);
+	if (ret) {
+		dev_err(glue->dev, "failed to register usb event\n");
+		goto err_extcon_vbus;
+	}
+
 	wakeup_source_init(&glue->wake_lock, "musb-sprd");
 	wakeup_source_init(&glue->pd_wake_lock, "musb-sprd-pd");
 
@@ -1088,7 +1292,10 @@ static int musb_sprd_probe(struct platform_device *pdev)
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
-	musb_sprd_detect_cable(glue);
+	if (!is_slave)
+		musb_sprd_detect_cable(glue);
+
+	dev_info(&pdev->dev, "[%s]done\n", __func__);
 
 	return 0;
 
@@ -1267,6 +1474,7 @@ static int musb_sprd_runtime_suspend(struct device *dev)
 			struct sprd_musb_dma_controller, controller);
 	unsigned long flags;
 	int ret;
+	unsigned long m_t_j = msecs_to_jiffies(2000);
 
 	if (glue->dr_mode == USB_DR_MODE_HOST)
 		usb_phy_vbus_off(glue->xceiv);
@@ -1276,7 +1484,7 @@ static int musb_sprd_runtime_suspend(struct device *dev)
 	if (glue->dr_mode == USB_DR_MODE_HOST) {
 		ret = wait_event_timeout(controller->wait,
 			(controller->used_channels == 0),
-			msecs_to_jiffies(2000));
+			m_t_j);
 		if (ret == 0)
 			dev_err(glue->dev, "wait for port suspend timeout!\n");
 	}
@@ -1298,12 +1506,18 @@ static int musb_sprd_runtime_resume(struct device *dev)
 {
 	struct sprd_glue *glue = dev_get_drvdata(dev);
 	struct musb *musb = platform_get_drvdata(glue->musb);
+	int ret;
 
-	clk_prepare_enable(glue->clk);
+	ret = clk_prepare_enable(glue->clk);
+	if (ret != 0)
+		dev_warn(dev, "clk prepare enable abnormal %d\n", ret);
 	glue->suspending = false;
 
-	if (!musb->shutdowning)
-		usb_phy_init(glue->xceiv);
+	if (!musb->shutdowning) {
+		ret = usb_phy_init(glue->xceiv);
+		if (ret != 0)
+			dev_warn(dev, "usb phy init abnormal %d\n", ret);
+	}
 	if (glue->dr_mode == USB_DR_MODE_HOST) {
 		usb_phy_vbus_on(glue->xceiv);
 	       /* Musb controller process go as device default.
@@ -1343,6 +1557,7 @@ static const struct of_device_id usb_ids[] = {
 	{ .compatible = "sprd,roc1-musb" },
 	{ .compatible = "sprd,pike2-musb" },
 	{ .compatible = "sprd,sharkle-musb" },
+	{ .compatible = "sprd,qogirl6-musb" },
 	{}
 };
 

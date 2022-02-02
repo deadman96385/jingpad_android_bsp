@@ -219,38 +219,6 @@ static void pcie_clkpm_cap_init(struct pcie_link_state *link, int blacklist)
 	link->clkpm_capable = (blacklist) ? 0 : capable;
 }
 
-static bool pcie_retrain_link(struct pcie_link_state *link)
-{
-	struct pci_dev *parent = link->pdev;
-	unsigned long start_jiffies;
-	u16 reg16;
-
-	pcie_capability_read_word(parent, PCI_EXP_LNKCTL, &reg16);
-	reg16 |= PCI_EXP_LNKCTL_RL;
-	pcie_capability_write_word(parent, PCI_EXP_LNKCTL, reg16);
-	if (parent->clear_retrain_link) {
-		/*
-		 * Due to an erratum in some devices the Retrain Link bit
-		 * needs to be cleared again manually to allow the link
-		 * training to succeed.
-		 */
-		reg16 &= ~PCI_EXP_LNKCTL_RL;
-		pcie_capability_write_word(parent, PCI_EXP_LNKCTL, reg16);
-	}
-
-	/* Wait for link training end. Break out after waiting for timeout */
-	start_jiffies = jiffies;
-	for (;;) {
-		pcie_capability_read_word(parent, PCI_EXP_LNKSTA, &reg16);
-		if (!(reg16 & PCI_EXP_LNKSTA_LT))
-			break;
-		if (time_after(jiffies, start_jiffies + LINK_RETRAIN_TIMEOUT))
-			break;
-		msleep(1);
-	}
-	return !(reg16 & PCI_EXP_LNKSTA_LT);
-}
-
 /*
  * pcie_aspm_configure_common_clock: check if the 2 ends of a link
  *   could use common clock. If they are, configure them to use the
@@ -260,6 +228,7 @@ static void pcie_aspm_configure_common_clock(struct pcie_link_state *link)
 {
 	int same_clock = 1;
 	u16 reg16, parent_reg, child_reg[8];
+	unsigned long start_jiffies;
 	struct pci_dev *child, *parent = link->pdev;
 	struct pci_bus *linkbus = parent->subordinate;
 	/*
@@ -299,7 +268,21 @@ static void pcie_aspm_configure_common_clock(struct pcie_link_state *link)
 		reg16 &= ~PCI_EXP_LNKCTL_CCC;
 	pcie_capability_write_word(parent, PCI_EXP_LNKCTL, reg16);
 
-	if (pcie_retrain_link(link))
+	/* Retrain link */
+	reg16 |= PCI_EXP_LNKCTL_RL;
+	pcie_capability_write_word(parent, PCI_EXP_LNKCTL, reg16);
+
+	/* Wait for link training end. Break out after waiting for timeout */
+	start_jiffies = jiffies;
+	for (;;) {
+		pcie_capability_read_word(parent, PCI_EXP_LNKSTA, &reg16);
+		if (!(reg16 & PCI_EXP_LNKSTA_LT))
+			break;
+		if (time_after(jiffies, start_jiffies + LINK_RETRAIN_TIMEOUT))
+			break;
+		msleep(1);
+	}
+	if (!(reg16 & PCI_EXP_LNKSTA_LT))
 		return;
 
 	/* Training failed. Restore common clock configurations */
@@ -751,9 +734,23 @@ static void pcie_config_aspm_link(struct pcie_link_state *link, u32 state)
 		state |= (link->aspm_enabled & ASPM_STATE_L1_SS_PCIPM);
 	}
 
-	/* Nothing to do if the link is already in the requested state */
-	if (link->aspm_enabled == state)
-		return;
+	/*
+	 * Nothing to do if the link is already in the requested state
+	 *
+	 * However, if aspm_policy = POLICY_DEFAULT and aspm state is changed
+	 * automatically, e.g. aspm state is set to POLICY_POWER_SUPERSAVE,
+	 * we must do something.
+	 * After system enter or exit suspend, pcie_aspm_pm_state_change() and
+	 * the value of link->aspm_enabled never be changed.
+	 * When system enter suspend, PCIe registers about ASPM will be cleared
+	 * and never be saved, so it's necessary to config PCIe ASPM registers
+	 * regardless of the value of parameter @state.
+	 *
+	 * So unisoc remove the following codes:
+	 *	if (link->aspm_enabled == state)
+	 *		return;
+	 */
+
 	/* Convert ASPM state to upstream/downstream ASPM register state */
 	if (state & ASPM_STATE_L0S_UP)
 		dwstream |= PCI_EXP_LNKCTL_ASPM_L0S;
@@ -786,7 +783,15 @@ static void pcie_config_aspm_link(struct pcie_link_state *link, u32 state)
 static void pcie_config_aspm_path(struct pcie_link_state *link)
 {
 	while (link) {
-		pcie_config_aspm_link(link, policy_to_aspm_state(link));
+		/*
+		 * Unisoc SoC contains two PCIe controllers (gen2 and gen3) and
+		 * these two PCIe have different ASPM default policies.
+		 * Therefore, it can't config aspm link by global variables
+		 * aspm_policy.
+		 * So Unisoc change parameter @policy_to_aspm_state(link) to
+		 * link->aspm_enabled
+		 */
+		pcie_config_aspm_link(link, link->aspm_enabled);
 		link = link->parent;
 	}
 }
@@ -1154,6 +1159,7 @@ module_param_call(policy, pcie_aspm_set_policy, pcie_aspm_get_policy,
 
 ssize_t sprd_pcie_aspm_set_policy(struct pci_dev *pdev, int val)
 {
+	u32 state;
 	struct pcie_link_state *link, *root = pdev->link_state->root;
 
 	if (val > ARRAY_SIZE(policy_str) || val < 0) {
@@ -1162,13 +1168,31 @@ ssize_t sprd_pcie_aspm_set_policy(struct pci_dev *pdev, int val)
 		return -EINVAL;
 	}
 
+	if (aspm_disabled)
+		return -EPERM;
+
 	down_read(&pci_bus_sem);
 	mutex_lock(&aspm_lock);
-	aspm_policy = val;
 	list_for_each_entry(link, &link_list, sibling) {
 		if (link->root != root)
 			continue;
-		pcie_config_aspm_link(link, policy_to_aspm_state(link));
+
+		switch (val) {
+		case POLICY_PERFORMANCE:
+			state = 0;
+			break;
+		case POLICY_POWERSAVE:
+			state = (ASPM_STATE_L0S | ASPM_STATE_L1);
+			break;
+		case POLICY_POWER_SUPERSAVE:
+			state = ASPM_STATE_ALL;
+			break;
+		default:
+			state = link->aspm_default;
+			break;
+		}
+
+		pcie_config_aspm_link(link, state);
 	}
 	mutex_unlock(&aspm_lock);
 	up_read(&pci_bus_sem);
@@ -1178,7 +1202,24 @@ ssize_t sprd_pcie_aspm_set_policy(struct pci_dev *pdev, int val)
 
 ssize_t sprd_pcie_aspm_get_policy(struct pci_dev *pdev, int *val)
 {
-	*val = aspm_policy;
+	u32 state;
+	struct pcie_link_state *link_state = pdev->link_state;
+
+	state = link_state->aspm_enabled;
+	switch (state & ASPM_STATE_ALL) {
+	case ASPM_STATE_ALL:
+		*val = POLICY_POWER_SUPERSAVE;
+		break;
+	case (ASPM_STATE_L0S | ASPM_STATE_L1):
+		*val = POLICY_POWERSAVE;
+		break;
+	case 0:
+		*val = POLICY_PERFORMANCE;
+		break;
+	default:
+		*val = POLICY_DEFAULT;
+		break;
+	}
 
 	return 0;
 }

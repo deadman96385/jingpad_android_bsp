@@ -21,6 +21,8 @@ struct sprd_backlight {
 	u32 min_level;
 	u32 dft_level;
 	u32 scale;
+	u32 *levels;
+	u32 num;
 
 	/* cabc backlight parameters */
 	bool cabc_en;
@@ -29,5 +31,7 @@ struct sprd_backlight {
 };
 
 int sprd_cabc_backlight_update(struct backlight_device *bd);
+
+void sprd_backlight_normalize_map(struct backlight_device *bd, u16 *level);
 
 #endif

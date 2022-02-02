@@ -19,6 +19,7 @@
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/slab.h>
+#include <linux/soc/sprd/hwfeature.h>
 
 #include "sprd_dvfs_apsys.h"
 #include "sprd_dvfs_dpu.h"
@@ -30,7 +31,6 @@ static struct ip_dvfs_map_cfg map_table[] = {
 	{2, VOLT70, DPU_CLK_INDEX_256M, DPU_CLK256M},
 	{3, VOLT70, DPU_CLK_INDEX_307M2, DPU_CLK307M2},
 	{4, VOLT75, DPU_CLK_INDEX_384M, DPU_CLK384M},
-	{5, VOLT75, DPU_CLK_INDEX_468M, DPU_CLK468M},
 };
 
 static void dpu_hw_dfs_en(bool dfs_en)
@@ -61,8 +61,6 @@ static void dpu_dvfs_map_cfg(void)
 		map_table[3].volt_level << 3;
 	reg->dispc_index4_map = map_table[4].clk_level |
 		map_table[4].volt_level << 3;
-	reg->dispc_index5_map = map_table[5].clk_level |
-		map_table[5].volt_level << 3;
 }
 
 static void set_dpu_work_freq(u32 freq)
@@ -316,6 +314,12 @@ static int dpu_dvfs_init(struct dpu_dvfs *dpu)
 	set_dpu_freq_upd_en_byp(dpu->dvfs_coffe.freq_upd_en_byp);
 	set_dpu_work_index(dpu->dvfs_coffe.work_index_def);
 	set_dpu_idle_index(dpu->dvfs_coffe.idle_index_def);
+
+	if (sprd_kproperty_chipid("UD710-AA"))
+		dpu->dvfs_coffe.hw_dfs_en = 0;
+	else
+		dpu->dvfs_coffe.hw_dfs_en = 1;
+
 	dpu_hw_dfs_en(dpu->dvfs_coffe.hw_dfs_en);
 
 	return 0;

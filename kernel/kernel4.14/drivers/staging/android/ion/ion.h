@@ -200,6 +200,7 @@ struct ion_heap {
 	unsigned int id;
 	const char *name;
 	struct shrinker shrinker;
+	unsigned int batchsize;
 	struct list_head free_list;
 	size_t free_list_size;
 	spinlock_t free_lock;

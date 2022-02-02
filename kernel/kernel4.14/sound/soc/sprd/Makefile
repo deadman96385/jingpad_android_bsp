@@ -20,6 +20,10 @@ obj-$(CONFIG_SND_SOC_SPRD_I2S)		+= dai/i2s/
 obj-$(CONFIG_SND_SOC_SPRD_CODEC_SC2730)	+= codec/sprd/sc2730/
 obj-$(CONFIG_SND_SOC_SPRD_CODEC_SC2721)	+= codec/sprd/sc2721/
 obj-$(CONFIG_SND_SOC_SPRD_PA_UCP1301)	+= codec/sprd/ucp1301/
+obj-$(CONFIG_SND_SOC_AW87XX_IIC_PA) += codec/sprd/aw87519_l/
+obj-$(CONFIG_SND_SOC_AW87XXX)	+= codec/sprd/aw87xxx/
+obj-$(CONFIG_SND_SOC_AS6480)	+= codec/sprd/as6480/
+obj-$(CONFIG_SND_SOC_OCP96011)	+= codec/sprd/ocp96011/
 
 # Machines
 obj-$(CONFIG_SND_SOC_SPRD_VBC_V4_SC2730)	+= vbc-rxpx-codec-sc27xx.o

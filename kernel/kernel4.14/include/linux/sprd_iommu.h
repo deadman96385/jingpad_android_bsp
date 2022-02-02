@@ -142,7 +142,9 @@ int sprd_iommu_dettach_device(struct device *dev);
 int sprd_iommu_map(struct device *dev,
 		struct sprd_iommu_map_data *data);
 int sprd_iommu_map_with_idx(struct device *dev,
-		struct sprd_iommu_map_data *data, int idx);
+			    struct sprd_iommu_map_data *data, int idx);
+int sprd_iommu_map_single_page(struct device *dev,
+			       struct sprd_iommu_map_data *data);
 int sprd_iommu_unmap(struct device *dev,
 		struct sprd_iommu_unmap_data *data);
 int sprd_iommu_unmap_with_idx(struct device *dev,

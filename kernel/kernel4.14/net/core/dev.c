@@ -146,6 +146,10 @@
 #include <linux/sctp.h>
 #include <net/udp_tunnel.h>
 
+#if defined(CONFIG_SPRD_SFP_SUPPORT)
+#include <net/sfp.h>
+#endif
+
 #include "net-sysfs.h"
 
 /* Instead of increasing this, you should create a hash table. */
@@ -3603,6 +3607,8 @@ EXPORT_SYMBOL(rps_needed);
 struct static_key rfs_needed __read_mostly;
 EXPORT_SYMBOL(rfs_needed);
 
+int sysctl_rps_force_map __read_mostly;
+
 static struct rps_dev_flow *
 set_rps_cpu(struct net_device *dev, struct sk_buff *skb,
 	    struct rps_dev_flow *rflow, u16 next_cpu)
@@ -3696,8 +3702,12 @@ static int get_rps_cpu(struct net_device *dev, struct sk_buff *skb,
 		u32 ident;
 
 		/* First check into global flow table if there is a match */
+		/*
+		 * Add sysctl_rps_force_map to force to check map which is
+		 * setted by rps_cpus.
+		 */
 		ident = sock_flow_table->ents[hash & sock_flow_table->mask];
-		if ((ident ^ hash) & ~rps_cpu_mask)
+		if (((ident ^ hash) & ~rps_cpu_mask) || sysctl_rps_force_map)
 			goto try_rps;
 
 		next_cpu = ident & rps_cpu_mask;
@@ -4607,6 +4617,32 @@ static int netif_receive_skb_internal(struct sk_buff *skb)
  */
 int netif_receive_skb(struct sk_buff *skb)
 {
+#if defined(CONFIG_SPRD_SFP_SUPPORT)
+	int out_index = 0;
+	int ret, err;
+	struct net_device *dev;
+
+	ret = soft_fastpath_process(SFP_INTERFACE_LTE,
+				    (void *)skb,
+				    NULL, NULL, &out_index);
+	if (!ret) {
+		dev = netdev_get_by_index(out_index);
+		if (!dev) {
+			pr_err("fail to get dev, out idx %d\n", out_index);
+			dev_kfree_skb_any(skb);
+			return 0;
+		}
+
+		/* update skb dev */
+		skb->dev = dev;
+
+		err = dev_queue_xmit(skb);
+		if (err)
+			pr_warn("fast xmit fail, out idx %d, err %x\n", out_index, err);
+		dev_put(dev);
+		return 0;
+	}
+#endif
 	trace_netif_receive_skb_entry(skb);
 
 	return netif_receive_skb_internal(skb);

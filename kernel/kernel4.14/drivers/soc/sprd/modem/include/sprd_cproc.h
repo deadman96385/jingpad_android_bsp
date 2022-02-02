@@ -72,6 +72,9 @@ struct cproc_ctrl {
 };
 
 struct cproc_init_data {
+#ifdef CONFIG_SPRD_SECBOOT
+	struct kbc_load_table_s load_table;
+#endif
 	char			*devname;
 	phys_addr_t		base;		/* CP base addr */
 	u32		maxsz;		/* CP max size */

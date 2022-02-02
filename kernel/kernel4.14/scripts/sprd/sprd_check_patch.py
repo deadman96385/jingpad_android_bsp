@@ -9,7 +9,7 @@ MAIN_PATH = ''
 TAGS_FILE_NAME = '../../Documentation/sprd-tags.txt'
 
 GET_PATCH_INFO_COMMANDS = 'git log -1'
-GET_PATCH_MODIFY_FILE_INFO = 'git log -1 --pretty="format:" --name-only --diff-filter=AM'
+GET_PATCH_MODIFY_FILE_INFO = 'git log -1 --pretty="format:" --name-only'
 
 ATTRIBUTE_TAGS  = []
 SUBSYSTEM1_TAGS = []
@@ -122,10 +122,16 @@ def check_tags_commit_id(patch_info_list):
             print("Patch title:\n%s" % x)
             check_title_flag = 0
 
+            if "  " in x[x.index("Bug #"):]:
+                return (-1, "More than two consecutive spaces in the title")
             if "：" in x:
                 return (-1, "The patch title contains : of chinese")
             if ":" not in x:
                 return (-1, "The patch donot contains tag")
+            if not x[x.index('#') + 1:x.index(':')].replace(' ','').isalnum():
+                characters_temp_list = x[x.index('#') + 1:x.index(':')].split(' ')
+                if not (characters_temp_list[1] in SUBSYSTEM1_TAGS_NOCHECK and characters_temp_list[0].isalnum()):
+                    return (-1, "Title contains special characters between bug id and tags")
 
             if len(x.split(":")) != len(x.split(": ")):
                 return (-1, "expected ' ' after ':'")
@@ -140,7 +146,7 @@ def check_tags_commit_id(patch_info_list):
                 if tags_list[tags_list_start_num].strip(":") in ATTRIBUTE_TAGS[0:ATTRIBUTE_TAGS.index("FROMLIST") + 1]:
                     check_tags_flag = 0
                     check_commit_id_flag = 0
-                elif tags_list[tags_list_start_num].strip(":") in  ATTRIBUTE_TAGS[ATTRIBUTE_TAGS.index("SECURITY"):]:
+                elif tags_list[tags_list_start_num].strip(":") in ATTRIBUTE_TAGS[ATTRIBUTE_TAGS.index("PRIVATE"):]:
                     check_tags_flag = 1
                 else:
                     check_tags_flag = 0
@@ -151,7 +157,7 @@ def check_tags_commit_id(patch_info_list):
                 if tags_list_start_num < len(tags_list):
                     if tags_list[tags_list_start_num].strip(":") in SUBSYSTEM1_TAGS_NOCHECK:
                         ret_hit_tags_list.append(tags_list[tags_list_start_num].strip(":"))
-                   elif tags_list[tags_list_start_num].strip(":") in SUBSYSTEM1_TAGS:
+                    elif tags_list[tags_list_start_num].strip(":") in SUBSYSTEM1_TAGS:
                         ret_hit_tags_list.append(tags_list[tags_list_start_num].strip(":"))
                         tags_list_start_num += 1
                         if tags_list_start_num < len(tags_list):

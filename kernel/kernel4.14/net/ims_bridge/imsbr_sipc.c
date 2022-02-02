@@ -73,7 +73,7 @@ static int imsbr_pre_notify(struct imsbr_sipc *sipc)
 }
 
 struct imsbr_sipc imsbr_data __read_mostly = {
-	.dst		= SIPC_ID_LTE,
+	.dst		= SIPC_ID_MINIAP,
 	.channel	= SMSG_CH_IMSBR_DATA,
 	.hdrlen		= sizeof(struct imsbr_packet),
 	.blksize	= IMSBR_DATA_BLKSZ,
@@ -83,7 +83,7 @@ struct imsbr_sipc imsbr_data __read_mostly = {
 };
 
 struct imsbr_sipc imsbr_ctrl __read_mostly = {
-	.dst		= SIPC_ID_LTE,
+	.dst		= SIPC_ID_MINIAP,
 	.channel	= SMSG_CH_IMSBR_CTRL,
 	.hdrlen		= sizeof(struct imsbr_msghdr),
 	.blksize	= IMSBR_CTRL_BLKSZ,

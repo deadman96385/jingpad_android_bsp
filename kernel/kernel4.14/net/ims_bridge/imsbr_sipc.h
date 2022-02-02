@@ -42,4 +42,7 @@ void imsbr_sblock_put(struct imsbr_sipc *sipc, struct sblock *blk);
 int imsbr_sipc_init(void);
 void imsbr_sipc_exit(void);
 
+void imsbr_transit(struct imsbr_sipc *sipc, struct sblock *blk,
+		   bool freeit);
+
 #endif

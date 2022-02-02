@@ -23,6 +23,7 @@
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
+#include <linux/delay.h>
 
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
@@ -733,6 +734,7 @@ static int mbox_phy_send(u8 core_id, u64 msg)
 	u32 h_msg = (u32)(msg >> 32);
 	u32 fifo_sts, recv_flag;
 	unsigned long recv_flag_cnt;
+	u32 delay_cnt = 1000;
 
 	/* if dst bit inbox block,  we dont't send it */
 	fifo_sts = readl_relaxed(
@@ -757,6 +759,10 @@ static int mbox_phy_send(u8 core_id, u64 msg)
 			 */
 			if (fifo_sts & (1 << core_id))
 				goto block_exit;
+
+			udelay(1);
+			if (0 == --delay_cnt)
+				return -EBUSY;
 		}
 
 		if (mbox_chns[core_id].max_recv_flag_cnt < recv_flag_cnt)

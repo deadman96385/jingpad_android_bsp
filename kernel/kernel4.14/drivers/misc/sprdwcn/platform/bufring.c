@@ -10,6 +10,8 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/uaccess.h>
+
 #include "bufring.h"
 #include "mdbg_type.h"
 #include "wcn_log.h"
@@ -158,7 +160,9 @@ int mdbg_ring_read(struct mdbg_ring_t *ring, void *buf, int len)
 		WCN_LOG("Ring loopover.");
 		len1 = pend - ring->rp + 1;
 		len2 = read_len - len1;
-		if ((uintptr_t)buf > TASK_SIZE) {
+
+		/* if ((uintptr_t)buf > TASK_SIZE) */
+		if (!access_ok(VERIFY_READ, buf, len)) {
 			memcpy(buf, ring->rp, len1);
 			memcpy((buf + len1), pstart, len2);
 		} else if (copy_to_user((__force void __user *)buf,
@@ -178,7 +182,7 @@ int mdbg_ring_read(struct mdbg_ring_t *ring, void *buf, int len)
 				WCN_ERR("read overlay\n");
 		}
 
-		if ((uintptr_t)buf > TASK_SIZE)
+		if (!access_ok(VERIFY_READ, buf, len))
 			memcpy(buf, ring->rp, read_len);
 		else if (copy_to_user((__force void __user *)buf,
 				      (void *)ring->rp, read_len)) {
@@ -244,7 +248,7 @@ int mdbg_ring_write(struct mdbg_ring_t *ring, void *buf, unsigned int len)
 		WCN_LOG("Ring overloop.");
 		len1 = pend - ring->wp + 1;
 		len2 = (len - len1) % ring->size;
-		if ((uintptr_t)buf > TASK_SIZE) {
+		if (!access_ok(VERIFY_READ, buf, len)) {
 			memcpy(ring->wp, buf, len1);
 			memcpy(pstart, (buf + len1), len2);
 		} else if (copy_from_user((void *)ring->wp,
@@ -260,7 +264,7 @@ int mdbg_ring_write(struct mdbg_ring_t *ring, void *buf, unsigned int len)
 
 	} else{
 		/* RP > WP */
-		if ((uintptr_t)buf > TASK_SIZE)
+		if (!access_ok(VERIFY_READ, buf, len))
 			memcpy(ring->wp, buf, len);
 		else if (copy_from_user((void *)ring->wp,
 			    (__force void __user *)buf, len)) {

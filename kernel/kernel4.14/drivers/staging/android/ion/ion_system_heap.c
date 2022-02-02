@@ -128,8 +128,9 @@ static struct page_info *alloc_largest_available(struct ion_system_heap *heap,
 			continue;
 
 		page = alloc_buffer_page(heap, buffer, orders[i], &from_pool);
-		if (!page)
+		if (!page) {
 			continue;
+		}
 
 		info = kmalloc(sizeof(*info), GFP_KERNEL);
 		if (info) {
@@ -507,6 +508,8 @@ free_heap:
 }
 
 extern struct ion_heap **heaps;
+extern unsigned int batchsize;
+
 static int ion_system_heap_create(void)
 {
 	struct ion_heap *heap;
@@ -518,6 +521,7 @@ static int ion_system_heap_create(void)
 
 	if (heaps)
 		heaps[0] = heap;
+	heap->batchsize = batchsize;
 	ion_device_add_heap(heap);
 
 	return 0;

@@ -189,3 +189,15 @@ void SHA256_hash(const unsigned char *input, unsigned int ilen, unsigned char *o
 	SHA256_update(&ctx, input, ilen);
 	memcpy(output, SHA256_final(&ctx), SHA256_DIGEST_SIZE);
 }
+
+void sha256_csum_wd(const unsigned char *input, unsigned int ilen,
+		unsigned char *output, unsigned int chunk_sz)
+{
+	if (input == NULL || ilen == 0 || output == NULL) {
+		pr_err("%s:%d: Parameter error\n", __func__, __LINE__);
+		return;
+	}
+
+	SHA256_hash(input, ilen, output, chunk_sz);
+}
+

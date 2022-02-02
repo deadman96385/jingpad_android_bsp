@@ -50,6 +50,12 @@ config SPRD_DEBUG
 	help
 	  Say y here to enable Debug support.
 
+config SPRD_USER
+        tristate "Spreadtrum debug module"
+        depends on ARCH_SPRD
+        help
+          Say y here to enable Debug support.
+
 config SPRD_POWER_DEBUG
 	bool "Spreadtrum power debug log"
 	depends on PM_SLEEP
@@ -63,5 +69,6 @@ config SPRD_POWER_DEBUG
 	issue.
 
 source "drivers/soc/sprd/debug/Kconfig"
+source "drivers/soc/sprd/user/Kconfig"
 source "drivers/soc/sprd/performance/Kconfig"
 source "drivers/soc/sprd/pub/Kconfig"

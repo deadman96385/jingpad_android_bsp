@@ -1,7 +1,6 @@
 #include <linux/kernel.h>
 #include <linux/regmap.h>
 #include <linux/sipa.h>
-
 #include "pam_ipa_regs.h"
 #include "../pam_ipa_core.h"
 
@@ -133,6 +132,12 @@ static u32 pam_ipa_hal_set_ddr_mapping(void __iomem *reg_base,
 	return ret;
 }
 
+static void pam_ipa_hal_set_ul_ddr_mapping(void __iomem *reg_base,
+					   u32 offset_l, u32 offset_h)
+{
+	pam_ipa_phy_set_ul_ddr_mapping(reg_base, offset_l, offset_h);
+}
+
 static u32 pam_ipa_hal_set_pcie_rc_base(void __iomem *reg_base,
 					u32 offset_l, u32 offset_h)
 {
@@ -195,6 +200,11 @@ static u32 pam_ipa_hal_start(void __iomem *reg_base)
 	ret = pam_ipa_phy_start(reg_base);
 
 	return ret;
+}
+
+static bool pam_ipa_hal_get_start_status(void __iomem *reg_base)
+{
+	return pam_ipa_phy_get_start_status(reg_base);
 }
 
 static u32 pam_ipa_hal_stop(void __iomem *reg_base)
@@ -291,27 +301,38 @@ u32 pam_ipa_init_api(struct pam_ipa_hal_proc_tag *ops)
 		pam_ipa_hal_init_wiap_dl_fifo_sts_addr;
 	ops->set_ddr_mapping =
 		pam_ipa_hal_set_ddr_mapping;
+	ops->set_ul_ddr_mapping =
+		pam_ipa_hal_set_ul_ddr_mapping;
 	ops->set_pcie_rc_base =
 		pam_ipa_hal_set_pcie_rc_base;
 	ops->start = pam_ipa_hal_start;
 	ops->stop = pam_ipa_hal_stop;
 	ops->resume = pam_ipa_hal_resume;
+	ops->get_start_status = pam_ipa_hal_get_start_status;
 
 	return TRUE;
 }
 
-int pam_ipa_set_enabled(struct pam_ipa_cfg_tag *cfg)
+int pam_ipa_set_enabled(struct pam_ipa_cfg_tag *cfg, bool enable)
 {
 	int ret = 0;
 
-	if (cfg->enable_regmap) {
+	if (!cfg->enable_regmap)
+		return -EINVAL;
+
+	if (enable)
 		ret = regmap_update_bits(cfg->enable_regmap,
 					 cfg->enable_reg,
 					 cfg->enable_mask,
 					 cfg->enable_mask);
-		if (ret < 0)
-			pr_warn("%s: regmap update bits failed", __func__);
-	}
+	else
+		ret = regmap_update_bits(cfg->enable_regmap,
+					 cfg->enable_reg,
+					 cfg->enable_mask,
+					 ~cfg->enable_mask);
+	if (ret < 0)
+		pr_err("%s: regmap update bits failed", __func__);
+
 	return ret;
 }
 EXPORT_SYMBOL(pam_ipa_set_enabled);
@@ -320,7 +341,7 @@ u32 pam_ipa_init(struct pam_ipa_cfg_tag *cfg)
 {
 	u32 ret;
 
-	pam_ipa_set_enabled(cfg);
+	pam_ipa_set_enabled(cfg, true);
 
 	pam_ipa_hal_init_pcie_dl_fifo_base(
 		cfg->reg_base,
@@ -382,6 +403,10 @@ u32 pam_ipa_init(struct pam_ipa_cfg_tag *cfg)
 		cfg->reg_base,
 		PAM_IPA_GET_LOW32(cfg->pcie_offset),
 		PAM_IPA_GET_HIGH32(cfg->pcie_offset));
+
+	pam_ipa_hal_set_ul_ddr_mapping(cfg->reg_base,
+				       PAM_IPA_GET_LOW32(cfg->pcie_offset),
+				       PAM_IPA_GET_HIGH32(cfg->pcie_offset));
 
 	pam_ipa_hal_set_pcie_rc_base(
 		cfg->reg_base,

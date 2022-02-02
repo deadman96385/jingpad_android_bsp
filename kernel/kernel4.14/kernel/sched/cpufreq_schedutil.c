@@ -19,8 +19,8 @@
 
 #include "sched.h"
 
-#define MIN_CAP_CPUMASK_FREQ_MARGIN 50
-#define OTHER_CPUMASK_FREQ_MARGIN 30
+#define MIN_CAP_CPUMASK_FREQ_MARGIN 0
+#define OTHER_CPUMASK_FREQ_MARGIN -10
 
 unsigned long cpu_util_freq(int cpu);
 unsigned long boosted_cpu_util(int cpu, unsigned long other_util);

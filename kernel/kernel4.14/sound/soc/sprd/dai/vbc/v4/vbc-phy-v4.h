@@ -577,6 +577,7 @@ enum KCTL_TYPE {
 	SND_KCTL_TYPE_IVSENCE_FUNC,
 	SND_KCTL_TYPE_EXT_INNER_IIS_MST_SEL,
 	SND_KCTL_TYPE_VBC_IIS_MASTER_WIDTH_SET,
+	SND_KCTL_TYPE_VOICE_MIX_UL,
 	SND_KCTL_TYPE_END,
 };
 
@@ -1166,6 +1167,12 @@ struct vbc_iis_mst_sel_para {
 	enum VBC_MASTER_TYPE_VAL mst_type;
 };
 
+/* SND_KCTL_TYPE_VOICE_MIX_UL */
+struct vbc_voice_pcm_play_t {
+	u16 mix_pcm_enable;
+	u16 mix_pcm_mode;
+};
+
 /**********************************************************************
  * define for SND_VBC_DSP_IO_SHAREMEM_GET / SND_VBC_DSP_IO_SHAREMEM_SET
  **********************************************************************/
@@ -1203,6 +1210,9 @@ enum {
 	VBC_DAI_ID_FM_CAPTURE_DSP,
 	VBC_DAI_ID_BT_SCO_CAPTURE_DSP,
 	VBC_DAI_ID_FM_DSP,
+	VBC_DAI_ID_VOICE_PCM_P,
+	VBC_DAI_ID_HFP,
+	VBC_DAI_ID_RECOGNISE_CAPTURE,
 	VBC_DAI_ID_MAX
 };
 
@@ -1220,6 +1230,29 @@ enum VBC_AD_ID_E {
 	VBC_AD3,
 	VBC_TDM,
 	VBC_AD_MAX,
+};
+
+#define VBC_DMIC_ADC_ID_SHIFT 8
+
+/* bit8 DMIC0_L, bit9 DMIC0_R, bit10 DMIC1_L, bit11 DMIC1_R */
+enum VBC_DMIC_SEL_E {
+	VBC_DMIC_NONE,
+	VBC_DMIC_0L,
+	VBC_DMIC_0R,
+	VBC_DMIC_0L_0R,
+	VBC_DMIC_1L,
+	VBC_DMIC_0L_1L,
+	VBC_DMIC_0R_1L,
+	VBC_DMIC_0L_0R_1L,
+	VBC_DMIC_1R,
+	VBC_DMIC_0L_1R,
+	VBC_DMIC_0R_1R,
+	VBC_DMIC_0L_0R_1R,
+	VBC_DMIC_1L_1R,
+	VBC_DMIC_0L_1L_1R,
+	VBC_DMIC_0R_1L_1R,
+	VBC_DMIC_0L_0R_1L_1R,
+	VBC_DMIC_MAX,
 };
 
 struct snd_pcm_stream_info {
@@ -1257,6 +1290,7 @@ struct snd_pcm_startup_paras {
 	struct sbcenc_param_t sbcenc_para;
 	struct ivsense_smartpa_t ivs_smtpa;
 	struct vbc_iis_mst_sel_para mst_sel_para[IIS_MST_SEL_ID_MAX];
+	u16 voice_record_type;
 };
 
 struct sprd_vbc_stream_startup_shutdown {
@@ -1345,6 +1379,9 @@ enum vbc_dump_position_e {
 	DUMP_POS_A1,
 	DUMP_POS_V2,
 	DUMP_POS_V1,
+	DUMP_POS_DAC0_TO_ADC1,
+	DUMP_POS_DAC0_TO_ADC2,
+	DUMP_POS_DAC0_TO_ADC3,
 	DUMP_POS_MAX,
 };
 
@@ -1401,15 +1438,19 @@ struct vbc_codec_priv {
 	 */
 	int need_aud_top_clk;
 	enum vbc_dump_position_e vbc_dump_position;
+	enum vbc_dump_position_e vbc_dump_position_cmd;
 	struct sbcenc_param_t sbcenc_para;
 	char firmware_path[AUD_FIRMWARE_PATHNAME_LEN_MAX];
 	struct mainmic_from_para mainmic_from[MAINMIC_USED_MAINMIC_TYPE_MAX];
 	struct vbc_iis_mst_sel_para mst_sel_para[IIS_MST_SEL_ID_MAX];
+	enum VBC_DMIC_SEL_E dmic_chn_sel;
 	/* to do */
 	atomic_t aux_iis_master_start;
 	int32_t ivs_smtpa_ctl_enable;
 	int32_t is_use_ivs_smtpa;
 	u32 iis_mst_width;
+	u16 voice_capture_type;
+	u16 voice_pcm_play_mode;
 };
 
 /********************************************************************
@@ -1435,6 +1476,7 @@ int ap_vbc_fifo_enable(int fifo_id, int chan, int enable);
 void ap_vbc_fifo_clear(int fifo_id);
 void ap_vbc_aud_dma_chn_en(int fifo_id, int vbc_chan, int enable);
 void vbc_phy_audply_set_src_mode(int en, int mode);
+void scene_dump_set(enum vbc_dump_position_e pos);
 
 /********************************************************************
  * dsp phy define interface
@@ -1480,6 +1522,7 @@ int dsp_vbc_iis_master_start(u32 enable);
 void dsp_vbc_iis_master_width_set(u32 iis_width);
 int dsp_vbc_mainmic_path_set(int type, int val);
 int dsp_ivsence_func(int enable, int iv_adc_id);
+int dsp_vbc_voice_pcm_play_set(bool enable, int mode);
 
 int vbc_dsp_func_startup(int scene_id, int stream,
 	struct sprd_vbc_stream_startup_shutdown *startup_info);

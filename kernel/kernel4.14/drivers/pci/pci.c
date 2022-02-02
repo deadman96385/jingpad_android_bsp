@@ -1095,8 +1095,24 @@ int pci_save_state(struct pci_dev *dev)
 {
 	int i;
 	/* XXX: 100% dword access ok here? */
-	for (i = 0; i < 16; i++)
+	for (i = 0; i < 16; i++) {
 		pci_read_config_dword(dev, i * 4, &dev->saved_config_space[i]);
+		/*
+		 * Temp: Once when restoring the registers, it was found that
+		 * the value of the saved config space is 0xffffffff. Add log
+		 * to check this problem.
+		 */
+		if (dev->saved_config_space[i] == 0xffffffff) {
+			dev_dbg(&dev->dev,
+				"save config space at offset %#x (was %#x)\n",
+				i, dev->saved_config_space[i]);
+			pci_read_config_dword(dev, i * 4,
+					      &dev->saved_config_space[i]);
+			dev_dbg(&dev->dev,
+				"config space at offset %#x (second read was %#x)\n",
+				i, dev->saved_config_space[i]);
+		}
+	}
 	dev->state_saved = true;
 
 	i = pci_save_pcie_state(dev);

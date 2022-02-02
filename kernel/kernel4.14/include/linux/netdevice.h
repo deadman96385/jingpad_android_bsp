@@ -194,6 +194,7 @@ struct net_device_stats {
 #include <linux/static_key.h>
 extern struct static_key rps_needed;
 extern struct static_key rfs_needed;
+extern int sysctl_rps_force_map;
 #endif
 
 struct neighbour;

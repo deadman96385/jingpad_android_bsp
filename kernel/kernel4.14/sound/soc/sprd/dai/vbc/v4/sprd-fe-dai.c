@@ -65,6 +65,8 @@ static struct sprd_pcm_dma_params pcm_dsp_fm_cap_mcdt;
 static struct sprd_pcm_dma_params pcm_dsp_btsco_cap_mcdt;
 static struct sprd_pcm_dma_params vbc_pcm_dump;
 static struct sprd_pcm_dma_params vbc_btsco_cap_ap;
+static struct sprd_pcm_dma_params vbc_pcm_recognise_capture_mcdt;
+static struct sprd_pcm_dma_params pcm_voice_play_mcdt;
 
 static const char *stream_to_str(int stream)
 {
@@ -91,6 +93,8 @@ static char *fe_dai_id_str[FE_DAI_ID_MAX] = {
 	[FE_DAI_ID_FM_DSP] = TO_STRING(FE_DAI_ID_FM_DSP),
 	[FE_DAI_ID_DUMP] = TO_STRING(FE_DAI_ID_DUMP),
 	[FE_DAI_ID_BTSCO_CAP_AP] = TO_STRING(FE_DAI_ID_BTSCO_CAP_AP),
+	[FE_DAI_ID_RECOGNISE_CAPTURE] = TO_STRING(FE_DAI_ID_RECOGNISE_CAPTURE),
+	[FE_DAI_ID_VOICE_PCM_P] = TO_STRING(FE_DAI_ID_VOICE_PCM_P),
 };
 
 static const char *fe_dai_id_to_str(int fe_dai_id)
@@ -148,6 +152,12 @@ static void mcdt_dma_deinit(struct snd_soc_dai *fe_dai, int stream)
 		break;
 	case FE_DAI_ID_A2DP_PCM:
 		mcdt_dac_dma_disable(MCDT_CHAN_A2DP_PCM);
+		break;
+	case FE_DAI_ID_RECOGNISE_CAPTURE:
+		mcdt_adc_dma_disable(MCDT_CHAN_RECOGNISE_CAPTURE);
+		break;
+	case FE_DAI_ID_VOICE_PCM_P:
+		mcdt_dac_dma_disable(MCDT_CHAN_VOICE_PCM_P);
 		break;
 	}
 }
@@ -217,6 +227,16 @@ static int mcdt_dma_config_init(struct snd_soc_dai *fe_dai, int stream)
 		uid = mcdt_dac_dma_enable(MCDT_CHAN_A2DP_PCM,
 			MCDT_EMPTY_WMK_A2DP_PCM);
 		vbc_pcm_a2dp_p.channels[0] = uid;
+		break;
+	case FE_DAI_ID_RECOGNISE_CAPTURE:
+		uid = mcdt_adc_dma_enable(MCDT_CHAN_RECOGNISE_CAPTURE,
+			MCDT_FULL_WMK_RECOGNISE_CAPTURE);
+		vbc_pcm_recognise_capture_mcdt.channels[0] = uid;
+		break;
+	case FE_DAI_ID_VOICE_PCM_P:
+		uid = mcdt_dac_dma_enable(MCDT_CHAN_VOICE_PCM_P,
+			MCDT_EMPTY_WMK_VOICE_PCM_P);
+		pcm_voice_play_mcdt.channels[0] = uid;
 		break;
 	}
 
@@ -561,6 +581,36 @@ static void sprd_dma_config(struct snd_pcm_substream *substream,
 		vbc_btsco_cap_ap.used_dma_channel_name[1] =
 			"normal_c_r";
 		break;
+	case FE_DAI_ID_RECOGNISE_CAPTURE:
+		/*recognise capture*/
+		vbc_pcm_recognise_capture_mcdt.name =
+			"VBC PCM recognise C With MCDT";
+		vbc_pcm_recognise_capture_mcdt.irq_type = SPRD_DMA_BLK_INT;
+		vbc_pcm_recognise_capture_mcdt.desc.datawidth =
+			DMA_SLAVE_BUSWIDTH_4_BYTES;
+		vbc_pcm_recognise_capture_mcdt.desc.fragmens_len =
+			MCDT_RECOGNISE_C_FRAGMENT;
+		vbc_pcm_recognise_capture_mcdt.use_mcdt = 1;
+		/* dma src address */
+		vbc_pcm_recognise_capture_mcdt.dev_paddr[0] =
+			mcdt_adc_dma_phy_addr(MCDT_CHAN_RECOGNISE_CAPTURE);
+		vbc_pcm_recognise_capture_mcdt.used_dma_channel_name[0] =
+			"recognise_c";
+		break;
+	case FE_DAI_ID_VOICE_PCM_P:
+		/*voice pcm play*/
+		pcm_voice_play_mcdt.name = "PCM voice play With MCDT";
+		pcm_voice_play_mcdt.irq_type = SPRD_DMA_BLK_INT;
+		pcm_voice_play_mcdt.desc.datawidth =
+			DMA_SLAVE_BUSWIDTH_4_BYTES;
+		pcm_voice_play_mcdt.desc.fragmens_len =
+			MCDT_VOICE_PCM_P_FRAGMENT;
+		pcm_voice_play_mcdt.use_mcdt = 1;
+		pcm_voice_play_mcdt.dev_paddr[0] =
+			mcdt_dac_dma_phy_addr(MCDT_CHAN_VOICE_PCM_P);
+		pcm_voice_play_mcdt.used_dma_channel_name[0] =
+			"voice_pcm_p";
+		break;
 	}
 }
 
@@ -621,6 +671,12 @@ struct sprd_pcm_dma_params *get_dma_data_params(struct snd_soc_dai *fe_dai,
 		break;
 	case FE_DAI_ID_BTSCO_CAP_AP:
 		dma_data = &vbc_btsco_cap_ap;
+		break;
+	case FE_DAI_ID_RECOGNISE_CAPTURE:
+		dma_data = &vbc_pcm_recognise_capture_mcdt;
+		break;
+	case FE_DAI_ID_VOICE_PCM_P:
+		dma_data = &pcm_voice_play_mcdt;
 		break;
 	}
 
@@ -1126,7 +1182,25 @@ static struct snd_soc_dai_driver sprd_fe_dais[FE_DAI_ID_MAX] = {
 		},
 		.ops = &sprd_fe_dai_ops,
 	},
-	/* 18: FE_DAI_ID_CODEC_TEST */
+	/*18: FE_DAI_ID_VOICE_PCM_P*/
+	{
+		.id = FE_DAI_ID_VOICE_PCM_P,
+		.name = TO_STRING(FE_DAI_ID_VOICE_PCM_P),
+		.probe = fe_dai_probe,
+		.playback = {
+			.stream_name = "FE_DAI_VOICE_PCM_P",
+			.aif_name = "FE_IF_VOICE_PCM_P",
+			.rates = SNDRV_PCM_RATE_CONTINUOUS,
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+						SNDRV_PCM_FMTBIT_S24_LE),
+			.channels_min = 1,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 192000,
+		},
+		.ops = &sprd_fe_dai_ops,
+	},
+	/* 19: FE_DAI_ID_CODEC_TEST */
 	{
 		.id = FE_DAI_ID_CODEC_TEST,
 		.name = TO_STRING(FE_DAI_ID_CODEC_TEST),
@@ -1150,6 +1224,25 @@ static struct snd_soc_dai_driver sprd_fe_dais[FE_DAI_ID_MAX] = {
 			.rate_min = 8000,
 			.rate_max = 192000,
 		},
+	},
+
+	/* 19: FE_DAI_ID_RECOGNISE_CAPTURE */
+	{
+		.id = FE_DAI_ID_RECOGNISE_CAPTURE,
+		.name = TO_STRING(FE_DAI_ID_RECOGNISE_CAPTURE),
+		.probe = fe_dai_probe,
+		.capture = {
+			.stream_name = "FE_DAI_RECOGNISE_CAP_C",
+			.aif_name = "FE_IF_RECOGNISE_CAP_C",
+			.rates = SNDRV_PCM_RATE_CONTINUOUS,
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+						SNDRV_PCM_FMTBIT_S24_LE),
+			.channels_min = 1,
+			.channels_max = 2,
+			.rate_min = 8000,
+			.rate_max = 192000,
+		},
+		.ops = &sprd_fe_dai_ops,
 	},
 };
 static int sprd_fe_dai_dev_probe(struct platform_device *pdev)

@@ -1068,6 +1068,7 @@ free_card:
 static void mmc_sd_remove(struct mmc_host *host)
 {
 	mmc_remove_card(host->card);
+	msleep(1);
 	host->card = NULL;
 }
 

@@ -972,6 +972,8 @@ static void musb_ep_program(struct musb *musb, u8 epnum,
 
 		/* protocol/endpoint/interval/NAKlimit */
 		if (epnum) {
+			int	interval;
+
 			musb_writeb(epio, MUSB_TXTYPE, qh->type_reg);
 			if (musb->double_buffer_not_ok) {
 				musb_writew(epio, MUSB_TXMAXP,
@@ -986,7 +988,10 @@ static void musb_ep_program(struct musb *musb, u8 epnum,
 						qh->maxpacket |
 						((qh->hb_mult - 1) << 11));
 			}
-			musb_writeb(epio, MUSB_TXINTERVAL, qh->intv_reg);
+			interval = musb_readb(epio, MUSB_TXINTERVAL);
+			if (interval != qh->intv_reg)
+				musb_writeb(epio, MUSB_TXINTERVAL,
+						qh->intv_reg);
 		} else {
 			musb_writeb(epio, MUSB_NAKLIMIT0, qh->intv_reg);
 			if (musb->is_multipoint)
@@ -1643,10 +1648,7 @@ done:
 	 * We need to map sg if the transfer_buffer is
 	 * NULL.
 	 */
-	if (!urb->transfer_buffer)
-		qh->use_sg = true;
-
-	if (qh->use_sg) {
+	if (!urb->transfer_buffer) {
 		/* sg_miter_start is already done in musb_ep_program */
 		if (!sg_miter_next(&qh->sg_miter)) {
 			dev_err(musb->controller, "error: sg list empty\n");
@@ -1654,9 +1656,8 @@ done:
 			status = -EINVAL;
 			goto done;
 		}
-		urb->transfer_buffer = qh->sg_miter.addr;
 		length = min_t(u32, length, qh->sg_miter.length);
-		musb_write_fifo(hw_ep, length, urb->transfer_buffer);
+		musb_write_fifo(hw_ep, length, qh->sg_miter.addr);
 		qh->sg_miter.consumed = length;
 		sg_miter_stop(&qh->sg_miter);
 	} else {
@@ -1664,11 +1665,6 @@ done:
 	}
 
 	qh->segsize = length;
-
-	if (qh->use_sg) {
-		if (offset + length >= urb->transfer_buffer_length)
-			qh->use_sg = false;
-	}
 
 	musb_ep_select(mbase, epnum);
 	musb_writew(epio, MUSB_TXCSR,
@@ -2187,8 +2183,10 @@ finish:
 	urb->actual_length += xfer_len;
 	qh->offset += xfer_len;
 	if (done) {
-		if (qh->use_sg)
+		if (qh->use_sg) {
 			qh->use_sg = false;
+			urb->transfer_buffer = NULL;
+		}
 
 		if (urb->status == -EINPROGRESS)
 			urb->status = status;
@@ -2246,10 +2244,6 @@ static int musb_schedule(
 			continue;
 
 		if (hw_ep == musb->bulk_ep)
-			continue;
-
-		if (qh->type == USB_ENDPOINT_XFER_INT
-			&& epnum < 10)
 			continue;
 
 		if (epnum < 2 + epno)
@@ -2350,6 +2344,9 @@ success:
 		list_add_tail(&qh->ring, head);
 		qh->mux = 1;
 	}
+	if (qh->type == USB_ENDPOINT_XFER_CONTROL)
+		mdelay(2);
+
 	qh->hw_ep = hw_ep;
 	qh->hep->hcpriv = qh;
 	if (idle)
@@ -2518,6 +2515,8 @@ static void musb_offload_enqueue(struct usb_hcd *hcd, struct urb *urb)
 	u16	val;
 	unsigned	int type_reg, interval;
 	int dir;
+
+	memset(&qh, 0, sizeof(struct musb_qh));
 
 	qh.maxpacket = usb_endpoint_maxp(epd);
 	qh.type = usb_endpoint_type(epd);

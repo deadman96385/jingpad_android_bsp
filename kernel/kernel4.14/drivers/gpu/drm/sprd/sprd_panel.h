@@ -30,8 +30,8 @@ enum {
 	CMD_OLED_BRIGHTNESS,
 	CMD_OLED_REG_LOCK,
 	CMD_OLED_REG_UNLOCK,
-	CMD_CODE_RESERVED0,
-	CMD_CODE_RESERVED1,
+	CMD_CODE_SLEEP_IN1,
+	CMD_CODE_SLEEP_IN2,
 	CMD_CODE_RESERVED2,
 	CMD_CODE_RESERVED3,
 	CMD_CODE_RESERVED4,
@@ -78,6 +78,13 @@ struct panel_info {
 	struct gpio_desc *avdd_gpio;
 	struct gpio_desc *avee_gpio;
 	struct gpio_desc *reset_gpio;
+	struct gpio_desc *lcd1v8_gpio;
+	struct gpio_desc *fpga1v8_gpio;
+	struct gpio_desc *fpga1v2_gpio;
+#ifdef 	CONFIG_GOWIN_FPGA
+	struct gpio_desc *fpgarst_gpio;
+#endif
+	//struct gpio_desc *lcdtp3v3_gpio;
 	struct reset_sequence rst_on_seq;
 	struct reset_sequence rst_off_seq;
 	const void *cmds[CMD_CODE_MAX];
@@ -112,7 +119,7 @@ struct sprd_panel {
 struct sprd_oled {
 	struct backlight_device *bdev;
 	struct sprd_panel *panel;
-	struct dsi_cmd_desc *cmds[255];
+	struct dsi_cmd_desc *cmds[256];
 	int cmd_len;
 	int cmds_total;
 	int max_level;

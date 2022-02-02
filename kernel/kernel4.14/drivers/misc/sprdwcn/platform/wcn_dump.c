@@ -1143,10 +1143,14 @@ int mdbg_dump_mem(void)
 	int ret;
 #ifdef CONFIG_WCN_PCIE
 	int i;
+	struct edma_info *edma = edma_info();
 
+	if (test_bit(31, &edma->cur_chn_status))
+		goto pcie_next;
 	edma_dump_glb_reg();
 	for (i = 0; i < 16; i++)
 		edma_dump_chn_reg(i);
+pcie_next:
 #endif
 	/* DUMP ARM REG */
 #ifndef CONFIG_UMW2653

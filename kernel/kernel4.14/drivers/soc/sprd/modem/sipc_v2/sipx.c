@@ -1778,7 +1778,7 @@ int sipx_chan_create(u8 dst, u8 channel)
 	struct sipx_mgr *sipx = NULL;
 	struct sipx_channel *sipx_chan = NULL;
 	int ret = 0;
-	struct sched_param param = {.sched_priority = 11};
+	struct sched_param param = {.sched_priority = 88};
 
 	if (dst >= SIPC_ID_NR) {
 		SIPX_ERR("Input Param Error: dst = %d\n", dst);

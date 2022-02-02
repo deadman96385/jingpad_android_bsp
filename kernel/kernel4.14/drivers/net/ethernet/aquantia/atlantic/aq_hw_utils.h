@@ -23,17 +23,11 @@
 
 #define AQ_HW_SLEEP(_US_) mdelay(_US_)
 
-#define AQ_HW_WAIT_FOR(_B_, _US_, _N_) \
-do { \
-	unsigned int AQ_HW_WAIT_FOR_i; \
-	for (AQ_HW_WAIT_FOR_i = _N_; (!(_B_)) && (AQ_HW_WAIT_FOR_i);\
-	--AQ_HW_WAIT_FOR_i) {\
-		udelay(_US_); \
-	} \
-	if (!AQ_HW_WAIT_FOR_i) {\
-		err = -ETIME; \
-	} \
-} while (0)
+/* These print helpers are for modules where aq_nic is not
+ * accessible directly. In all other cases use aq_nic_print
+ */
+#define aq_pr_err(...) pr_err(AQ_CFG_DRV_NAME ": " __VA_ARGS__)
+#define aq_pr_trace(...) pr_info(AQ_CFG_DRV_NAME ": " __VA_ARGS__)
 
 struct aq_hw_s;
 

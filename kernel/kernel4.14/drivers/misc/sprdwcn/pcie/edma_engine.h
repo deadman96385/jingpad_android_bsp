@@ -290,7 +290,9 @@ struct edma_chn_reg {
 enum ERROR_CODE {
 	OK = 0,
 	ERROR = -1,
-	TIMEOUT = -2,
+	ERROR_PUSH_NUM = -2,
+	TIMEOUT = -3,
+
 };
 
 struct event_t {
@@ -381,6 +383,7 @@ struct edma_info {
 	struct wakeup_source edma_push_ws;
 	struct wakeup_source edma_pop_ws;
 	struct timer_list edma_tx_timer;
+	struct timer_list edma_wf_tx_timer;
 	unsigned long cur_chn_status;
 	struct mutex mpool_lock;
 	spinlock_t tasklet_lock;

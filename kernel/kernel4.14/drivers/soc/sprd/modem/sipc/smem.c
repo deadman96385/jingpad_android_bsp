@@ -261,9 +261,16 @@ static void *shmem_ram_vmap(phys_addr_t start, size_t size, int noncached)
 		addr = page_start + i * PAGE_SIZE;
 		pages[i] = pfn_to_page(addr >> PAGE_SHIFT);
 	}
-	vaddr = vm_map_ram(pages, page_count, -1, prot) + offset_in_page(start);
+	vaddr = vm_map_ram(pages, page_count, -1, prot);
 	kfree(pages);
 
+	if (!vaddr) {
+		pr_err("smem: vm map failed.\n");
+		kfree(map);
+		return NULL;
+	}
+
+	vaddr += offset_in_page(start);
 	map->count = page_count;
 	map->mem = vaddr;
 	map->task = current;

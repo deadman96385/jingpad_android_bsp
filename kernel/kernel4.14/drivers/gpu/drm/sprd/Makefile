@@ -8,7 +8,8 @@ obj-y := sprd_drm.o \
 	sprd_dpu.o \
 	sprd_dsi.o \
 	sprd_dphy.o \
-	sprd_panel.o
+	sprd_panel.o \
+	sprd_spi_md6000.o
 
 obj-y += dummy/dummy_crtc.o
 obj-y += dummy/dummy_connector.o
@@ -16,7 +17,6 @@ obj-y += dummy/dummy_connector.o
 obj-y += disp_lib.o sprd_corner.o
 
 obj-y += sprd_bl.o
-obj-y += cabc/
 
 obj-y += dpu/
 obj-y += dsi/

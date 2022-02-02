@@ -63,6 +63,7 @@ static const char * const sfp_netdev[] = {
 				    "seth",
 				    "sipa_usb",
 				    "sipa_eth",
+				    "vpcie",
 				    NULL
 				  };
 
@@ -71,7 +72,14 @@ static const char * const ipa_netdev[IPA_TERM_MAX] = {
 				    [1] = "usb",
 				    [2] = "wlan",
 				    [6] = "sipa_eth",
+				    [16] = "vpcie",
 				  };
+
+#define IPA_BAN_MAX 4
+static const char * const ipa_banned_netdev[IPA_BAN_MAX] = {
+				    "wlan", "bt-pan",
+				  };
+
 int sfp_rand(void)
 {
 	int rand;
@@ -160,26 +168,31 @@ int sfp_mgr_fwd_entry_delete(const struct nf_conntrack_tuple *tuple)
 		sfp_sync_with_nfl_ct(tuple);
 		sfp_ct = sfp_ct_tuplehash_to_ctrack(tuple_hash);
 
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-		spin_lock_bh(&fwd_tbl.sp_lock);
-		sfp_ipa_fwd_delete(
-			&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL],
-			sfp_ct->hash[IP_CT_DIR_ORIGINAL]);
-		sfp_ipa_fwd_delete(
-			&sfp_ct->tuplehash[IP_CT_DIR_REPLY],
-			sfp_ct->hash[IP_CT_DIR_REPLY]);
-		spin_unlock_bh(&fwd_tbl.sp_lock);
-#else
-		delete_in_sfp_fwd_table(&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL]);
-		delete_in_sfp_fwd_table(&sfp_ct->tuplehash[IP_CT_DIR_REPLY]);
-#endif
+		if (!get_sfp_tether_scheme()) {
+			spin_lock_bh(&fwd_tbl.sp_lock);
+			sfp_ipa_fwd_delete(
+				&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL],
+				sfp_ct->hash[IP_CT_DIR_ORIGINAL]);
+			sfp_ipa_fwd_delete(
+				&sfp_ct->tuplehash[IP_CT_DIR_REPLY],
+				sfp_ct->hash[IP_CT_DIR_REPLY]);
+			spin_unlock_bh(&fwd_tbl.sp_lock);
+			spin_lock_bh(&mgr_lock);
+		} else {
+			spin_lock_bh(&mgr_lock);
+			delete_in_sfp_fwd_table(
+				&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL]);
+			delete_in_sfp_fwd_table(
+				&sfp_ct->tuplehash[IP_CT_DIR_REPLY]);
+		}
 		hlist_del_rcu(&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL].entry_lst);
-		call_rcu(&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL].rcu,
+		call_rcu_bh(&sfp_ct->tuplehash[IP_CT_DIR_ORIGINAL].rcu,
 			 sfp_mgr_fwd_entry_free);
 
 		hlist_del_rcu(&sfp_ct->tuplehash[IP_CT_DIR_REPLY].entry_lst);
-		call_rcu(&sfp_ct->tuplehash[IP_CT_DIR_REPLY].rcu,
+		call_rcu_bh(&sfp_ct->tuplehash[IP_CT_DIR_REPLY].rcu,
 			 sfp_mgr_fwd_entry_free);
+		spin_unlock_bh(&mgr_lock);
 		break;
 	}
 	rcu_read_unlock_bh();
@@ -200,39 +213,41 @@ static void sfp_mgr_fwd_death_by_timeout(unsigned long ul_fwd_entry_conn)
 
 	FP_PRT_DBG(FP_PRT_DEBUG, "SFP:<<check death by timeout(%p)>>.\n",
 		   sfp_entry);
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-	spin_lock_bh(&fwd_tbl.sp_lock);
-	if (!sfp_ipa_tbl_timeout(sfp_entry)) {
-		spin_unlock_bh(&fwd_tbl.sp_lock);
-		return;
-	}
 
-	FP_PRT_DBG(FP_PRT_DEBUG, "time out: delete ipa entry %p\n", sfp_entry);
-	sfp_ipa_fwd_delete(&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL],
-			   sfp_entry->hash[IP_CT_DIR_ORIGINAL]);
-	sfp_ipa_fwd_delete(&sfp_entry->tuplehash[IP_CT_DIR_REPLY],
-			   sfp_entry->hash[IP_CT_DIR_REPLY]);
-	spin_unlock_bh(&fwd_tbl.sp_lock);
-	spin_lock_bh(&mgr_lock);
-#else
-	spin_lock_bh(&mgr_lock);
-	delete_in_sfp_fwd_table(&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL]);
-	delete_in_sfp_fwd_table(&sfp_entry->tuplehash[IP_CT_DIR_REPLY]);
-#endif
+	if (!get_sfp_tether_scheme()) {
+		spin_lock_bh(&fwd_tbl.sp_lock);
+		if (!sfp_ipa_tbl_timeout(sfp_entry)) {
+			spin_unlock_bh(&fwd_tbl.sp_lock);
+			return;
+		}
+
+		FP_PRT_DBG(FP_PRT_DEBUG, "time out: delete ipa entry %p\n",
+			   sfp_entry);
+		sfp_ipa_fwd_delete(&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL],
+				   sfp_entry->hash[IP_CT_DIR_ORIGINAL]);
+		sfp_ipa_fwd_delete(&sfp_entry->tuplehash[IP_CT_DIR_REPLY],
+				   sfp_entry->hash[IP_CT_DIR_REPLY]);
+		spin_unlock_bh(&fwd_tbl.sp_lock);
+		spin_lock_bh(&mgr_lock);
+	} else {
+		spin_lock_bh(&mgr_lock);
+		delete_in_sfp_fwd_table(
+			&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL]);
+		delete_in_sfp_fwd_table(
+			&sfp_entry->tuplehash[IP_CT_DIR_REPLY]);
+	}
 
 	FP_PRT_TRUPLE_INFO(FP_PRT_DEBUG,
 			   &sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL].tuple);
 	FP_PRT_TRUPLE_INFO(FP_PRT_DEBUG,
 			   &sfp_entry->tuplehash[IP_CT_DIR_REPLY].tuple);
 
-	rcu_read_lock_bh();
 	hlist_del_rcu(&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL].entry_lst);
-	call_rcu(&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL].rcu,
+	call_rcu_bh(&sfp_entry->tuplehash[IP_CT_DIR_ORIGINAL].rcu,
 		 sfp_mgr_fwd_entry_free);
 	hlist_del_rcu(&sfp_entry->tuplehash[IP_CT_DIR_REPLY].entry_lst);
-	call_rcu(&sfp_entry->tuplehash[IP_CT_DIR_REPLY].rcu,
+	call_rcu_bh(&sfp_entry->tuplehash[IP_CT_DIR_REPLY].rcu,
 		 sfp_mgr_fwd_entry_free);
-	rcu_read_unlock_bh();
 	spin_unlock_bh(&mgr_lock);
 }
 
@@ -614,11 +629,10 @@ static int create_mgr_fwd_entries_in_forward(struct sk_buff *skb,
 
 	if (l4proto == IP_L4_PROTO_UDP ||
 	    l4proto == IP_L4_PROTO_ICMP || l4proto == IP_L4_PROTO_ICMP6) {
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-		sfp_ipa_hash_add(new_sfp_ct);
-#else
-		sfp_fwd_hash_add(new_sfp_ct);
-#endif
+		if (!get_sfp_tether_scheme())
+			sfp_ipa_hash_add(new_sfp_ct);
+		else
+			sfp_fwd_hash_add(new_sfp_ct);
 	}
 
 	if (l4proto == IP_L4_PROTO_TCP) {
@@ -644,6 +658,7 @@ int get_hw_iface_by_dev(struct net_device *dev)
 		if (ipa_netdev[i] &&
 		    strncasecmp(dev->name, ipa_netdev[i],
 				strlen(ipa_netdev[i])) == 0) {
+			dev_put(dev);
 			return i;
 		}
 	}
@@ -652,9 +667,41 @@ int get_hw_iface_by_dev(struct net_device *dev)
 	return 0;
 }
 
+bool is_banned_ipa_netdev(struct net_device *dev)
+{
+	int i;
+
+	dev_hold(dev);
+	for (i = 0; i < IPA_BAN_MAX; i++) {
+		if (ipa_banned_netdev[i] &&
+		    strncasecmp(dev->name, ipa_banned_netdev[i],
+				strlen(ipa_banned_netdev[i])) == 0) {
+			dev_put(dev);
+			return true;
+		}
+	}
+	dev_put(dev);
+
+	return false;
+}
+
 static bool sfp_clatd_dev_check(struct net_device *dev)
 {
 	if (strncasecmp(dev->name, "v4-", 3) == 0)
+		return true;
+
+	return false;
+}
+
+static bool sfp_ppp_tun_dev_check(struct net_device *dev)
+{
+	if (strstr(dev->name, "ppp"))
+		return true;
+
+	if (strstr(dev->name, "tun"))
+		return true;
+
+	if (strstr(dev->name, "p2p"))
 		return true;
 
 	return false;
@@ -694,6 +741,19 @@ int sfp_filter_mgr_fwd_create_entries(u8 pf, struct sk_buff *skb)
 	if (l4proto == IPPROTO_TCP && sfp_tcp_flag_chk(ct))
 		return 0;
 
+	net = nf_ct_net(ct);
+	rt = skb_rtable(skb);
+
+	/* wifi/bt-pan does not support IPA due to their hardware drawback */
+	if (!get_sfp_tether_scheme()) {
+		if (is_banned_ipa_netdev(skb->dev) ||
+		    is_banned_ipa_netdev(rt->dst.dev)) {
+			FP_PRT_DBG(FP_PRT_DEBUG,
+				   "dev filted, wont create sfp\n");
+			return 0;
+		}
+	}
+
 	if (dir == IP_CT_DIR_ORIGINAL) {
 		if (l4proto == IPPROTO_TCP &&
 		    test_bit(IPS_ASSURED_BIT, &ct->status))
@@ -702,9 +762,6 @@ int sfp_filter_mgr_fwd_create_entries(u8 pf, struct sk_buff *skb)
 		if (l4proto != IPPROTO_UDP)
 			return 0;
 	}
-
-	net = nf_ct_net(ct);
-	rt = skb_rtable(skb);
 
 	if (!net || !rt) {
 		FP_PRT_DBG(FP_PRT_DEBUG,
@@ -715,6 +772,17 @@ int sfp_filter_mgr_fwd_create_entries(u8 pf, struct sk_buff *skb)
 	if (sfp_clatd_dev_check(rt->dst.dev)) {
 		FP_PRT_DBG(FP_PRT_DEBUG,
 			   "clatd check failed, wont create sfp\n");
+		return 0;
+	}
+
+	/* if forward ppp or tun related pkt directly,
+	 * we may fail to compress them into a certain
+	 * format.
+	 */
+	if (sfp_ppp_tun_dev_check(skb->dev) ||
+	    sfp_ppp_tun_dev_check(rt->dst.dev)) {
+		FP_PRT_DBG(FP_PRT_DEBUG,
+			   "ppp/tun check failed, wont create sfp\n");
 		return 0;
 	}
 
@@ -886,11 +954,10 @@ int sfp_mgr_fwd_ct_tcp_sure(struct nf_conn *ct)
 				FP_PRT_TRUPLE_INFO(FP_PRT_DEBUG,
 						   &target_hash->tuple);
 				sfp_ct->tcp_sure_flag = 1;
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-				sfp_ipa_hash_add(sfp_ct);
-#else
-				sfp_fwd_hash_add(sfp_ct);
-#endif
+				if (!get_sfp_tether_scheme())
+					sfp_ipa_hash_add(sfp_ct);
+				else
+					sfp_fwd_hash_add(sfp_ct);
 			}
 			break;
 		}
@@ -958,7 +1025,7 @@ void sfp_clear_fwd_table(int ifindex)
 			    tuple_hash->ssfp_fwd_tuple.out_ifindex == ifindex) {
 				hlist_del_rcu(&tuple_hash->entry_lst);
 				delete_in_sfp_fwd_table(tuple_hash);
-				call_rcu(&tuple_hash->rcu,
+				call_rcu_bh(&tuple_hash->rcu,
 					 sfp_mgr_fwd_entry_free);
 			}
 		}
@@ -980,7 +1047,7 @@ void clear_sfp_mgr_table(void)
 					 &mgr_fwd_entries[i],
 					 entry_lst) {
 			hlist_del_rcu(&tuple_hash->entry_lst);
-			call_rcu(&tuple_hash->rcu, sfp_mgr_fwd_entry_free);
+			call_rcu_bh(&tuple_hash->rcu, sfp_mgr_fwd_entry_free);
 		}
 	}
 	rcu_read_unlock_bh();
@@ -1029,12 +1096,11 @@ void sfp_mgr_proc_disable(void)
 	unregister_netdevice_notifier(&sfp_if_netdev_notifier_blk);
 	FP_PRT_DBG(FP_PRT_DEBUG, "Network Fast Processing Disabled\n");
 
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-	sfp_ipa_fwd_clear();
-#else
-	/*Clear fwd table*/
-	clear_sfp_fwd_table();
-#endif
+	if (!get_sfp_tether_scheme())
+		sfp_ipa_fwd_clear();
+	else
+		/*Clear fwd table*/
+		clear_sfp_fwd_table();
 	/*Clear mgr table*/
 	clear_sfp_mgr_table();
 }
@@ -1048,11 +1114,10 @@ void sfp_entries_hash_init(void)
 	FP_PRT_DBG(FP_PRT_DEBUG, "initializing sfp entries hash table.\n");
 	for (i = 0; i < SFP_ENTRIES_HASH_SIZE; i++) {
 		INIT_HLIST_HEAD(&mgr_fwd_entries[i]);
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-		INIT_HLIST_HEAD(&fwd_tbl.sfp_fwd_entries[i]);
-#else
-		INIT_HLIST_HEAD(&sfp_fwd_entries[i]);
-#endif
+		if (!get_sfp_tether_scheme())
+			INIT_HLIST_HEAD(&fwd_tbl.sfp_fwd_entries[i]);
+		else
+			INIT_HLIST_HEAD(&sfp_fwd_entries[i]);
 	}
 }
 
@@ -1067,7 +1132,7 @@ void sfp_ipa_dev_init(void)
 {
 	if (CHK_FWD_ENTRY_SIZE || CHK_HASH_TBL_SIZE) {
 		FP_PRT_DBG(FP_PRT_ERR,
-			   "warning: ipa entry align error %lu %lu!\n",
+			   "warning: ipa entry align error %zu %zu!\n",
 			   sizeof(struct fwd_entry),
 			   sizeof(struct hd_hash_tbl));
 	}
@@ -1084,12 +1149,13 @@ int sfp_mgr_init(void)
 {
 	spin_lock_init(&mgr_lock);
 	sfp_entries_hash_init();
-#ifdef CONFIG_SPRD_IPA_SUPPORT
-	sfp_ipa_dev_init();
-	sfp_ipa_init();
-#endif
+	if (!get_sfp_tether_scheme()) {
+		sfp_ipa_dev_init();
+		sfp_ipa_init();
+	}
 	sfp_proc_create();
-	sfp_mgr_disable();
+	if (sysctl_net_sfp_enable == 1)
+		sfp_mgr_proc_enable();
 	return 0;
 }
 

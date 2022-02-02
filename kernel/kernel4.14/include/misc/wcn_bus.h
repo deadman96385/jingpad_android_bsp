@@ -1,13 +1,21 @@
 #ifndef __WCN_BUS_H__
 #define __WCN_BUS_H__
 
-#define HW_TYPE_SDIO 0
-#define HW_TYPE_PCIE 1
-#define HW_TYPE_SIPC 2
 #define CHN_MAX_NUM 32
-#define PUB_HEAD_RSV 4
 
-extern struct atomic_notifier_head wcn_reset_notifier_list;
+#ifdef CONFIG_SDIOHAL
+#define PUB_HEAD_RSV 4
+#else
+#define PUB_HEAD_RSV 0
+#endif
+
+enum wcn_hard_intf_type {
+	HW_TYPE_SDIO,
+	HW_TYPE_PCIE,
+	HW_TYPE_SIPC,
+	HW_TYPE_USB,
+	HW_TYPE_INVALIED
+};
 
 enum wcn_bus_state {
 	WCN_BUS_DOWN,	/* Not ready for frame transfers */
@@ -39,7 +47,7 @@ struct mbuf_t {
 struct mchn_ops_t {
 	int channel;
 	/* hardware interface type */
-	int hif_type;
+	enum wcn_hard_intf_type hif_type;
 	/* inout=1 tx side, inout=0 rx side */
 	int inout;
 	/* set callback pop_link/push_link frequency */
@@ -103,6 +111,7 @@ struct sprdwcn_bus_ops {
 	int (*chn_init)(struct mchn_ops_t *ops);
 	int (*chn_deinit)(struct mchn_ops_t *ops);
 
+	enum wcn_hard_intf_type (*get_hwintf_type)(void);
 	int (*get_bus_status)(void);
 
 	/*
@@ -529,4 +538,14 @@ void wcn_bus_deinit(void)
 	module_bus_deinit();
 }
 
+static inline
+enum wcn_hard_intf_type sprdwcn_bus_get_hwintf_type(void)
+{
+	struct sprdwcn_bus_ops *bus_ops = get_wcn_bus_ops();
+
+	if (!bus_ops || !bus_ops->get_hwintf_type)
+		return HW_TYPE_INVALIED;
+
+	return bus_ops->get_hwintf_type();
+}
 #endif

@@ -311,10 +311,7 @@ void ion_heap_init_shrinker(struct ion_heap *heap)
 	heap->shrinker.count_objects = ion_heap_shrink_count;
 	heap->shrinker.scan_objects = ion_heap_shrink_scan;
 	heap->shrinker.seeks = DEFAULT_SEEKS;
-#ifdef CONFIG_ARM64
-	heap->shrinker.batch = 1024 * 16;
-#else
-	heap->shrinker.batch = 0;
-#endif
+	heap->shrinker.batch = 1024 * heap->batchsize;
+	pr_info("%s: batchsize %ld\n", __func__, heap->shrinker.batch);
 	register_shrinker(&heap->shrinker);
 }

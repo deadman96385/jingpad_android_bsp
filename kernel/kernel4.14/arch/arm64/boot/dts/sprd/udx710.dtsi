@@ -412,6 +412,11 @@
 		};
 	};
 
+	autotest: autotest {
+		compatible = "sprd,autotest";
+		sprd,pinctrl = <&pin_controller>;
+	};
+
 	gic: interrupt-controller@12000000 {
 		compatible = "arm,gic-v3";
 		#interrupt-cells = <3>;
@@ -528,6 +533,10 @@
 					};
 				};
 			};
+		};
+
+		tmc_group {
+			compatible = "arm,coresight-tmc_group", "arm,tmc_group";
 		};
 
 		etb@78003000 {
