@@ -24,6 +24,7 @@
 extern void dmc_print_str(const char *string);
 #endif
 #define SECURE_HEADER_OFF 512
+extern void ddrc_print_debug(const char *string);
 
 
 #ifdef CONFIG_DUAL_SPL
@@ -57,7 +58,7 @@ int read_common_partition(block_dev_desc_t *dev, uchar * partition_name, uint32_
 	uint32_t count,left;
 	disk_partition_t info;
 
-	unsigned char left_buf[dev->blksz];
+	unsigned char left_buf[EMMC_SECTOR_SIZE];
 	count = size/dev->blksz;
 	left = size %dev->blksz;
 
@@ -304,7 +305,7 @@ int8_t bootmode_check_sysdump()
 unsigned int get_tos_size(void)
 {
 	if (sprd_strcmp(TEECFG_HEADER_MAGIC, (unsigned char *)CONFIG_TEECFG_LDADDR_START) != 0) {
-		dmc_print_str("teecfg header verify failed!\n");
+		ddrc_print_debug("teecfg header verify failed!\n");
 		return 0;
 	}
 

@@ -13,7 +13,6 @@ struct   ufs_driver_info ufs_info;
 uint32_t fatal_err = 0;
 
 static struct dwc_ufs_utrd utrd __attribute__((aligned(1024)));
-static struct dwc_ufs_utmrd utmd __attribute__((aligned(1024)));
 static struct dwc_ufs_tcd ucd __attribute__((aligned(128)));
 block_dev_desc_t sprd_ufs_dev;
 
@@ -526,46 +525,6 @@ int send_nop_out_cmd()
 	return ret;
 }
 
-void prepare_read_desc_upiu(struct dwc_ufs_query_upiu *req_upiu, uint8_t idn, uint8_t index)
-{
-	int     i;
-
-	/* Command Descriptor Programming */
-	req_upiu->trans_type        = 0x16;
-	req_upiu->flags             = UPIU_CMD_FLAGS_NONE;
-	req_upiu->reserved_1	    = 0x00;
-	req_upiu->task_tag          = 0x01;
-	req_upiu->reserved_2	    = 0x00;
-
-	req_upiu->query_func        = STANDARD_RD_REQ;
-
-	req_upiu->query_resp        = 0x00;
-	req_upiu->reserved_3        = 0x00;
-	req_upiu->tot_ehs_len       = 0x00;
-
-	/*in big endian*/
-	req_upiu->data_seg_len      = 0x00;
-
-	req_upiu->tsf[0]            = READ_DESC_OPCODE;
-	req_upiu->tsf[1]            = idn;
-	req_upiu->tsf[2]            = index; /* index */
-	req_upiu->tsf[3]            = 0x0;                /* selector */
-	req_upiu->tsf[4]            = 0x0;
-	req_upiu->tsf[5]            = 0x0;
-
-	/*0xFF larger than all types of desc, so the response will provide the exact desc size*/
-	req_upiu->tsf[6]            = 0x0;
-	req_upiu->tsf[7]            = 0xFF;
-
-	for(i=8; i < 15 ;i++)
-		req_upiu->tsf[i]    = 0x00;
-
-	for(i=0; i < 3 ;i++)
-		req_upiu->reserved_5[i] = 0x00;
-
-	return;
-}
-
 void preconfig_utrd_descriptor(void)
 {
 	ufs_info.utrd_desc->ucdba            = cpu_to_le32(LOWER_32_BITS((ulong)ufs_info.cmd_desc));
@@ -574,25 +533,6 @@ void preconfig_utrd_descriptor(void)
 	ufs_info.utrd_desc->prdt_offset      = cpu_to_le16(offsetof(struct dwc_ufs_tcd, prdt_table) >> 2);
 	ufs_info.utrd_desc->ocs = 0xf;
 }
-
-void preconfig_utm_descriptor()
-{
-	int i;
-
-	for(i = 0; i < 3; i++)
-		ufs_info.utm_desc->reserved_1[i] = 0x0;
-
-	ufs_info.utm_desc->intr_flag  = 0x0;
-	ufs_info.utm_desc->reserved_2 = 0x0;
-	ufs_info.utm_desc->ocs = 0xf;
-
-	for(i = 0; i < 3; i++)
-		ufs_info.utm_desc->reserved_3[i] = 0x0;
-
-	ufs_info.utm_desc->reserved_4 = 0x0;
-	return;
-}
-
 
 void init_global_reg()
 {
@@ -664,9 +604,6 @@ void init_global_reg()
 	udelay(1000);
 	REG32(0x7180003c) &= ~(BIT_24|BIT_25|BIT_26|BIT_27|BIT_28|BIT_29);
 
-	//fix osc error
-	REG32(0x719000A4) |= BIT_29;
-
 	//WORKAROUND no rsp data abort error
 	REG32(0x71a00104) &= ~0xff;
 	REG32(0x71a00104) |= 0x4;
@@ -719,6 +656,9 @@ int init_ufs_hostc()
 	 * Link Startup Procedure
 	 * keep sending the DME_LINKSTARTUP command until the device is detected
 	 */
+       REG32(0x71800820) &= ~ (BIT_16);
+       REG32(0x718001e0) |= BIT_16;
+
 	while(retry > 0) {
 		if(ufs_readl(DW_UFS_HCS) & DW_UFS_HCS_UCRDY) {
 			send_dme_link_startup();
@@ -747,7 +687,6 @@ int init_ufs_hostc()
 
 	ufs_info.cmd_desc = &ucd;
 	ufs_info.utrd_desc = &utrd;
-	ufs_info.utm_desc = &utmd;
 
 	/* Initialize the transfer request descriptor */
 	preconfig_utrd_descriptor();
@@ -758,16 +697,6 @@ int init_ufs_hostc()
 	 */
 	ufs_writel(DW_UFS_UTRLBA,  LOWER_32_BITS((ulong)ufs_info.utrd_desc));
 	ufs_writel(DW_UFS_UTRLBAU, UPPER_32_BITS((ulong)ufs_info.utrd_desc));
-
-	/* Initialize the task management descriptor */
-	preconfig_utm_descriptor();
-
-	/* 
-	 * Write the descriptor base address in the UTRLBA register
-	 * for the Transfer Requests
-	 */
-	ufs_writel(DW_UFS_UTMRLBA,  LOWER_32_BITS((ulong)ufs_info.utm_desc));
-	ufs_writel(DW_UFS_UTMRLBAU, UPPER_32_BITS((ulong)ufs_info.utm_desc));
 
 	/*
 	 * Enable UTP Transfer request List by writing to UTRLRSR

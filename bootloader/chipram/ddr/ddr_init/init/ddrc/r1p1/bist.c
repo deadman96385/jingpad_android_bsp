@@ -36,7 +36,7 @@
 
 typedef struct __BIST_INFO{
 	u32 bist_num;
-	u32 bist_addr[4];
+	u64 bist_addr[4];
 	u32 bist_len;
 	u32 bist_mode;
 	u32 bist_bwtest_mode;
@@ -102,6 +102,13 @@ uint32 user_mode_pattern[] = {
 				0xAAAAAA55};
 
 uint32 sipi_mode_pattern[] = {
+				0x2a0a82a0,
+				0x0a82a0a8,
+				0x0554002a,
+				0x54005540,
+				0x00554005,
+				0x55400554,
+				/*patten b*/
 				0x14050140,//bist sipi data 0
 				0x05014050,//bist sipi data 1
 				0x0aa80014,//bist sipi data 2
@@ -131,69 +138,11 @@ void bist_en(uint32 bist_num, uint32 port_num, BIST_INFO *bist_info)
 	/*step 3. bist_mux_0/1 setting [0000]=bist chn0,[0001]=bist chn1,[]*/
 	//reg_bits_set(BIST_PORT_ADDR, 0, 4, 0);
 	/*enable pub0 portx bist module*/
-	switch (port_num)
-	{
-		case 0:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 0);
-			break;
-		case 1:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 1);
-			break;
-		case 2:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 2);
-			break;
-		case 3:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 3);
-			break;
-		case 4:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 4);
-			break;
-		case 5:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 5);
-			break;
-		case 6:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 6);
-			break;
-		case 7:
-			REG32(BIST_PORT_ADDR) |= (0x1 << 7);
-			break;
-		default:
-			break;
 
-	}
+	REG32(BIST_PORT_ADDR) |= (0x1 << port_num);
+
 	if(0x100000000 <= bist_info->bist_addr[bist_num])
-	{
-		switch (port_num)
-		{
-			case 0:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 16);
-				break;
-			case 1:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 17);
-				break;
-			case 2:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 18);
-				break;
-			case 3:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 19);
-				break;
-			case 4:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 20);
-				break;
-			case 5:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 21);
-				break;
-			case 6:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 22);
-				break;
-			case 7:
-				REG32(BIST_PORT_ADDR) |= (0x1 << 23);
-				break;
-			default:
-				break;
-
-		}
-	}
+		REG32(BIST_PORT_ADDR) |= (0x1 << (16 + port_num));
 }
 
 void bist_dis(void)
@@ -299,7 +248,7 @@ void sipi_bit_pattern_sel(uint32 bist_num,uint32 pat_num)
 }
 
 
-void bist_set(uint32 bist_num,uint32 write_or_read,uint32 bist_patt, uint32 bist_mode,uint32 bist_len,uint32 bist_src)
+void bist_set(uint32 bist_num,uint32 write_or_read,uint32 bist_patt, uint32 bist_mode,uint32 bist_len,uint64 bist_src)
 {
 	volatile uint32 i = 0;
 	volatile uint32 val = 0;
@@ -343,8 +292,10 @@ void bist_set(uint32 bist_num,uint32 write_or_read,uint32 bist_patt, uint32 bist
 	REG32((BIST_BASE_ADDR + 0x04) +offset) = (bist_len>>8) - 2;
 
 	//set start address
-	REG32((BIST_BASE_ADDR + 0x08) +offset) = bist_src;
-
+	if(0x100000000 <= bist_src)
+		REG32((BIST_BASE_ADDR + 0x08) +offset) = bist_src - 0x100000000;
+	else
+		REG32((BIST_BASE_ADDR + 0x08) +offset) = bist_src;
 #ifdef DDR_SCAN_ENABLE
 	extern u32 bit_mask_num;
 	/*phy 0 ,1 bit 0 config at the same time*/
@@ -362,6 +313,7 @@ void bist_set(uint32 bist_num,uint32 write_or_read,uint32 bist_patt, uint32 bist
 	}
 	if(bist_patt==SIPI_PATT)
 	{
+		reg_bits_set((BIST_BASE_ADDR + 0x00) + offset, 27, 1, 1);	//16bit mode
 		//set sipi data pattern
 		REG32((BIST_BASE_ADDR + 0x10) + offset) = sipi_mode_pattern[0];
 		REG32((BIST_BASE_ADDR + 0x14) + offset) = sipi_mode_pattern[1];
@@ -369,6 +321,13 @@ void bist_set(uint32 bist_num,uint32 write_or_read,uint32 bist_patt, uint32 bist
 		REG32((BIST_BASE_ADDR + 0x1C) + offset) = sipi_mode_pattern[3];
 		REG32((BIST_BASE_ADDR + 0x20) + offset) = sipi_mode_pattern[4];
 		REG32((BIST_BASE_ADDR + 0x24) + offset) = sipi_mode_pattern[5];
+
+		REG32((BIST_BASE_ADDR + 0x30) + offset) = sipi_mode_pattern[6];
+		REG32((BIST_BASE_ADDR + 0x34) + offset) = sipi_mode_pattern[7];
+		REG32((BIST_BASE_ADDR + 0x38) + offset) = sipi_mode_pattern[8];
+		REG32((BIST_BASE_ADDR + 0x3C) + offset) = sipi_mode_pattern[9];
+		REG32((BIST_BASE_ADDR + 0x40) + offset) = sipi_mode_pattern[10];
+		REG32((BIST_BASE_ADDR + 0x44) + offset) = sipi_mode_pattern[11];
 		sipi_bit_pattern_sel(bist_num, 0);
 	}
 	if(bist_patt==LFSR_PATT)
@@ -383,8 +342,11 @@ void bist_set(uint32 bist_num,uint32 write_or_read,uint32 bist_patt, uint32 bist
 uint32 bist_test_ch(BIST_INFO *bist_info)
 {
 	volatile uint32 bist_result = 0;
-
+#ifdef DDR_SCAN_ENABLE
+	bist_en(BIST_NUM_0, GPU_CH_EN, bist_info);
+#else
 	bist_en(BIST_NUM_0, CPU_CH_EN, bist_info);
+#endif
 	//bist_en(BIST_NUM_1 , DPU_CH_EN, bist_info);
 	//bist_en(BIST_NUM_2 , WTLCP_CH_EN, bist_info);
 
@@ -408,17 +370,18 @@ uint32 bist_test_ch(BIST_INFO *bist_info)
 	bist_result += get_bist_result(BIST_NUM_0);
 	//bist_result += get_bist_result(BIST_NUM_1);
 	//bist_result += get_bist_result(BIST_NUM_2);
-
+#ifndef DDR_SCAN_ENABLE
 	if(bist_result >0)
 	{
 		ddrc_print_err("bist test is fail\r\n");
 		bist_dis();
+		reg_dump(BIST_BASE_ADDR,54);
 		while_loop();
 	}else
 	{
 		ddrc_print_debug("bist test is ok\r\n");
 	}
-
+#endif
 	bist_clear(BIST_NUM_0);
 	//bist_clear(BIST_NUM_1);
 	//bist_clear(BIST_NUM_2);
@@ -535,7 +498,7 @@ void dmc_ddr_test_ch(u32 bist_num)
 	sdram_chip_whole_size(&chip_size);
 	bist_info.bist_num = bist_num;
 	bist_info.bist_len = BIST_RESERVE_SIZE;
-	bist_info.bist_addr[0] = chip_size - BIST_RESERVE_SIZE;//0;//chip_size - BIST_RESERVE_SIZE;
+	bist_info.bist_addr[0] = 0;//0;//chip_size - BIST_RESERVE_SIZE;
 	bist_info.bist_addr[1] = 0x1000000;
 	bist_info.bist_addr[2] = 0x2000000;
 	bist_info.bist_mode = BIST_ALLWRC;

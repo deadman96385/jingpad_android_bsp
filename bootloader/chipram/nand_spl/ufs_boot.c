@@ -15,6 +15,12 @@
 #include <security/sprd_ce_ctrl.h>
 #include <adi.h>
 #include <asm/arch/sprd_reg.h>
+#ifdef CONFIG_TEECFG_CUSTOM
+#include "teecfg_parse.h"
+#include <security/trustzone/trustzone.h>
+#define offset_of(TYPE, MEMBER)      ((size_t)&((TYPE *)0)->MEMBER)
+extern void dmc_print_str(const char *string);
+#endif
 #define SECURE_HEADER_OFF 512
 
 #ifdef CONFIG_LOAD_PARTITION
@@ -25,14 +31,13 @@ int read_common_partition(block_dev_desc_t *dev, uchar * partition_name, uint32_
 	uint32_t offsetsector;
 	disk_partition_t info;
 
-	count = size/dev->blksz;
-	left = size %dev->blksz;
-
-	off_count = offsize/dev->blksz;
-	off_left = offsize %dev->blksz;
-
 	/*the left+off_left may beyond 2 block*/
-	unsigned char left_buf[2 * dev->blksz];
+	unsigned char left_buf[2 * UFS_SECTOR_SIZE];
+
+	off_count = offsize /  dev->blksz;
+	off_left = offsize % dev->blksz;
+	count = (off_left + size) / dev->blksz;
+	left = (off_left + size) % dev->blksz;
 
 	if(0!=off_count)
 		offsetsector = off_count;
@@ -210,6 +215,17 @@ int8_t check_sprd_sysdump_sec()
 #endif
 }
 
+#ifdef CONFIG_TEECFG_CUSTOM
+unsigned int get_tos_size(void)
+{
+    if (sprd_strcmp(TEECFG_HEADER_MAGIC, (unsigned char *)CONFIG_TEECFG_LDADDR_START) != 0) {
+        ddrc_print_debug("teecfg header verify failed!\n");
+        return 0;
+    }
+    return *((unsigned int *)(CONFIG_TEECFG_LDADDR_START + offset_of(tee_config_header_t, tos_size)));
+}
+#endif
+
 void nand_boot(void)
 {
 	int ret;
@@ -243,15 +259,16 @@ void nand_boot(void)
 			load_common_partition("trustos", TOS_LOAD_MAX_SIZE,(uint8_t*)(CONFIG_TOS_LDADDR_START-IMAGE_HEAD_SIZE));
 #endif
 			if (!sysdump_security) {  //sysdump mode (tos panic) don't load tos and sml
-#ifdef CONFIG_LOAD_TOS_ALONE
-				load_common_partition("trustos", TOS_LOAD_MAX_SIZE,(uint8_t*)(CONFIG_TOS_LDADDR_START-IMAGE_HEAD_SIZE));
-#endif
-
 #ifdef CONFIG_LOAD_ATF
 				load_common_partition("sml", SML_LOAD_MAX_SIZE, (uint8_t*)(CONFIG_SML_LDADDR_START-IMAGE_HEAD_SIZE));
 #endif
+#ifdef CONFIG_TEECFG_CUSTOM
+				load_common_partition("teecfg", TEECFG_LOAD_MAX_SIZE, (uint8_t*)(CONFIG_TEECFG_LDADDR_START - IMAGE_HEAD_SIZE));
+#endif
+#ifdef CONFIG_LOAD_TOS_ALONE
+				load_common_partition("trustos", TOS_LOAD_MAX_SIZE,(uint8_t*)(CONFIG_TOS_LDADDR_START-IMAGE_HEAD_SIZE));
+#endif
 			}
-
 			load_partition_with_header("uboot",CONFIG_UBOOT_MAX_SIZE,CONFIG_SYS_NAND_U_BOOT_DST,(sys_img_header*)(CONFIG_SYS_NAND_U_BOOT_DST - KEY_INFO_SIZ));
 		}
 #endif
@@ -295,6 +312,21 @@ void nand_boot(void)
 				while(1);
 			}
 		}
+#endif
+#if defined(CONFIG_TEECFG_CUSTOM)
+		if(SECBOOT_VERIFY_SUCCESS != (secboot_verify(IRAM_BEGIN, (CONFIG_TEECFG_LDADDR_START - IMAGE_HEAD_SIZE), NULL, NULL, SECURE_BOOT)))
+		{
+			/***secboot teecfg dual_backup***/
+			load_common_partition("teecfg_bak", TEECFG_LOAD_MAX_SIZE, (uint8_t*)(CONFIG_TEECFG_LDADDR_START - IMAGE_HEAD_SIZE));
+			if(SECBOOT_VERIFY_SUCCESS != (secboot_verify(IRAM_BEGIN, (CONFIG_TEECFG_LDADDR_START - IMAGE_HEAD_SIZE), NULL, NULL, SECURE_BOOT)))
+			{
+				while(1);
+			}
+		}
+
+		sprd_fw_attr fw_attr;
+		fw_attr.tos_size = get_tos_size();
+		sprd_firewall_config_attr(&fw_attr);
 #endif
 #if defined(CONFIG_SMLBOOT)|| defined(CONFIG_LOAD_TOS_ALONE)
 		if(SECBOOT_VERIFY_SUCCESS != (secboot_verify(IRAM_BEGIN,(CONFIG_TOS_LDADDR_START - IMAGE_HEAD_SIZE),NULL,NULL,SECURE_BOOT)))

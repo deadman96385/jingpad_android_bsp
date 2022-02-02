@@ -92,16 +92,16 @@ static inline void sce_sec(void)
 
 static inline void cm4_sec(void)
 {
-	//uint32_t val;
+	uint32_t val;
 
 	/* master is secure. No config is needed */
 
 	/* cm4 is always enabled */
 
 	/* tested protect soft-reset bit */
-	/*val = REG32(REG_REG_FW0_AON_REG_WR_CTRL_0);
+	val = REG32(REG_REG_FW0_AON_REG_WR_CTRL_0);
 	val |= BIT_REG_FW0_AON_CM4_SYS_SOFT_RST_WR_SEC;
-	REG32(REG_REG_FW0_AON_REG_WR_CTRL_0) = val;*/
+	REG32(REG_REG_FW0_AON_REG_WR_CTRL_0) = val;
 }
 
 static inline void cp_sec (void)
@@ -247,8 +247,9 @@ void sprd_firewall_config_pre (void)
 #ifdef CONFIG_SECBOOT
 	sce_sec();
 	cm4_sec();
+#ifndef NOT_VERIFY_MODEM
 	cp_sec();
-
+#endif
 	dmc_sec();
 	sml_tos_sec();
 

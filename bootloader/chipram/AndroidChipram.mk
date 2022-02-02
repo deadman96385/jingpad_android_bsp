@@ -55,6 +55,11 @@ ifeq ($(strip $(PKCS1_PSS_FLAG)),true)
 	@echo "PKCS1_PSS_FLAG = y" >> $(CHIPRAM_OUT)/include/config.mk
 endif
 
+ifeq ($(strip $(NOT_VERIFY_MODEM_FLAG)),true)
+	@echo "#define NOT_VERIFY_MODEM" >> $(CHIPRAM_CONFIG)
+	@echo "NOT_VERIFY_MODEM = y" >> $(CHIPRAM_OUT)/include/config.mk
+endif
+
 ifeq ($(strip $(BOARD_KBC_BYPASS_SECURE_BOOT)),true)
 	@echo "#define CONFIG_KBC_BYPASS_SECURE_BOOT" >> $(CHIPRAM_CONFIG)
 endif

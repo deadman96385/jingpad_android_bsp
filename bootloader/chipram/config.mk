@@ -141,6 +141,14 @@ gccincdir := $(shell $(CC) -print-file-name=include)
 CPPFLAGS := $(OPTFLAGS) $(RELFLAGS) -D__KERNEL__
 #$(DBGFLAGS)
 
+ifeq ($(CONFIG_UFS_SPL), true)
+		PLATFORM_CPPFLAGS += -DCONFIG_UFS_BOOT
+endif
+
+ifeq ($(CONFIG_EMMC_SPL), true)
+		PLATFORM_CPPFLAGS += -DCONFIG_EMMC_BOOT
+endif
+
 ifneq ($(OBJTREE),$(SRCTREE))
 CPPFLAGS += -I$(OBJTREE)/include
 endif

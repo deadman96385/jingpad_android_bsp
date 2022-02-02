@@ -18,6 +18,9 @@
 #ifdef DDR_SCAN_ENABLE
 #define DDR_LOG_LVL_DEBUG
 #endif
+#ifdef DDR_DFS_TEST
+#define DDR_LOG_LVL_DEBUG
+#endif
 #define DDR_LOG_LVL_INFO
 #define DDR_LOG_LVL_ERR
 #define DDR_LOG_LVL_SCAN
@@ -27,7 +30,7 @@
 
 #define GUCPHY_VREF_CA_RANGE 0x33
 
-#define BIST_RESERVE_SIZE		0x40000
+#define BIST_RESERVE_SIZE		0x1000
 /*0=64B,1=128B,2=256B,3=512B,4=1k,5=2k,6=4k,7=8k*/
 #define INTERLEAVE_SIZE 1
 //#define PXP_DEBUG

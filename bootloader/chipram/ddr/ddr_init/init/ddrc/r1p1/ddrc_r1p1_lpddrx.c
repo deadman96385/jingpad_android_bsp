@@ -104,7 +104,7 @@ LPDDR4_ODT_CFG lpddr4x_odt_cfg[FREQ_POINT_NUM_MAX] = {
 	{
 		.mr1 = 0x14,
 		.mr2 = 0x09,
-		.mr3 = 0xa3,
+		.mr3 = 0xab,
 		.mr11 = 0x00,
 		.mr12 = 0x5d,
 		.mr14 = 0x5d,
@@ -114,7 +114,7 @@ LPDDR4_ODT_CFG lpddr4x_odt_cfg[FREQ_POINT_NUM_MAX] = {
 	{
 		.mr1 = 0x24,
 		.mr2 = 0x12,
-		.mr3 = 0xa3,
+		.mr3 = 0xab,
 		.mr11 = 0x00,
 		.mr12 = 0x5d,
 		.mr14 = 0x5d,
@@ -124,7 +124,7 @@ LPDDR4_ODT_CFG lpddr4x_odt_cfg[FREQ_POINT_NUM_MAX] = {
 	{
 		.mr1 = 0x24,
 		.mr2 = 0x12,
-		.mr3 = 0xa3,
+		.mr3 = 0xab,
 		.mr11 = 0x00,
 		.mr12 = 0x5d,
 		.mr14 = 0x5d,
@@ -145,7 +145,7 @@ LPDDR4_ODT_CFG lpddr4x_odt_cfg[FREQ_POINT_NUM_MAX] = {
 		.mr1 = 0x3C,
 		.mr2 = 0x24,
 		.mr3 = 0xb3,
-		.mr11 = 0x03,
+		.mr11 = 0x05,
 		.mr12 = 0x5d,
 		.mr14 = 0x1e,
 		.mr22 = 0x3c
@@ -155,7 +155,7 @@ LPDDR4_ODT_CFG lpddr4x_odt_cfg[FREQ_POINT_NUM_MAX] = {
 		.mr1 = 0x5C,
 		.mr2 = 0x2d,
 		.mr3 = 0xb3,
-		.mr11 = 0x43,
+		.mr11 = 0x45,
 		.mr12 = 0x5D,
 		.mr14 = 0x19,
 		.mr22 = 0x36
@@ -207,9 +207,9 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0X22831807,//DTM4
 		0X00000809,//DTM5
 		0X0000120E,//DTM6
-		0X0176074A,//DTM7
+		0X01760E94,//DTM7
 		0X23A6001F,//DTM8
-		0X00030C80,//DTM9
+		0X00030EA0,//DTM9
 		0X151C0005,//DTM10
 		0X00000000,//DTM11
 		0X00000000,//DTM12
@@ -233,9 +233,9 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22731706,//DTM4
 		0x00000708,//DTM5
 		0x0000100E,//DTM6
-		0x01340600,//DTM7
+		0x01340C00,//DTM7
 		0x23010017,//DTM8
-		0x00030C80,//DTM9
+		0x00030C00,//DTM9
 		0x15180005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12
@@ -259,9 +259,9 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22631605,//DTM4
 		0x00000607,//DTM5
 		0x00000D0C,//DTM6
-		0x010B0535,//DTM7
+		0x010B0A6A,//DTM7
 		0x229C0017,//DTM8
-		0x00030C80,//DTM9
+		0x00030A70,//DTM9
 		0x15140005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12
@@ -284,9 +284,9 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22531504,//DTM4
 		0x00000506,//DTM5
 		0x00000B0A,//DTM6
-		0x00CD0400,//DTM7
+		0x00CD0800,//DTM7
 		0x12010000,//DTM8
-		0x00030C80,//DTM9
+		0x00030800,//DTM9
 		0x15100005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12
@@ -303,15 +303,15 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 	768,
 	{
 		0x450A0808, //DTM0
-		0x020B2702,//DTM1
+		0x020B2802,//DTM1
 		0x6B363894,//DTM2
 		0x63040F12,//DTM3
 		0x22431403,//DTM4
 		0x00000F05,//DTM5
-		0x00000807,//DTM6
-		0x009A0300,//DTM7
+		0x00000605,//DTM6
+		0x009A0600,//DTM7
 		0x11810000,//DTM8
-		0x00030C80,//DTM9
+		0x00030600,//DTM9
 		0x150C0005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12
@@ -334,9 +334,9 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431403,//DTM4
 		0x00000F05,//DTM5
 		0x00000807,//DTM6
-		0x0086029B,//DTM7
+		0x00860536,//DTM7
 		0x514F0000,//DTM8
-		0x00030C80,//DTM9
+		0x00030540,//DTM9
 		0x150B0005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12
@@ -359,10 +359,10 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x33040809,//DTM3
 		0x22431302,//DTM4
 		0x00000F04,//DTM5
-		0x00000505,//DTM6
-		0x004D0180,//DTM7
+		0x00000404,//DTM6
+		0x004D0300,//DTM7
 		0x50C10000,//DTM8
-		0x00030C80,//DTM9
+		0x00030300,//DTM9
 		0x15060005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12
@@ -385,9 +385,9 @@ static const DDRC_R1P1_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431201,//DTM4
 		0x00000F03,//DTM5
 		0x00000303,//DTM6
-		0x00340100,//DTM7
+		0x00340200,//DTM7
 		0x50810000,//DTM8
-		0x00030C80,//DTM9
+		0x00030200,//DTM9
 		0x15040005,//DTM10
 		0x00000000,//DTM11
 		0x00000000,//DTM12

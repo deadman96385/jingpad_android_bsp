@@ -983,7 +983,10 @@ void dmc_phy_train_lp4_caeye(u32 train_count)
 		pass_win_max_scan[train_info.train_chn_num] |= (pass_win_max << 24);
 #endif
 	if(pass_win_max==0){
+#if TEST_DEBUG_LOG_LEVEL>2
 		dmc_print_str("\r\ncaeye training pass window is zero!!!");
+#endif
+		dmc_print_str("\r\nca pw is 0");
 		while(1);
 	}
 	//set caeye value-ASIC auto update
@@ -1608,7 +1611,10 @@ void dmc_phy_train_lp4_wreye_cs0(u32 train_count)
 #endif
 	if(pass_win_max==0)
 	{
+#if TEST_DEBUG_LOG_LEVEL>2
 		dmc_print_str("wreye training pass window is zero!!!");
+#endif
+		dmc_print_str("\r\nwr pw is 0");
 		while(1);
 	}
 	//set training result
@@ -2166,7 +2172,8 @@ void dmc_phy_ca_vref_training_restore(u32 flag)
 					__raw_writel(DMC_CTL0_(0x01ac+train_info.ddr_freq_num*0x60),0x0b550b55);
 					__raw_writel(DMC_CTL0_(0x01b0+train_info.ddr_freq_num*0x60),0x16350e5d);
 				}
-				__raw_writel(DMC_PHY0_(0x00f4+train_info.ddr_freq_num*0xc0),0x23465066);//restore io mode
+				if(train_info.train_chn_num == 1)
+					__raw_writel(DMC_PHY0_(0x00f4+train_info.ddr_freq_num*0xc0),0x23465066);//restore io mode
 			}
 		}
 }
@@ -2202,6 +2209,9 @@ void dmc_phy_train_lp4()
         dmc_phy_train_lp4_caeye(1);//Training VREF
     }
 
+	(dmc_dtmg+train_info.ddr_freq_num)->dmc_dtmg14 &= ~(0xff<<0);
+	(dmc_dtmg+train_info.ddr_freq_num)->dmc_dtmg14 |= (train_info.vrefca_val_chn0+train_info.vrefca_val_chn1)/2;
+	__raw_writel(DMC_CTL0_(0x01b8+train_info.ddr_freq_num*0x60), (dmc_dtmg+train_info.ddr_freq_num)->dmc_dtmg14);
 
 
     for(chn_num=0;chn_num<2;chn_num++)
@@ -2217,9 +2227,6 @@ void dmc_phy_train_lp4()
 
         dmc_mrw(DRAM_MR_12, DRAM_CS_ALL, (train_info.vrefca_val_chn0+train_info.vrefca_val_chn1)/2);
         //Write Back variable and fsp register
-        (dmc_dtmg+train_info.ddr_freq_num)->dmc_dtmg14 &= ~(0xff<<0);
-        (dmc_dtmg+train_info.ddr_freq_num)->dmc_dtmg14 |= (train_info.vrefca_val_chn0+train_info.vrefca_val_chn1)/2;
-        __raw_writel(DMC_CTL0_(0x01b8+train_info.ddr_freq_num*0x60), (dmc_dtmg+train_info.ddr_freq_num)->dmc_dtmg14);
 
         dmc_phy_ca_vref_training_restore(1);//Open delay line update
         dmc_phy_train_lp4_cadsk(&eye_retry);//Adjust ca delay and run dsk training(Adjust the phase between each bit)

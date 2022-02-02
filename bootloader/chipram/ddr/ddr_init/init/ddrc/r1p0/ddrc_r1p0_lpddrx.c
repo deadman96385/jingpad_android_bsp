@@ -40,7 +40,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0X22531504,//DTM4
 		0X00000F06,//DTM5
 		0X00000B0A,//DTM6
-		0X005E01D3,//DTM7
+		0X005E074A,//DTM7
 		0X11d40000,//DTM8
 		0X00030c80,//DTM9
 		0X150e0005,//DTM10
@@ -66,7 +66,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431403,//DTM4
 		0x00000F05,//DTM5
 		0x00000807,//DTM6
-		0x00500190,//DTM7
+		0x00500640,//DTM7
 		0x11910000,//DTM8
 		0x00030C80,//DTM9
 		0x150C0005,//DTM10
@@ -92,7 +92,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431403,//DTM4
 		0x00000F05,//DTM5
 		0x00000807,//DTM6
-		0x003F0137,//DTM7
+		0x003F04DC,//DTM7
 		0x11380000,//DTM8
 		0x00030C80,//DTM9
 		0x150A0005,//DTM10
@@ -117,7 +117,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431302,//DTM4
 		0x00000F04,//DTM5
 		0x00000505,//DTM6
-		0x0036010B,//DTM7
+		0x0036042A,//DTM7
 		0x110C0000,//DTM8 //half mode setting
 		0x00030C80,//DTM9
 		0x15080005,//DTM10
@@ -142,7 +142,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431302,//DTM4
 		0x00000F04,//DTM5
 		0x00000505,//DTM6
-		0x00280C8,//DTM7
+		0x00280320,//DTM7
 		0x50C90000,//DTM8
 		0x00030C80,//DTM9
 		0x15060005,//DTM10
@@ -168,7 +168,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431302,//DTM4
 		0x00000F04,//DTM5
 		0x00000505,//DTM6
-		0x0020009C,//DTM7
+		0x0020026E,//DTM7
 		0x509D0000,//DTM8
 		0x00030C80,//DTM9
 		0x15050005,//DTM10
@@ -193,7 +193,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431201,//DTM4
 		0x00000F03,//DTM5
 		0x00000303,//DTM6
-		0x00180075,//DTM7
+		0x001801D2,//DTM7
 		0x50760000,//DTM8
 		0x00030C80,//DTM9
 		0x15040005,//DTM10
@@ -218,7 +218,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr4[] = {
 		0x22431201,//DTM4
 		0x00000F03,//DTM5
 		0x00000303,//DTM6
-		0x00100050,//DTM7
+		0x00100140,//DTM7
 		0x50510000,//DTM8
 		0x00030C80,//DTM9
 		0x15040005,//DTM10
@@ -247,7 +247,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330302,//DTM4
 		0x00000F03,//DTM5
 		0x00000006,//DTM6
-		0x005E01DE,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x005E074A,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x10A90000,//DTM8
 		0x00030000,//DTM9
 		0x00000002,//DTM10
@@ -272,7 +272,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330201,//DTM4
 		0x00000F02,//DTM5
 		0x00000005,//DTM6
-		0x0050019A,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x00500640,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x10910000,//DTM8
 		0x00030000,//DTM9
 		0x00000002,//DTM10
@@ -298,7 +298,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330201,//DTM4
 		0x00000F02,//DTM5
 		0x00000004,//DTM6
-		0x003F013F,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x003F04DC,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x10710000,//DTM8
 		0x00030000,//DTM9
 		0x00000002,//DTM10
@@ -323,7 +323,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330100,//DTM4
 		0x00000F01,//DTM5
 		0x00000003,//DTM6
-		0x00360111,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x0036042A,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x10610000,//DTM8 //half mode setting
 		0x00030000,//DTM9
 		0x00000002,//DTM10
@@ -348,7 +348,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330100,//DTM4
 		0x00000F01,//DTM5
 		0x00000002,//DTM6
-		0x002800CD,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x00280320,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x10490000,//DTM8
 		0x00030000,//DTM9
 		0x000000F2,//DTM10
@@ -374,7 +374,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330100,//DTM4
 		0x00000F01,//DTM5
 		0x00000002,//DTM6
-		0x002000A0,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x0020026E,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x10390000,//DTM8
 		0x00030000,//DTM9
 		0x000000F2,//DTM10
@@ -399,7 +399,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330100,//DTM4
 		0x00000F01,//DTM5
 		0x00000002,//DTM6
-		0x00180078,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x001801D2,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x102B0000,//DTM8
 		0x00030000,//DTM9
 		0x000000F2,//DTM10
@@ -424,7 +424,7 @@ static const DDRC_R1P0_TIMING_CFG ddrc_local_timing_lpddr3[] = {
 		0x00330100,//DTM4
 		0x00000F01,//DTM5
 		0x00000002,//DTM6
-		0x00180052,//DTM7 [15:0] self_ref_idle_cnt 512ns
+		0x00180140,//DTM7 [15:0] self_ref_idle_cnt 512ns
 		0x50390000,//DTM8
 		0x00030000,//DTM9
 		0x000000F2,//DTM10

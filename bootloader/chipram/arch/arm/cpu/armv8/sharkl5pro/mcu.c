@@ -112,6 +112,11 @@ const MCU_CLK_PARA_T mcu_clk_para=
     .dcdc_memq.value = DCDC_MEMQ,
 #endif
 
+    .dcdc_modem.name = "D*MODEM",
+#ifdef DCDC_MODEM
+    .dcdc_modem.value = DCDC_MODEM,
+#endif
+
 	.debug_flags[0].name = "d_flag0",
 	.debug_flags[1].name = "d_flag1",
 	.debug_flags[2].name = "d_flag2",
@@ -211,6 +216,10 @@ static void soc_voltage_init()
 
 #ifdef DCDC_GPU
     regulator_set_voltage("vddgpu",mcu_clk_para.dcdc_gpu.value);
+#endif
+
+#ifdef DCDC_MODEM
+    regulator_set_voltage("vddmodem",mcu_clk_para.dcdc_modem.value);
 #endif
 #endif
 

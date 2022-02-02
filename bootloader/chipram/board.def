@@ -43,11 +43,29 @@ ud710_orca_haps_config : preconfig
 ud710_2h10_config : preconfig
 	@$(MKCONFIG) $@ arm armv8 ud710_2h10 spreadtrum roc1
 
-ud710_3h10_config : preconfig
-	@$(MKCONFIG) $@ arm armv8 ud710_3h10 spreadtrum roc1
+ud710_10h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_10h10 spreadtrum roc1
+
+ud710_2c11_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_2c11 spreadtrum roc1
+
+ud710_7h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_7h10 spreadtrum roc1
+
+ud710_2h10u_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_2h10u spreadtrum roc1
 
 ud710_3h10u_config : preconfig
 	@$(MKCONFIG) $@ arm armv8 ud710_3h10u spreadtrum roc1
+
+ud710_9h10u_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_9h10u spreadtrum roc1
+
+ud710_20c11_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_20c11 spreadtrum roc1
+
+ud710_3h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ud710_3h10 spreadtrum roc1
 
 sp9835_haps_config : preconfig
 	@$(MKCONFIG) $@ arm armv8 sp9835_haps spreadtrum sharkle
@@ -231,6 +249,9 @@ ums518_haps_config : preconfig
 
 ums512_1h10_config : preconfig
 	@$(MKCONFIG) $@ arm armv8 ums512_1h10 spreadtrum sharkl5pro
+
+ums512_2h10_config : preconfig
+	@$(MKCONFIG) $@ arm armv8 ums512_2h10 spreadtrum sharkl5pro
 
 ums512_20c10_config : preconfig
 	@$(MKCONFIG) $@ arm armv8 ums512_20c10 spreadtrum sharkl5pro

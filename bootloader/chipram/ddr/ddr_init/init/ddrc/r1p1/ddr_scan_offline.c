@@ -13,7 +13,7 @@ extern int uart_log_disable;
 
 typedef struct __BIST_INFO{
 	u32 bist_num;
-	u32 bist_addr[4];
+	u64 bist_addr[4];
 	u32 bist_len;
 	u32 bist_mode;
 	u32 bist_bwtest_mode;
@@ -23,7 +23,8 @@ typedef struct __BIST_INFO{
 #define PASS ddrc_print_scan("\t0x0")
 #define FAIL ddrc_print_scan("\t0xf")
 #define PASS_SYMBOL ddrc_print_scan("*")
-#define FAIL_SYMBOL ddrc_print_scan(".")
+#define FAIL_SYMBOL ddrc_print_scan(" ")
+#define ALINE_SYMBOL ddrc_print_scan(".")
 #define FAIL_VREF_TRAINING_STRAT_SYMBOL ddrc_print_scan("S")
 #define FAIL_VREF_TRAINING_END_SYMBOL ddrc_print_scan("E")
 #define PASS_VREF_TRAINING_SYMBOL ddrc_print_scan("o")
@@ -31,6 +32,8 @@ typedef struct __BIST_INFO{
 #define PASS_VREF_TRAINING_STRAT_SYMBOL ddrc_print_scan("S")
 #define PASS_VREF_TRAINING_END_SYMBOL ddrc_print_scan("E")
 #define THROUGH_EYE_SCOPE ddrc_print_scan("|")
+#define THROUGH_EYE_SCOPE_FAIL ddrc_print_scan("x")
+
 extern DRAM_CHIP_INFO ddr_chip_cur;
 extern uint32 bist_fail_num[];
 
@@ -59,8 +62,7 @@ u8 ddr_scan_transfer_flag=1;//avoid repeat call ddr_offline_scan_seq function ,u
 u32 freq_sel;//read FREQ
 u32 vref_address_0=0; //store scan read vreaf address
 u32 vref_address_1=0;
-uint32 LP4_write_training_vref=0;/*write training value to read MR14 for LPDDR4X*/
-u32 LP4X_ca_training_vref=0;/*CA training value to read MR12 for LPDDR4X*/
+struct vref_info vref_info;
 best_delay_para best_delay;//store best delay for read and write
 /*Store scan best parameter*/
 best_para read_dac_para;
@@ -70,7 +72,6 @@ best_para write_dac_para;
 u64 bist_start_address=0;/*use for dual rank set bist start address*/
 //rom_value *store_reboot_value=&store_flag;
 struct phy_train_res train_res[2][2];//train_res[rank][phy]
-
 
 /*HW Training Result*/
 /*static struct ca_result	    ca_phy0_result;
@@ -95,7 +96,7 @@ static struct scan_odt_vref_high scan_wr_odt_vref_high[3]= {
 },
 {
 	.odt = 5, //48ohm
-	.vref = 0x52
+	.vref = 0x54
 }
 
 };
@@ -155,7 +156,6 @@ char *uint8tochar(uint8 val)
 static uint32 dmc_ddr_test(u32 bist_num,u64 addr)
 {
 	volatile uint32 i=0;
-	uint32 test_num=0;
 
 	bist_info_ch0.bist_num = 0;
 	bist_info_ch0.bist_len = BIST_RESERVE_SIZE;
@@ -183,13 +183,8 @@ static uint32 dmc_ddr_test(u32 bist_num,u64 addr)
 	bist_info_ch2.bist_mode = BIST_ALLWRC;
 	bist_info_ch2.bist_pattern = USER_PATT;
 	bist_info_ch2.bist_bwtest_mode = NORMAL_MODE;
-	//for(i=0;i<10;i++)
-	{
-		bist_fail_num[bist_num]=0;
-		bist_fail_num[bist_num]+=bist_test();
-		test_num++;
-	}
-	if(bist_fail_num[bist_num] >0)
+
+	if(bist_test_ch(&bist_info_ch0) || bist_test_ch(&bist_info_ch1) || bist_test_ch(&bist_info_ch2))
 		return 1;
 	else
 		return 0;
@@ -226,11 +221,11 @@ static u64 get_bist_address_lp4(u32 channel_num,u32 rank_num)
 	return bist_addr;
 }
 
-void store_train_result(u32 rank)
+void store_train_result(u32 rank, u32 freq)
 {
 	u32 data_tmp=0;
 	u32 phy_base;
-	int i;
+	int i, half_mode;
 
 	for(i = 0;i < 2;i++ )
 	{
@@ -239,20 +234,43 @@ void store_train_result(u32 rank)
 		else
 			phy_base = DMC_GUCPHY1_BASE;
 		/*CA*/
+
+		half_mode = ((REG32(phy_base+freq*20*4+0x1*4)) >> 31) & 1;
+
 		data_tmp = __raw_readl(phy_base + 0xe6*4);
+		if(half_mode == 1)
+		{
+			data_tmp &= ~0xFFFF;
+			data_tmp |= (REG32(phy_base+freq*20*4+0xC*4)) & 0xFFFF;
+		}
 		train_res[rank][i].phy_ca_e6 = data_tmp;
+
 		/*Read*/
 		data_tmp = __raw_readl(phy_base + 0xea*4);
 		train_res[rank][i].phy_read_ea = data_tmp;
+
 		data_tmp = __raw_readl(phy_base + 0xeb*4);
+		if(half_mode == 1)
+		{
+			data_tmp &= ~0xFFFF;
+			data_tmp |= (REG32(phy_base+freq*20*4+0x11*4)) & 0xFFFF;
+		}
 		train_res[rank][i].phy_read_eb = data_tmp;
+
 		data_tmp = __raw_readl(phy_base + 0xed*4);
 		train_res[rank][i].phy_read_ed=data_tmp;
 		/*Write*/
 		data_tmp = __raw_readl(phy_base + 0xe9*4);
 		train_res[rank][i].phy_write_e9=data_tmp;
+
 		data_tmp = __raw_readl(phy_base + 0xec*4);
+		if(half_mode == 1)
+		{
+			data_tmp &= ~0xFFFFFF;
+			data_tmp |= (REG32(phy_base+freq*20*4+0x12*4)) & 0xFFFFFF;
+		}
 		train_res[rank][i].phy_write_ec=data_tmp;
+
 		data_tmp = __raw_readl(phy_base + 0xee*4);
 		train_res[rank][i].phy_write_ee=data_tmp;
 	}
@@ -285,74 +303,25 @@ void ddr_print_set_register(void)
 
 /**********************************************
 *Function:Print x axis ruler
-*
-**********************************************/
-static void ddr_print_scan_dead_line(void)
-{
-	u32 i=0;
-	u32 data_temp=0;
-	ddrc_print_scan("              ");
-
-	for(i=0;i<=0xff;i++)
-	{
-		switch (i)
-		{
-			case 0x0:ddrc_print_scan("0");break;
-			case 0x10:ddrc_print_scan("1");break;
-			case 0x20:ddrc_print_scan("2");break;
-			case 0x30:ddrc_print_scan("3");break;
-			case 0x40:ddrc_print_scan("4");break;
-			case 0x50:ddrc_print_scan("5");break;
-			case 0x60:ddrc_print_scan("6");break;
-			case 0x70:ddrc_print_scan("7");break;
-			case 0x80:ddrc_print_scan("8");break;
-			case 0x90:ddrc_print_scan("9");break;
-			case 0xa0:ddrc_print_scan("A");break;
-			case 0xb0:ddrc_print_scan("B");break;
-			case 0xc0:ddrc_print_scan("C");break;
-			case 0xd0:ddrc_print_scan("D");break;
-			case 0xe0:ddrc_print_scan("E");break;
-			case 0xf0:ddrc_print_scan("F");break;
-			default:ddrc_print_scan("-");break;
-		}
-	}
-	ddrc_print_scan("\r\n");
-}
-
-/**********************************************
-*Function:Print x axis ruler
 *LPDDR4-write
 **********************************************/
 static void ddr_print_scan_dead_line_4x(int num)
 {
 	u32 i=0;
 	u32 data_temp=0;
+	u32 tmp;
 
 	ddrc_print_scan("              ");
 
 	for(i=0;i<=num;i++)
 	{
-		switch (i&0xff)
-		{
-			case 0x0:ddrc_print_scan("0");break;
-			case 0x10:ddrc_print_scan("1");break;
-			case 0x20:ddrc_print_scan("2");break;
-			case 0x30:ddrc_print_scan("3");break;
-			case 0x40:ddrc_print_scan("4");break;
-			case 0x50:ddrc_print_scan("5");break;
-			case 0x60:ddrc_print_scan("6");break;
-			case 0x70:ddrc_print_scan("7");break;
-			case 0x80:ddrc_print_scan("8");break;
-			case 0x90:ddrc_print_scan("9");break;
-			case 0xa0:ddrc_print_scan("A");break;
-			case 0xb0:ddrc_print_scan("B");break;
-			case 0xc0:ddrc_print_scan("C");break;
-			case 0xd0:ddrc_print_scan("D");break;
-			case 0xe0:ddrc_print_scan("E");break;
-			case 0xf0:ddrc_print_scan("F");break;
-			default:ddrc_print_scan("-");break;
-		}
-
+		tmp = i/20;
+		if((i % 20) == 0)
+			ddrc_print_scan(itoa_dec(tmp));
+		else if((tmp > 9) && ((i%20) == 1)) // such as "11" take up  two "-" position
+			{}
+		else
+			ddrc_print_scan("-");
 	}
 	ddrc_print_scan("\r\n");
 }
@@ -376,13 +345,24 @@ void ca_result_get(u32 phy, u32 rank, struct ca_result *phy_ca_result)
 void read_result_get(u32 phy, u32 rank, struct read_result *phy_read_result)
 {
 	u32 data_tmp;
-	data_tmp = train_res[rank][phy].phy_read_ea;//0x03a8 // read vref training result
 
+	if(phy == 0)
+		data_tmp = REG32(DMC_GUCPHY0_BASE+freq_sel*20*4+0x10*4) & 0xff;
+	else
+		data_tmp = REG32(DMC_GUCPHY1_BASE+freq_sel*20*4+0x10*4) & 0xff;
 	phy_read_result->deye_vref_db0_result = data_tmp & 0xff;
 //	phy_read_result->deye_vref_db1_result = (data_tmp >> 8) & 0xff;
 
-	data_tmp = train_res[rank][phy].phy_read_eb;
 
+	if(freq_sel < 2) //< 667 no training
+	{
+		if(phy == 0)
+			data_tmp = REG32(DMC_GUCPHY0_BASE+freq_sel*20*4+0x11*4);
+		else
+			data_tmp = REG32(DMC_GUCPHY1_BASE+freq_sel*20*4+0x11*4);
+	}
+	else
+		data_tmp = train_res[rank][phy].phy_read_eb;
 	phy_read_result->rd_db1_dqsn = (data_tmp >> 24) & 0xff;
 	phy_read_result->rd_db0_dqsn = (data_tmp >> 16) & 0xff;
 	phy_read_result->rd_db1_dqs = (data_tmp >> 8) & 0xff;
@@ -403,27 +383,41 @@ void read_result_get(u32 phy, u32 rank, struct read_result *phy_read_result)
 void write_result_get(u32 phy, u32 rank, struct write_result *phy_write_result)
 {
 	u32 data_tmp;
-	data_tmp = train_res[rank][phy].phy_write_e9;//0x03a4 rddv_sel value and dram vref training result
 
-	phy_write_result->vref_dram_adj_result = (data_tmp >> 24) & 0x3F;//
+	if(phy == 0)
+		data_tmp = REG32(DMC_GUCPHY0_BASE+freq_sel*20*4+0xf*4);
+	else
+		data_tmp = REG32(DMC_GUCPHY1_BASE+freq_sel*20*4+0xf*4);
 
-	data_tmp = train_res[rank][phy].phy_write_ec;//0x03b0 write DQS to DQ coarse and fine phase training result
+	phy_write_result->vref_dram_adj_result = (data_tmp >> 24) & 0x7F;//
+	if(freq_sel < 2) //< 667 no training
+	{
+		if(phy == 0)
+			data_tmp = REG32(DMC_GUCPHY0_BASE+freq_sel*20*4+0x12*4);
+		else
+			data_tmp = REG32(DMC_GUCPHY1_BASE+freq_sel*20*4+0x12*4);
+	}
+	else
+		data_tmp = train_res[rank][phy].phy_write_ec;//0x03b0 write DQS to DQ coarse and fine phase training result
 	phy_write_result->db1_wdq_bt_result = (data_tmp >> 20) & 0xF;//**_cfg_db1_wdq
 	phy_write_result->db0_wdq_bt_result = (data_tmp >> 16) & 0xF;//**_cfg_db0_wdq
 	phy_write_result->db1_wdq_result = (data_tmp >> 8) & 0xFF;//**_cfg_db1_wrdeye
 	phy_write_result->db0_wdq_result = data_tmp & 0xFF;//**_cfg_db0_wrdeye
-
-	data_tmp = train_res[rank][phy].phy_write_ee;//0x03b8 read eye pass window
+	if(freq_sel < 2)
+		data_tmp = 128 | (128 << 8);
+	else
+		data_tmp = train_res[rank][phy].phy_write_ee;//0x03b8 read eye pass window
 
 	phy_write_result->db1_wdq_pass_window = (data_tmp >> 8) & 0xFF; //mlb_train_db0_deye_pass_window_cfg_db1
 	phy_write_result->db0_wdq_pass_window = data_tmp & 0xFF;///mlb_train_db0_deye_pass_window_cfg_db0
 	//Calcullation write training eye window start and end
+	phy_write_result->db0_wdq_result += 0x100*(phy_write_result->db0_wdq_bt_result);
+	phy_write_result->db1_wdq_result += 0x100*(phy_write_result->db1_wdq_bt_result);
+
 	phy_write_result->wr_db0_eye_window_start = TRAINGING_EYE_START_VALUE(phy_write_result->db0_wdq_result, phy_write_result->db0_wdq_pass_window);
 	phy_write_result->wr_db0_eye_window_end  = TRAINGING_EYE_END_VALUE(phy_write_result->db0_wdq_result, phy_write_result->db0_wdq_pass_window);
 	phy_write_result->wr_db1_eye_window_start = TRAINGING_EYE_START_VALUE(phy_write_result->db1_wdq_result, phy_write_result->db1_wdq_pass_window);
 	phy_write_result->wr_db1_eye_window_end  = TRAINGING_EYE_END_VALUE(phy_write_result->db1_wdq_result, phy_write_result->db1_wdq_pass_window);
-	phy_write_result->db0_wdq_result += 0x100*(phy_write_result->db0_wdq_bt_result);
-	phy_write_result->db1_wdq_result += 0x100*(phy_write_result->db1_wdq_bt_result);
 }
 
 void phy_delay_line_set_ca(u32 phy_base, u32 value, u32 freq_sel)
@@ -505,6 +499,134 @@ void ctrl_soft_command(void)
 
 }
 
+static u32 get_wr_ca_vol_shift(u32 deault_vref,u32 vol_step)
+{
+	u32 tmp;
+
+	tmp = vol_step;
+	if(deault_vref <0x40)
+	{
+		/*default vref in range 0*/
+		if(tmp > 0x32)
+			tmp = 0x54 + tmp - 0x32;
+	}
+	else
+	{
+		/*default vref in range 1*/
+		if(tmp > 0x72)
+			tmp = 0x72;
+		if(tmp < 0x40)
+			tmp = 0x1D -(0x40 - tmp);
+	}
+	return tmp;
+}
+
+static void get_wr_ca_eye_mask_vol_lp4(u32 default_vref)
+{
+	int vref;
+
+	if(ddr_chip_cur.chip_type == LPDDR4)
+		vref = default_vref + LP4_WR_EYE_MASK_VOL_STEP;
+	else
+		vref = default_vref + LP4X_WR_EYE_MASK_VOL_STEP;
+	vref_info.eye_mask_vol_high = get_wr_ca_vol_shift(default_vref,vref);
+
+	if(ddr_chip_cur.chip_type == LPDDR4)
+		vref = default_vref - LP4_WR_EYE_MASK_VOL_STEP;
+	else
+		vref = default_vref - LP4X_WR_EYE_MASK_VOL_STEP;
+	if(vref < 0)
+		vref = 0;
+	vref_info.eye_mask_vol_low = get_wr_ca_vol_shift(default_vref,vref);
+
+}
+
+static void print_pass_rate(scan_type type, int byte, u32 rank)
+{
+	int shift_item, pass_rate, pass_rate_low_high;
+
+	pass_rate = LP4_LP3_MIN_PASS_RATE;
+	pass_rate_low_high = LP4_LP3_MIN_EYE_MASK_PASS_RATE;
+	if(type == SCAN_READ)
+	{
+		shift_item = SCAN_RD_ITEM_SHIFT;
+	}
+	else if(type == SCAN_WRITE)
+	{
+		shift_item = SCAN_WR_ITEM_SHIFT;
+	}
+	else
+	{
+		shift_item = SCAN_CA_ITEM_SHIFT;
+		pass_rate *= 2;
+		pass_rate_low_high *= 2;
+	}
+	ddrc_print_scan("\r\npass rate: ");
+
+	ddrc_print_scan(" default vref:%");
+	ddrc_print_scan(itoa_dec(vref_info.pass_defaut_vref));
+
+	ddrc_print_scan(" high vref:%");
+	ddrc_print_scan(itoa_dec(vref_info.pass_vol_hight));
+
+	ddrc_print_scan(" low vref:%");
+	ddrc_print_scan(itoa_dec(vref_info.pass_vol_low));
+
+	if((vref_info.pass_defaut_vref < pass_rate) || (vref_info.pass_vol_hight < pass_rate_low_high)
+			|| (vref_info.pass_vol_low < pass_rate_low_high))
+	{
+		vref_info.pass_result[rank] |= 1 << (byte + shift_item);
+	}
+
+}
+
+static void print_final_result(void)
+{
+	int i, j, temp;
+	if((vref_info.pass_result[0] != 0) || (vref_info.pass_result[1] != 0))
+	{
+		ddrc_print_scan("\r\n SCAN FAIL:");
+		for(i = 0; i < 2; i++)
+		{
+			ddrc_print_scan("rank:");
+			ddrc_print_scan(itoa_dec(i));
+			if((vref_info.pass_result[i] >> SCAN_RD_ITEM_SHIFT) & 0xF)
+			{
+				temp = (vref_info.pass_result[i] >> SCAN_RD_ITEM_SHIFT) & 0xF;
+				ddrc_print_scan(" read byte:");
+				for(j = 0; j < 4 ;j++)
+				{
+					if((temp >> j) & 1)
+						ddrc_print_scan(itoa_dec(j));
+				}
+			}
+			if((vref_info.pass_result[i] >> SCAN_WR_ITEM_SHIFT) & 0xF)
+			{
+				temp = (vref_info.pass_result[i] >> SCAN_WR_ITEM_SHIFT) & 0xF;
+				ddrc_print_scan(" write byte:");
+				for(j = 0; j < 4 ;j++)
+				{
+					if((temp >> j) & 1)
+						ddrc_print_scan(itoa_dec(j));
+				}
+			}
+			if((vref_info.pass_result[i] >> SCAN_CA_ITEM_SHIFT) & 0x3)
+			{
+				temp = (vref_info.pass_result[i] >> SCAN_CA_ITEM_SHIFT) & 0x3;
+				ddrc_print_scan(" CA phy:");
+				for(j = 0; j < 2 ;j++)
+				{
+					if((temp >> j) & 1)
+						ddrc_print_scan(itoa_dec(j));
+				}
+			}
+		}
+	}
+	else
+		ddrc_print_scan("\r\n SCAN ALL PASS");
+}
+
+/*
 void ddr_dump_read_reg(u32 phy0_base,u32 phy1_base)
 {
 	int i, iLoop=0;
@@ -537,36 +659,45 @@ void ddr_dump_read_reg(u32 phy0_base,u32 phy1_base)
 	}
 
 }
-void param_to_pass_boundary_print(void)
+*/
+void param_to_pass_boundary_print(int vref, u32 default_vref)
 {
-	uint32 first_pass_percent=0;
-	uint32 last_pass_percent =0;
 	uint32 state=0;
-	uint32 pass_delta=0;
+	uint32 pass_delta, pass_rate;
+	char itoc_tmp[20] = {0};
 
 	/*Print first pass*/
-	first_pass_percent=((first_pass*1000)/512)-((first_pass/512)*1000);
-	ddrc_print_scan("\t:first_pass:0x");
-	ddrc_print_scan(uint8tochar(first_pass>>8));
-	ddrc_print_scan(uint8tochar(first_pass));
+	ddrc_print_scan(" first_pass:0x");
+	ddrc_print_scan(itoa_simple(first_pass, itoc_tmp, 16));
 
 	/*Print last pass*/
-	last_pass_percent=((last_pass*1000)/512)-((last_pass/512)*1000);
-	ddrc_print_scan("\tlast_pass:0x");
-	ddrc_print_scan(uint8tochar(last_pass>>8));
-	ddrc_print_scan(uint8tochar(last_pass));
+	ddrc_print_scan(" last_pass:0x");
+	ddrc_print_scan(itoa_simple(last_pass, itoc_tmp, 16));
 
 	/*Print pass delta*/
-	pass_delta=last_pass-first_pass;
-	ddrc_print_scan("\tpass_delta:0x");
-	ddrc_print_scan(uint8tochar(pass_delta>>8));
-	ddrc_print_scan(uint8tochar(pass_delta));
-
+	pass_delta=last_pass-first_pass + 1;
+	ddrc_print_scan(" delta:0x");
+	ddrc_print_scan(itoa_simple(pass_delta, itoc_tmp, 16));
 	/*Print center pass*/
 	center_pass=(first_pass+last_pass)/2;
-	ddrc_print_scan("\tcenter:0x");
-	ddrc_print_scan(uint8tochar(center_pass>>8));
-	ddrc_print_scan(uint8tochar(center_pass));
+	ddrc_print_scan(" center:0x");
+	ddrc_print_scan(itoa_simple(center_pass, itoc_tmp, 16));
+
+	ddrc_print_scan(" pass rate:%");
+	pass_rate = (pass_delta * 100) / 256;
+	ddrc_print_scan(itoa_dec(pass_rate));
+	if(vref == default_vref)
+	{
+		vref_info.pass_defaut_vref = pass_rate;
+	}
+	else if(vref == vref_info.eye_mask_vol_high)
+	{
+		vref_info.pass_vol_hight = pass_rate;
+	}
+	else if(vref == vref_info.eye_mask_vol_low)
+	{
+		vref_info.pass_vol_low = pass_rate;
+	}
 }
 /*******************************
 *Name:ddr_scan_get_training_printresult
@@ -749,7 +880,7 @@ int ddr_print_bist_result(u8 *pass_flag_bist,u8 *fail_flag_bist,uint32 i,u16 vre
 	if(ret)//fail
 	{
 		/*4X scan  write and ca no set bit8 to 1*/
-		if((scan_type==scan_write) || (scan_type==scan_ca))
+		if((scan_type==SCAN_WRITE) || (scan_type==SCAN_CA))
 			vref_mask=0x00;
 		else
 			 vref_mask=0x80;
@@ -758,26 +889,28 @@ int ddr_print_bist_result(u8 *pass_flag_bist,u8 *fail_flag_bist,uint32 i,u16 vre
 		if((vref_val == (deye_vref_result)) && (deye_vref_result != 0)) //Only cmos mode Set biet 8 to 1
 		{
 			//ddrc_print_scan("123\n");
-#ifdef DDR_SCAN_PRINT_THROUGH_LINE
 			if ((i == (db_dqs + 0x30)) || (i == (db_dqs - 0x30))) //through  width
-				{THROUGH_EYE_SCOPE;}
+				{THROUGH_EYE_SCOPE_FAIL;}
 			else
-#endif
-			if (i == training_eye_start) /*Symbol training Start & End Value*/
-				FAIL_VREF_TRAINING_STRAT_SYMBOL;
-			else if (i == training_eye_end)
-				FAIL_VREF_TRAINING_END_SYMBOL;
-			else FAIL_SYMBOL;
+			{
+				if (i == training_eye_start) /*Symbol training Start & End Value*/
+					FAIL_VREF_TRAINING_STRAT_SYMBOL;
+				else if (i == training_eye_end)
+					FAIL_VREF_TRAINING_END_SYMBOL;
+				else if(i % 20 == 0)
+					ALINE_SYMBOL;
+				else FAIL_SYMBOL;
+			}
 		}
 		else
 		{
-#ifdef DDR_SCAN_PRINT_THROUGH_LINE
 			if ((i == (db_dqs + 0x30)) || (i == (db_dqs - 0x30))) //through  width
 			{
-				THROUGH_EYE_SCOPE;
+				THROUGH_EYE_SCOPE_FAIL;
 			}
+			else if(i % 20 == 0)
+				ALINE_SYMBOL;
 			else
-#endif
 				FAIL_SYMBOL;
 		}
 		 /*Update data*/
@@ -786,14 +919,14 @@ int ddr_print_bist_result(u8 *pass_flag_bist,u8 *fail_flag_bist,uint32 i,u16 vre
 			last_pass=i-1;
 			*fail_flag_bist=0;
 		}
-		if((last_pass-first_pass)<5)//if pass number < 5 Recount first_pass
+		if((last_pass-first_pass)<30)//if pass number < 5 Recount first_pass
 		{
 			*pass_flag_bist=1;
 		}
 	}
 	else//success
 	{
-		if((scan_type==scan_write)|| (scan_type==scan_ca)) {
+		if((scan_type==SCAN_WRITE)|| (scan_type==SCAN_CA)) {
 		vref_mask=0x00;//Only write
 		}else
 		{
@@ -801,28 +934,26 @@ int ddr_print_bist_result(u8 *pass_flag_bist,u8 *fail_flag_bist,uint32 i,u16 vre
 		}
 		if((vref_val==deye_vref_result)&&(deye_vref_result!=0))//Diffential Mode ScanVREF==Training ,Vref write  need compare fixed Training value was 0xd0
 		{
-#ifdef DDR_SCAN_PRINT_THROUGH_LINE
 			if ((i == (db_dqs + 0x30)) || (i == (db_dqs - 0x30))) //through  width
 			{
 				THROUGH_EYE_SCOPE;
 			} else
-#endif
-			if (i==training_eye_start)/*Symbol training Start & End Value*/
-				PASS_VREF_TRAINING_STRAT_SYMBOL;
-			else if (i == training_eye_end)
-				PASS_VREF_TRAINING_END_SYMBOL;
-			else if (i == db_dqs)  /*Symbol training Center dqs*/
-				PASS_VREF_DELAY_TRAINING_SYMBOL;
-			else
-				PASS_VREF_TRAINING_SYMBOL;
+			{
+				if (i==training_eye_start)/*Symbol training Start & End Value*/
+					PASS_VREF_TRAINING_STRAT_SYMBOL;
+				else if (i == training_eye_end)
+					PASS_VREF_TRAINING_END_SYMBOL;
+				else if (i == db_dqs)  /*Symbol training Center dqs*/
+					PASS_VREF_DELAY_TRAINING_SYMBOL;
+				else
+					PASS_VREF_TRAINING_SYMBOL;
+			}
 		}else
 		{
-#ifdef DDR_SCAN_PRINT_THROUGH_LINE
 		if ((i == (db_dqs + 0x30)) || (i == (db_dqs - 0x30))) //print through  width
 		{
 			THROUGH_EYE_SCOPE;
 		} else
-#endif
 			PASS_SYMBOL;
 		}
 		/*Update calculation first pass and last pass*/
@@ -831,9 +962,11 @@ int ddr_print_bist_result(u8 *pass_flag_bist,u8 *fail_flag_bist,uint32 i,u16 vre
 			first_pass=i;
 			*pass_flag_bist=0;
 		}
-		if((last_pass<=first_pass)||((last_pass-first_pass)<5))//last_pass not suitable condition,reset collet fail_flag
+		if((last_pass<=first_pass)||((last_pass-first_pass)<30))//last_pass not suitable condition,reset collet fail_flag
 		{
-			 *fail_flag_bist=1;
+			*fail_flag_bist=1;
+			if((scan_type == SCAN_READ) && (i == phy_scan_para_rd[0].scan_num))
+			last_pass = i;
 		}
 	}
 
@@ -860,19 +993,19 @@ void ddr_offline_scan_parameter(scan_type_parameter type_para,u16 vref_val)
 	last_pass=0;
 	scan_type_parameter temp_parameter=type_para;//Temporarily store
 	/***If scan Write or Read should store some parameter ****/
-	if(temp_parameter.type==scan_write)
+	if(temp_parameter.type==SCAN_WRITE)
 	{
 		read_data=REG32(temp_parameter.dmc_phy_base+freq_sel*20*4+0x12*4);
 	}
-	else if(temp_parameter.type==scan_read)
+	else if(temp_parameter.type==SCAN_READ)
 	{
 		read_data=REG32(temp_parameter.dmc_phy_base+freq_sel*20*4+0x11*4);
 	}
     /****Loop set parameter and bist test****/
-	if(temp_parameter.type == scan_write)
+	if(temp_parameter.type == SCAN_WRITE)
 	{
-		i = freq_sel*50;
-		temp_parameter.scan_num +=freq_sel*30;
+		i = freq_sel*40;
+		temp_parameter.scan_num +=freq_sel*20;
 	}
 	for (; i<=temp_parameter.scan_num; i=i+X_INCREASE_STEP)
 	{
@@ -884,53 +1017,53 @@ void ddr_offline_scan_parameter(scan_type_parameter type_para,u16 vref_val)
 		}
 
 	   //step. bist operation and record the pass and fail
-		if(temp_parameter.type==scan_read)
+		if(temp_parameter.type==SCAN_READ)
 		{
 			if((temp_parameter.dmc_phy_base==DMC_GUCPHY0_BASE)&&(temp_parameter.data_module==data_module_0))
 				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, read_phy0_result.deye_vref_db0_result, read_phy0_result.rd_db0_dqs,\
-		                                      TRAINGING_EYE_START_VALUE(read_phy0_result.rd_db0_dqs, read_phy0_result.db0_rdq_pass_window),\
-		                                      TRAINGING_EYE_END_VALUE(read_phy0_result.rd_db0_dqs, read_phy0_result.db0_rdq_pass_window),temp_parameter.type);
+		                                      read_phy0_result.rd_db0_eye_window_start,\
+		                                      read_phy0_result.rd_db0_eye_window_end,temp_parameter.type);
 		        else if((temp_parameter.dmc_phy_base==DMC_GUCPHY0_BASE)&&(temp_parameter.data_module==data_module_1))
 				ddr_print_bist_result(&pass_flag,&fail_flag,i,vref_val,read_phy0_result.deye_vref_db0_result,read_phy0_result.rd_db1_dqs,\
-		                                      TRAINGING_EYE_START_VALUE(read_phy0_result.rd_db1_dqs, read_phy0_result.db1_rdq_pass_window), \
-		                                      TRAINGING_EYE_END_VALUE(read_phy0_result.rd_db1_dqs, read_phy0_result.db1_rdq_pass_window),temp_parameter.type);
+		                                      read_phy0_result.rd_db1_eye_window_start, \
+		                                      read_phy0_result.rd_db1_eye_window_end,temp_parameter.type);
 			else if((temp_parameter.dmc_phy_base==DMC_GUCPHY1_BASE)&&(temp_parameter.data_module==data_module_0))
-				ddr_print_bist_result(&pass_flag,&fail_flag,i,vref_val,read_phy1_result.deye_vref_db0_result,read_phy0_result.rd_db0_dqs,\
-		                                      TRAINGING_EYE_START_VALUE(read_phy1_result.rd_db0_dqs, read_phy1_result.db0_rdq_pass_window), \
-		                                      TRAINGING_EYE_END_VALUE(read_phy1_result.rd_db0_dqs, read_phy1_result.db0_rdq_pass_window),temp_parameter.type);
+				ddr_print_bist_result(&pass_flag,&fail_flag,i,vref_val,read_phy1_result.deye_vref_db0_result,read_phy1_result.rd_db0_dqs,\
+		                                      read_phy1_result.rd_db0_eye_window_start, \
+		                                      read_phy1_result.rd_db0_eye_window_end,temp_parameter.type);
 			else if((temp_parameter.dmc_phy_base==DMC_GUCPHY1_BASE)&&(temp_parameter.data_module==data_module_1))
-				ddr_print_bist_result(&pass_flag,&fail_flag,i,vref_val,read_phy1_result.deye_vref_db0_result,read_phy0_result.rd_db1_dqs,\
-		                                      TRAINGING_EYE_START_VALUE(read_phy1_result.rd_db1_dqs, read_phy1_result.db1_rdq_pass_window),\
-		                                      TRAINGING_EYE_END_VALUE(read_phy1_result.rd_db1_dqs, read_phy1_result.db1_rdq_pass_window),temp_parameter.type);
+				ddr_print_bist_result(&pass_flag,&fail_flag,i,vref_val,read_phy1_result.deye_vref_db0_result,read_phy1_result.rd_db1_dqs,\
+		                                      read_phy1_result.rd_db1_eye_window_start,\
+		                                      read_phy1_result.rd_db1_eye_window_end,temp_parameter.type);
 		   }
-		else if(temp_parameter.type==scan_write)
+		else if(temp_parameter.type==SCAN_WRITE)
 		{
 			if((temp_parameter.dmc_phy_base==DMC_GUCPHY0_BASE)&&(temp_parameter.data_module==data_module_0))
-				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, LP4_write_training_vref, write_phy0_result.db0_wdq_result,\
-		                                      TRAINGING_EYE_START_VALUE(write_phy0_result.db0_wdq_result, write_phy0_result.db0_wdq_pass_window),\
-		                                      TRAINGING_EYE_END_VALUE(write_phy0_result.db0_wdq_result, write_phy0_result.db0_wdq_pass_window),temp_parameter.type);
+				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, vref_info.lp4_wr_training_vref, write_phy0_result.db0_wdq_result,\
+		                                      write_phy0_result.wr_db0_eye_window_start,\
+		                                      write_phy0_result.wr_db0_eye_window_end,temp_parameter.type);
 			else if((temp_parameter.dmc_phy_base==DMC_GUCPHY0_BASE)&&(temp_parameter.data_module==data_module_1))
-				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, LP4_write_training_vref, write_phy0_result.db1_wdq_result,\
-		                                      TRAINGING_EYE_START_VALUE(write_phy0_result.db1_wdq_result, write_phy0_result.db1_wdq_pass_window),\
-		                                      TRAINGING_EYE_END_VALUE(write_phy0_result.db1_wdq_result+0x100, write_phy0_result.db1_wdq_pass_window),temp_parameter.type);
+				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, vref_info.lp4_wr_training_vref, write_phy0_result.db1_wdq_result,\
+											  write_phy0_result.wr_db1_eye_window_start,\
+											  write_phy0_result.wr_db1_eye_window_end,temp_parameter.type);
 			else if((temp_parameter.dmc_phy_base==DMC_GUCPHY1_BASE)&&(temp_parameter.data_module==data_module_0))
-				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, LP4_write_training_vref, write_phy1_result.db0_wdq_result,\
-		                                      TRAINGING_EYE_START_VALUE(write_phy1_result.db0_wdq_result, write_phy1_result.db0_wdq_pass_window),\
-		                                      TRAINGING_EYE_END_VALUE(write_phy1_result.db0_wdq_result, write_phy1_result.db0_wdq_pass_window),temp_parameter.type);    //0x50 bit7-->1 =0xd0
+				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, vref_info.lp4_wr_training_vref, write_phy1_result.db0_wdq_result,\
+		                                      write_phy1_result.wr_db0_eye_window_start,\
+		                                      write_phy1_result.wr_db0_eye_window_end,temp_parameter.type);   //0x50 bit7-->1 =0xd0
 			else if((temp_parameter.dmc_phy_base==DMC_GUCPHY1_BASE)&&(temp_parameter.data_module==data_module_1))
-				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, LP4_write_training_vref, write_phy1_result.db1_wdq_result,\
-		                                      TRAINGING_EYE_START_VALUE(write_phy1_result.db1_wdq_result, write_phy1_result.db1_wdq_pass_window),\
-		                                      TRAINGING_EYE_END_VALUE(write_phy1_result.db1_wdq_result, write_phy1_result.db1_wdq_pass_window),temp_parameter.type);
+				ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, vref_info.lp4_wr_training_vref, write_phy1_result.db1_wdq_result,\
+											  write_phy1_result.wr_db1_eye_window_start,\
+											  write_phy1_result.wr_db1_eye_window_end,temp_parameter.type);
 	   }
 	}
   /*Data Restore*/
-	if(temp_parameter.type==scan_write)//Restore
+	if(temp_parameter.type==SCAN_WRITE)//Restore
 	{
 		REG32(temp_parameter.dmc_phy_base+freq_sel*20*4+0x12*4)=read_data;
 		//update
 		reg_bits_set(temp_parameter.dmc_phy_base + 0xb2*4, 3, 1, 0);
 		reg_bits_set(temp_parameter.dmc_phy_base + 0xb2*4, 3, 1, 1);
-	}else if(temp_parameter.type==scan_read)
+	}else if(temp_parameter.type==SCAN_READ)
 	{
 		REG32(temp_parameter.dmc_phy_base+freq_sel*20*4+0x11*4)=read_data;
 		//update
@@ -974,7 +1107,7 @@ void ddr_offline_scan_parameter_ca(scan_type_parameter type_para,u16 vref_val)
 	{
         /*Set Delay*/
 		phy_delay_line_set_ca(temp_parameter.dmc_phy_base,i,freq_sel);
-		ret=ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, LP4X_ca_training_vref, ca_phy0_result.ca_result_cfg_fine,\
+		ret=ddr_print_bist_result(&pass_flag, &fail_flag, i, vref_val, vref_info.lp4_ca_training_vref, ca_phy0_result.ca_result_cfg_fine,\
 	                              TRAINGING_EYE_START_VALUE(ca_phy0_result.ca_result_cfg_fine, ca_phy0_result.ca_pass_window),\
 	                              TRAINGING_EYE_END_VALUE(ca_phy0_result.ca_result_cfg_fine, ca_phy0_result.ca_pass_window), temp_parameter.type);
 		i=i+1;
@@ -997,7 +1130,7 @@ void ddr_offline_scan_parameter_ca(scan_type_parameter type_para,u16 vref_val)
 #else
 				dram_powerup_seq(find_ddr_freq(freq_sel));
 				phy_delay_line_set_ca(temp_parameter.dmc_phy_base,ca_phy0_result.ca_result_cfg_fine,freq_sel);
-				ddr_scan_set_ca_vref_lpddr4(LP4X_ca_training_vref);
+				ddr_scan_set_ca_vref_lpddr4(vref_info.lp4_ca_training_vref);
 #endif
 			}
 			else
@@ -1194,14 +1327,14 @@ static void ddr_print_ca_best_para(best_para *para)
 }
 
 /*Set write vref for lpddr4x*/
-inline void ddr_scan_set_write_vref_lpddr4(int vref, int i){
+void ddr_scan_set_write_vref_lpddr4(int vref, int i){
 	reg_bits_set(0x31000100,20,4,(1<<i));
 	lpddr_dmc_mrw(CMD_CS_BOTH,0xe, vref);//mr14
 	reg_bits_set(0x31000100,20,4,3);
 }
 
 /*Set write vref for lpddr4x*/
-inline void ddr_scan_set_ca_vref_lpddr4(int vref){
+void ddr_scan_set_ca_vref_lpddr4(int vref){
 	lpddr_dmc_mrw(CMD_CS_BOTH,0xc, vref);//mr12
 }
 
@@ -1218,6 +1351,8 @@ void ddr_offline_scan_wr(u16 max ,u16 min,best_para*pPara, u32 rank)
 	int vref_lv=0;
 
 	ddrc_print_scan("\r\noff line scan write\r\n");
+
+	get_wr_ca_eye_mask_vol_lp4(vref_info.lp4_wr_training_vref);
 	for(i=0;i<(sizeof(phy_scan_para_wr)/sizeof(scan_type_parameter));i++)
 	{
 		if(bit_mask_num !=0xFFFF)
@@ -1252,7 +1387,7 @@ void ddr_offline_scan_wr(u16 max ,u16 min,best_para*pPara, u32 rank)
 
 		for(vref_lv = max;vref_lv >= min;vref_lv--)
 		{
-			if((LP4_write_training_vref > 0x1D) &&(LP4_write_training_vref <0x40))
+			if((vref_info.lp4_wr_training_vref > 0x1D) &&(vref_info.lp4_wr_training_vref <0x40))
 			{
 				if(vref_lv == 0x54)
 					vref_lv = 0x32;
@@ -1276,7 +1411,7 @@ void ddr_offline_scan_wr(u16 max ,u16 min,best_para*pPara, u32 rank)
 			// reg_bits_set(PHY_VREFE_ADDRESS,31,1,1);//always keep 1 for bit 31 according email
 			//Scan and print
 			ddr_offline_scan_parameter(phy_scan_para_wr[i],vref_lv);
-			param_to_pass_boundary_print();//print boundary
+			param_to_pass_boundary_print(vref_lv, vref_info.lp4_wr_training_vref);
 			 //ddr_get_best_write_delay(i,vref_lv);//store best parameter
 			ddr_get_best_delay_para(i,vref_lv,pPara);//store best parameter
 			first_pass=0;
@@ -1284,12 +1419,14 @@ void ddr_offline_scan_wr(u16 max ,u16 min,best_para*pPara, u32 rank)
 			ddrc_print_scan("\r\n");
 		}
 
+		print_pass_rate(SCAN_WRITE, i, rank);
+
 		ddrc_print_scan("\r\n");
+		//default vref
+		ddr_scan_set_write_vref_lpddr4(write_phy0_result.vref_dram_adj_result,i/2);
 		/*perbit mode*/
 		if(bit_mask_num !=0xFFFF)
 			break;
-		//default vref
-		ddr_scan_set_write_vref_lpddr4(write_phy0_result.vref_dram_adj_result,i/2);
 	}
 }
 
@@ -1312,6 +1449,9 @@ void ddr_offline_scan_rd(u16 max, u16 min, best_para *pPara, u32 rank)
 	vref_address_0=DMC_GUCPHY0_BASE+vrefi_offset[freq_sel];//confirm vref register
 	vref_address_1=DMC_GUCPHY1_BASE+vrefi_offset[freq_sel];
 
+	vref_info.lp4_rd_training_vref = read_phy0_result.deye_vref_db0_result
+			|  (read_phy1_result.deye_vref_db0_result << 8);
+
 	for(i=0;i<(sizeof(phy_scan_para_rd)/sizeof(scan_type_parameter));i++)  //pay & data module
 	{
 		if(bit_mask_num !=0xFFFF)
@@ -1325,6 +1465,24 @@ void ddr_offline_scan_rd(u16 max, u16 min, best_para *pPara, u32 rank)
 				bit_mask_num = bit_mask_num >> 16;
 		}
 
+		vref_val = ((vref_info.lp4_rd_training_vref >> (i/2)*8) & 0xFF);
+
+		if(ddr_chip_cur.chip_type == LPDDR4)
+			vref_info.eye_mask_vol_high = vref_val + LP4_RD_EYE_MASK_VOL_STEP;
+		else
+			vref_info.eye_mask_vol_high = vref_val + LP4X_RD_EYE_MASK_VOL_STEP;
+
+		if(vref_info.eye_mask_vol_high > 0x7F)
+			vref_info.eye_mask_vol_high = 0x7F;
+
+		if(ddr_chip_cur.chip_type == LPDDR4)
+			vref_info.eye_mask_vol_low = vref_val - LP4_RD_EYE_MASK_VOL_STEP;
+		else
+			vref_info.eye_mask_vol_low = vref_val - LP4X_RD_EYE_MASK_VOL_STEP;
+
+		if(vref_info.eye_mask_vol_high < 0)
+			vref_info.eye_mask_vol_high = 0;
+
 		bist_start_address = get_bist_address_lp4(i/2,rank);
 
 		ddrc_print_scan("\r\nBist start address=");
@@ -1333,7 +1491,7 @@ void ddr_offline_scan_rd(u16 max, u16 min, best_para *pPara, u32 rank)
 		ddr_print_u32_data(bist_start_address);
 
 		ddrc_print_scan("\r\n          ");
-		ddr_print_scan_dead_line();
+		ddr_print_scan_dead_line_4x(0xff);
 
 		if(phy_scan_para_wr[i].dmc_phy_base==DMC_GUCPHY0_BASE) //Display message
 			ddrc_print_scan("PHY0,");
@@ -1347,10 +1505,16 @@ void ddr_offline_scan_rd(u16 max, u16 min, best_para *pPara, u32 rank)
 		for(vref_val=max;vref_val>=min;vref_val--)
 		{
 						//ddrc_print_scan("1\n");
-			reg_bits_set(vref_address_0,0,8,vref_val);
-			reg_bits_set(vref_address_1,0,8,vref_val);
-			reg_bits_set(vref_address_0,8,8,vref_val);
-			reg_bits_set(vref_address_1,8,8,vref_val);
+			if(phy_scan_para_wr[i].dmc_phy_base==DMC_GUCPHY0_BASE)
+			{
+				reg_bits_set(vref_address_0,0,8,vref_val);
+				reg_bits_set(vref_address_0,8,8,vref_val);
+			}
+			else
+			{
+				reg_bits_set(vref_address_1,0,8,vref_val);
+				reg_bits_set(vref_address_1,8,8,vref_val);
+			}
 			//ddrc_print_scan("2\n");
 			dmc_sprd_delay(5000);//20ms
 
@@ -1362,23 +1526,25 @@ void ddr_offline_scan_rd(u16 max, u16 min, best_para *pPara, u32 rank)
 
 			//ddrc_print_scan("3\n");
 			ddr_offline_scan_parameter(phy_scan_para_rd[i],vref_val);
-			param_to_pass_boundary_print();//print boundary
+			param_to_pass_boundary_print(vref_val, (vref_info.lp4_rd_training_vref >> (i/2)*8) & 0xFF);
 			//ddr_get_best_read_delay(i,vref_val);//store read best parameter
 			ddr_get_best_delay_para(i,vref_val,pPara);
 			ddrc_print_scan("\r\n");
 		}
+		print_pass_rate(SCAN_READ, i, rank);
+
+		reg_bits_set(vref_address_0,0,8,read_phy0_result.deye_vref_db0_result);
+		reg_bits_set(vref_address_1,0,8,read_phy1_result.deye_vref_db0_result);
+		reg_bits_set(vref_address_0,8,8,read_phy0_result.deye_vref_db0_result);
+		reg_bits_set(vref_address_1,8,8,read_phy1_result.deye_vref_db0_result);
 		/*perbit mode*/
 		if(bit_mask_num !=0xFFFF)
 			break;
 	}
-	reg_bits_set(vref_address_0,0,8,read_phy0_result.deye_vref_db0_result);
-	reg_bits_set(vref_address_1,0,8,read_phy0_result.deye_vref_db0_result);
-	reg_bits_set(vref_address_0,8,8,read_phy0_result.deye_vref_db0_result);
-	reg_bits_set(vref_address_1,8,8,read_phy0_result.deye_vref_db0_result);
 	ddrc_print_scan("\r\n");
 }
 
-void ddr_offline_scan_ca(u16 vref_max ,u16 vref_min)
+void ddr_offline_scan_ca(u16 vref_max ,u16 vref_min, u32 rank)
 {
 	u8 i=0;
 	u16 vref_lv=0;
@@ -1389,12 +1555,13 @@ void ddr_offline_scan_ca(u16 vref_max ,u16 vref_min)
 	//ddr_print_scan_dead_line();
 	/*set vrefe for scan ca*/
 	reg_bits_set(0x3100010c,12,1,0);
+	get_wr_ca_eye_mask_vol_lp4(vref_info.lp4_ca_training_vref);
 
 	vref_lv=(store_reboot_value->vref_lv);
 	i=store_reboot_value->phy_num;
 	for(;i<(sizeof(phy_scan_para_ca)/sizeof(scan_type_parameter));)  //CA only scan PHY0
 	{
-		bist_start_address = get_bist_address_lp4(i/2,0);
+		bist_start_address = get_bist_address_lp4(i,0);
 		ddrc_print_scan("\r\nBist start address=");
 		ddr_print_u32_data(bist_start_address);
 
@@ -1421,7 +1588,7 @@ void ddr_offline_scan_ca(u16 vref_max ,u16 vref_min)
 				ddrc_print_scan(":");
 			}
 
-			if((LP4X_ca_training_vref > 0x1D) &&(LP4X_ca_training_vref <0x40))
+			if((vref_info.lp4_ca_training_vref > 0x1D) &&(vref_info.lp4_ca_training_vref <0x40))
 			{
 				if(vref_lv == 0x54)
 					vref_lv = 0x32;
@@ -1439,7 +1606,7 @@ void ddr_offline_scan_ca(u16 vref_max ,u16 vref_min)
 			{
 				store_reboot_value->window_fail_flag=1;/*Restart Dram Power & Power*/
 			}
-			param_to_pass_boundary_print();//print boundary
+			param_to_pass_boundary_print(vref_lv, vref_info.lp4_ca_training_vref);
 			ddr_get_best_delay_para(i,vref_lv,&(store_reboot_value->ca_best_para));//store best parameter
 			first_pass=0;//Reset rom first_pass&last_pass Value  -test
 			last_pass=0;
@@ -1448,6 +1615,7 @@ void ddr_offline_scan_ca(u16 vref_max ,u16 vref_min)
 			vref_lv--;
 			store_reboot_value->vref_lv=vref_lv;
 		}
+		print_pass_rate(SCAN_CA, i, rank);
 		/*Restore some variable*/
 		store_reboot_value->vref_lv=VREFE_DAC_MAX;
 		vref_lv=VREFE_DAC_MAX;
@@ -1567,6 +1735,7 @@ void ddr_offline_scan_seq(int rank)
 	u32 back_register_1=0;
 	u32 i,size;
 	u32 tmp, val;
+
 	LPDDR4_ODT_CFG * p_odt_cfg;
 	switch(ddr_chip_cur.chip_type)
 	{
@@ -1587,85 +1756,84 @@ void ddr_offline_scan_seq(int rank)
 	REG32(0x31000124)=0;
 	dmc_sprd_delay(2);//2us
 
-	if(store_reboot_value->read_write_end_flag==0)//Avoid scan ca repeat call read & write function
-	{
 #ifdef DDR_SCAN_READ
-		size = sizeof(scan_rd_odt_vref_high)/sizeof(scan_rd_odt_vref_high[0]);
-		tmp = VREFI_OP_MAX;
-		val = p_odt_cfg[freq_sel].mr11;
-		for(i = 0;i < size;i++)
+	size = sizeof(scan_rd_odt_vref_high)/sizeof(scan_rd_odt_vref_high[0]);
+	tmp = VREFI_OP_MAX;
+	val = p_odt_cfg[freq_sel].mr11;
+	for(i = 0;i < size;i++)
+	{
+		if(scan_rd_odt_vref_high[i].odt ==  (val & 0x7))
 		{
-			if(scan_rd_odt_vref_high[i].odt ==  (val & 0x7))
-			{
-				tmp = scan_rd_odt_vref_high[i].vref;
-					break;
-			}
+			tmp = scan_rd_odt_vref_high[i].vref;
+				break;
 		}
+	}
 
-		vref_address_0=DMC_GUCPHY0_BASE+vrefi_offset[freq_sel];
-		vref_address_1=DMC_GUCPHY1_BASE+vrefi_offset[freq_sel];
-		back_register_0=REG32(vref_address_0);
-		back_register_1=REG32(vref_address_1);
-		ddrc_print_scan("\r\nScan read   OP mode start!\r\n");
-		ddr_offline_scan_rd(tmp,VREFI_OP_MIN,&read_op_para,rank);
-		ddrc_print_scan("\r\nScan read   OP mode end!\r\n");
+	vref_address_0=DMC_GUCPHY0_BASE+vrefi_offset[freq_sel];
+	vref_address_1=DMC_GUCPHY1_BASE+vrefi_offset[freq_sel];
+	back_register_0=REG32(vref_address_0);
+	back_register_1=REG32(vref_address_1);
+
+	ddr_offline_scan_rd(tmp,VREFI_OP_MIN,&read_op_para,rank);
+
 #ifdef PERBIT_SCAN
-		ddrc_print_scan("\r\nread   OP mode PERBIT start!\r\n");
-		for(i = 0; i < 32; i++)
-		{
-			ddrc_print_scan("\r\nbit:");
-			ddr_print_u32_data(i);
-			ddrc_print_scan("\r\n");
-			bit_mask_num = (1<<i);
-			ddr_offline_scan_rd(tmp,VREFI_OP_MIN,&read_op_para,rank);
-		}
-		bit_mask_num = 0xFFFF;
-		ddrc_print_scan("\r\nread   OP mode PERBIT end!\r\n");
+	ddrc_print_scan("\r\nread   OP mode PERBIT start!\r\n");
+	for(i = 0; i < 32; i++)
+	{
+		ddrc_print_scan("\r\nbit:");
+		ddr_print_u32_data(i);
+		ddrc_print_scan("\r\n");
+		bit_mask_num = (1<<i);
+		ddr_offline_scan_rd(tmp,VREFI_OP_MIN,&read_op_para,rank);
+	}
+	bit_mask_num = 0xFFFF;
+	ddrc_print_scan("\r\nread   OP mode PERBIT end!\r\n");
 #endif
-		REG32(vref_address_0)=back_register_0;
-		REG32(vref_address_1)=back_register_1;
-		dmc_sprd_delay(20);//20us
+	REG32(vref_address_0)=back_register_0;
+	REG32(vref_address_1)=back_register_1;
+	dmc_sprd_delay(20);//20us
 #endif
 
 #ifdef DDR_SCAN_WRITE
-		size = sizeof(scan_wr_odt_vref_high)/sizeof(scan_wr_odt_vref_high[0]);
-		tmp = DMC_GUCPHY0_BASE + freq_sel *20*4;
-		val = __raw_readl(tmp + 0x9*4);
-		tmp = VREFE_DAC_MAX;
-		for(i = 0;i < size;i++)
+	size = sizeof(scan_wr_odt_vref_high)/sizeof(scan_wr_odt_vref_high[0]);
+	tmp = DMC_GUCPHY0_BASE + freq_sel *20*4;
+	val = __raw_readl(tmp + 0x9*4);
+	tmp = VREFE_DAC_MAX;
+	for(i = 0;i < size;i++)
+	{
+		if(scan_wr_odt_vref_high[i].odt ==  (val & 0x7))
 		{
-			if(scan_wr_odt_vref_high[i].odt ==  (val & 0x7))
-			{
-				tmp = scan_wr_odt_vref_high[i].vref;
-					break;
-			}
+			tmp = scan_wr_odt_vref_high[i].vref;
+				break;
 		}
-
-		ddrc_print_scan("\r\nScan write   DAC mode start!\r\n");
-		ddr_offline_scan_wr(tmp,VREFE_DAC_MIN,&write_dac_para,rank);
-		ddrc_print_scan("\r\nScan write   DAC mode end!\r\n");
-#ifdef PERBIT_SCAN
-		ddrc_print_scan("\r\nwrite	DAC mode PERBIT start!\r\n");
-		for(i = 0; i < 32; i++)
-		{
-			ddrc_print_scan("\r\nbit:");
-			ddr_print_u32_data(i);
-			ddrc_print_scan("\r\n");
-			bit_mask_num = (1<<i);
-			ddr_offline_scan_wr(tmp,VREFE_DAC_MIN,&write_dac_para,rank);
-		}
-		bit_mask_num = 0xFFFF;
-		ddrc_print_scan("\r\nwrite	DAC mode PERBIT end!\r\n");
-#endif
-		dmc_sprd_delay(20);//20us
-		ddr_print_all_best_para();
-#endif
-		store_reboot_value->read_write_end_flag=1;
 	}
 
+	ddrc_print_scan("\r\nScan write   DAC mode start!\r\n");
+	ddr_offline_scan_wr(tmp,VREFE_DAC_MIN,&write_dac_para,rank);
+	ddrc_print_scan("\r\nScan write   DAC mode end!\r\n");
+#ifdef PERBIT_SCAN
+	ddrc_print_scan("\r\nwrite	DAC mode PERBIT start!\r\n");
+	for(i = 0; i < 32; i++)
+	{
+		ddrc_print_scan("\r\nbit:");
+		ddr_print_u32_data(i);
+		ddrc_print_scan("\r\n");
+		bit_mask_num = (1<<i);
+		ddr_offline_scan_wr(tmp,VREFE_DAC_MIN,&write_dac_para,rank);
+	}
+	bit_mask_num = 0xFFFF;
+	ddrc_print_scan("\r\nwrite	DAC mode PERBIT end!\r\n");
+#endif
+	dmc_sprd_delay(20);//20us
+	ddr_print_all_best_para();
+#endif
+
 #ifdef DDR_SCAN_CA
-	ddr_offline_scan_ca(CA_SCAN_MAX,CA_SCAN_MIN);//Debug for 0xf0 Normal Set:(VREFE_DAC_MAX,VREFE_DAC_MIN);
-	ddr_print_ca_best_para(&(store_reboot_value->ca_best_para));
+	if(rank == 1)
+	{
+		ddr_offline_scan_ca(CA_SCAN_MAX, CA_SCAN_MIN, rank);//Debug for 0xf0 Normal Set:(VREFE_DAC_MAX,VREFE_DAC_MIN);
+		ddr_print_ca_best_para(&(store_reboot_value->ca_best_para));
+	}
 #endif
 }
 /**************************************************
@@ -1680,7 +1848,7 @@ void ddr_scan_vdd_seq(void)
 	u32 freq;
 	u64 ddr_size;
 	u32 cs_num;
-
+	u32 tmp_vref;
 
 	if(scan_init_times == 0)
 		scan_init_times = 1;
@@ -1704,10 +1872,11 @@ void ddr_scan_vdd_seq(void)
 	freq_sel = (REG32(0x3100012c) >> 8) & 0x7;//get freq for register
 	freq = find_ddr_freq(freq_sel);
 
-	dmc_mrr(CMD_CS_0, 14, &LP4_write_training_vref, 10000);
-	LP4_write_training_vref=LP4_write_training_vref&0x7f;
-	dmc_mrr(CMD_CS_0, 12, &LP4X_ca_training_vref, 10000);
-	LP4X_ca_training_vref=LP4X_ca_training_vref&0x7f;
+	dmc_mrr(CMD_CS_0, 14, &vref_info.lp4_wr_training_vref, 10000);
+	tmp_vref = vref_info.lp4_wr_training_vref;
+	vref_info.lp4_wr_training_vref &= 0x7f;
+	dmc_mrr(CMD_CS_0, 12, &vref_info.lp4_ca_training_vref, 10000);
+	vref_info.lp4_ca_training_vref &= 0x7f;
 
 	if(store_reboot_value->rom_start_flag != 0xaa)
 	{
@@ -1717,8 +1886,8 @@ void ddr_scan_vdd_seq(void)
 		/*RANK SCAN parameter initial*/
 		ddrc_print_scan("Current SCK=");
 		ddr_print_u32_dec_data(freq);
-		ddrc_print_scan("\r\n");
-		ddrc_print_scan("ddr type=");
+
+		ddrc_print_scan("\r\nddr type=");
 		if(ddr_chip_cur.chip_type == LPDDR4)
 			ddrc_print_scan("LPDDR4");
 		else if(ddr_chip_cur.chip_type == LPDDR4X)
@@ -1729,11 +1898,13 @@ void ddr_scan_vdd_seq(void)
 		/*step 2. read out Initial training result and print*/
 		ddr_scan_get_training_printresult(store_reboot_value->rank_loop_num);
 		ddrc_print_scan("\r\nLp4 Write vref training Value=");
-		ddr_print_u32_data(LP4_write_training_vref);
+		ddr_print_u32_data(tmp_vref);
 		ddrc_print_scan("\tCA VREF Training Value=");
-		ddr_print_u32_data(LP4X_ca_training_vref);
+		ddr_print_u32_data(vref_info.lp4_ca_training_vref);
 		ddrc_print_scan("\r\n");
-		ddr_dump_read_reg(DMC_GUCPHY0_BASE, DMC_GUCPHY1_BASE);
+		reg_dump(DMC_GUCPHY0_BASE,268);
+		reg_dump(DMC_GUCPHY1_BASE,268);
+		reg_dump(DMC_REG_ADDR_BASE_PHY,390);
 	}
 
 	for(;store_reboot_value->rank_loop_num < cs_num;store_reboot_value->rank_loop_num++)/*LP4X*/
@@ -1741,12 +1912,19 @@ void ddr_scan_vdd_seq(void)
 		ddr_scan_choose_rank(store_reboot_value->rank_loop_num);/*Choose rank*/
 		ddr_offline_scan_seq(store_reboot_value->rank_loop_num);
 		ddr_scan_reset_rom_parameter();//reset store 0x800000 parameter
+#ifdef PERBIT_SCAN
+			break;
+#endif
 		if (ddr_chip_cur.cs_num == 1)
 			break;
 	}
 	/*Judge  dump register*/
-	ddr_dump_read_reg(DMC_GUCPHY0_BASE, DMC_GUCPHY1_BASE);
+	reg_dump(DMC_GUCPHY0_BASE,268);
+	reg_dump(DMC_GUCPHY1_BASE,268);
+	reg_dump(DMC_REG_ADDR_BASE_PHY,390);
 
-	ddrc_print_scan("scan end\r\n");
+
+	print_final_result();
+	ddrc_print_scan("\r\nscan end\r\n");
 	while(1);
 }

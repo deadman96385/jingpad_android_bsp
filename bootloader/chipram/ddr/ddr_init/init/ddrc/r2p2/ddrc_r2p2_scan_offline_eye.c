@@ -981,7 +981,8 @@ static void get_delay_min_max(int rank,int byte,u32 mid,u32 max_delay)
 	u32 tmp;
 
 	//every time need start at same delay_min
-	if((rank == 0) && (byte == 0))
+	//if((rank == 0) && (byte == 0))
+	if(1)
 	{
 		//l5pro max delay - min delay less than 0x40,so use middle - 0x20 = min,middle+0x20 = max
 		//scan_ui = 0x20;

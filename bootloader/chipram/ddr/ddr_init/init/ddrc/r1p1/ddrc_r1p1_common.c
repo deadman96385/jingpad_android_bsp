@@ -8,11 +8,9 @@ extern TRAIN_CONDITIONS_TABLE phy_train;
 int uart_log_disable = 0;
 #endif
 
-uint32 __raw_readl(uint32 addr)
+uint32 inline __raw_readl(uint32 addr)
 {
-	volatile uint32 val;
-	val = REG32(addr);
-	return val;
+	return REG32(addr);
 }
 
 void __raw_writel(uint32 addr, uint32 val)
@@ -66,7 +64,7 @@ static void isync(void)
 	dmc_sprd_delay(5);
 }
 
-void inline ddrc_force_rd_fifo_reset(void)
+void ddrc_force_rd_fifo_reset(void)
 {
 	//bit[23]
 	//0:normal operating

@@ -120,10 +120,19 @@
 #define CA_SCAN_MAX 0x72    /*LPDDR4X*/
 #define CA_SCAN_MIN 0x00
 //#else
-#if 0
-#define CA_SCAN_MAX 0xff	/*LPDDR3*/
-#define CA_SCAN_MIN 0x90
-#endif
+
+#define LP4_WR_EYE_MASK_VOL_STEP 0x10
+#define LP4X_WR_EYE_MASK_VOL_STEP 0x10
+
+#define LP4_RD_EYE_MASK_VOL_STEP 0xD
+#define LP4X_RD_EYE_MASK_VOL_STEP 0x13
+
+#define LP4_LP3_MIN_EYE_MASK_PASS_RATE 25
+#define LP4_LP3_MIN_PASS_RATE 45
+
+#define SCAN_RD_ITEM_SHIFT	0
+#define SCAN_WR_ITEM_SHIFT	4
+#define SCAN_CA_ITEM_SHIFT	8
 
 #define PD_PUB_SYS_CFG                                          (PMU_APB_BASE_ADDR+0x006c)
 #define PWR_STATUS2_DBG                                         (PMU_APB_BASE_ADDR+0x058c)
@@ -184,7 +193,7 @@ struct write_result{
 
 typedef enum
 {
-  scan_write=0,scan_read=1,scan_ca=2
+  SCAN_WRITE = 0,SCAN_READ = 1,SCAN_CA = 2
 }scan_type;
 typedef enum
 {
@@ -307,6 +316,19 @@ struct scan_odt_vref_high
 	char vref;
 };
 
+struct vref_info
+{
+	uint32 lp4_wr_training_vref;
+	uint32 lp4_ca_training_vref;
+	uint32 lp4_rd_training_vref;
+	int eye_mask_vol_high;
+	int eye_mask_vol_low;
+	u32 pass_result[2];
+	u8 pass_defaut_vref;
+	u8 pass_vol_hight;
+	u8 pass_vol_low;
+};
+
 RankConfigure rank_configure[2]={
 	{1,0x00,0x00,0x3FFF,0x00},	/*CH0-CS0&CH1-CS0*/
 	{1,0x00,0x00,0x3FFF,0x80000000}     /*CH1-CS1&CH1-CS1*/
@@ -316,10 +338,10 @@ u32 rank_bist_addr[]={0x00,0x40000000};
 /*******/
 //#ifdef DDR_SCAN_LPDDR4x
 const scan_type_parameter phy_scan_para_wr[]={
-		{DMC_GUCPHY0_BASE,0x200,data_module_0,scan_write},
-		{DMC_GUCPHY0_BASE,0x200,data_module_1,scan_write},
-		{DMC_GUCPHY1_BASE,0x200,data_module_0,scan_write},
-		{DMC_GUCPHY1_BASE,0x200,data_module_1,scan_write}
+		{DMC_GUCPHY0_BASE,0x250,data_module_0,SCAN_WRITE},
+		{DMC_GUCPHY0_BASE,0x250,data_module_1,SCAN_WRITE},
+		{DMC_GUCPHY1_BASE,0x250,data_module_0,SCAN_WRITE},
+		{DMC_GUCPHY1_BASE,0x250,data_module_1,SCAN_WRITE}
 					};
 //#else
 #if 0
@@ -331,14 +353,14 @@ const scan_type_parameter phy_scan_para_wr[]={
 					};
 #endif
 const scan_type_parameter phy_scan_para_rd[]={
-		{DMC_GUCPHY0_BASE,0xff,data_module_0,scan_read},
-		{DMC_GUCPHY0_BASE,0xff,data_module_1,scan_read},
-		{DMC_GUCPHY1_BASE,0xff,data_module_0,scan_read},
-		{DMC_GUCPHY1_BASE,0xff,data_module_1,scan_read}
+		{DMC_GUCPHY0_BASE,0xff,data_module_0,SCAN_READ},
+		{DMC_GUCPHY0_BASE,0xff,data_module_1,SCAN_READ},
+		{DMC_GUCPHY1_BASE,0xff,data_module_0,SCAN_READ},
+		{DMC_GUCPHY1_BASE,0xff,data_module_1,SCAN_READ}
                                     };
 const scan_type_parameter phy_scan_para_ca[]={        //0xfff
-	{ DMC_GUCPHY0_BASE, 0x200, no_modeule, scan_ca },
-	{ DMC_GUCPHY1_BASE, 0x200, no_modeule, scan_ca }
+	{ DMC_GUCPHY0_BASE, 0x200, no_modeule, SCAN_CA },
+	{ DMC_GUCPHY1_BASE, 0x200, no_modeule, SCAN_CA }
 };
 
 /*use set vrefi value address offset for scan read*/

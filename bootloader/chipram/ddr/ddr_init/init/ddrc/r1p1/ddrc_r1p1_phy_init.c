@@ -6,18 +6,26 @@
 #include "ddrc_r1p1_phy.h"
 #include "ddrc_r1p1_phy_cfg_lp4.h"
 #include "ddrc_r1p1_common.h"
+#include "ddrc_r1p1_auto_detect.h"
 
 extern DRAM_CHIP_INFO ddr_chip_cur;
 extern unsigned int phy_cfg_data_lp4[160];
 extern unsigned int phy_cfg_common_data_lp4[54];
 extern LPDDR4_MR_INFO lpddr4_mr_info;
-
-
+extern uint32 hynix_misc_mode;
+extern uint32 soc_chip_id;
+#ifdef DDR_AUTO_DETECT
+extern struct ddr_detect_info detect_info_cs[2];
+#endif
 uint32 min_freq, max_freq;
 uint32 freq_sel_mask = FREQ_SEL_MASK;
 TRAIN_CONDITIONS_TABLE phy_train;
 uint32 read_dm_phy0 = 0;
 uint32 read_dm_phy1 = 0;
+static u8 training_retry = 0;
+static u8 gate_fail = 0;
+static u32 trfc_dtmg2[8] = {0x353019,0x4D4825,0x857e40,0x999149,0xCCC262,0x109FD7F,0x132FF92,0x173FFB2};
+
 #ifdef DDR_SCAN_ENABLE
 uint32 scan_freq;
 #endif
@@ -128,7 +136,7 @@ TRAIN_CFG_TABLE ddrc_training_config_table[DDR_RANK_NUM_MAX][FREQ_POINT_NUM_MAX]
 			.perbitwr_enable = 0,
 			.perbitrd_enable = 0,
 			.ca_perbit_enable = 0,
-			.dll_half_mode = 1
+			.dll_half_mode = 0
 		},
 		//F4 training enable config
 		{
@@ -153,7 +161,7 @@ TRAIN_CFG_TABLE ddrc_training_config_table[DDR_RANK_NUM_MAX][FREQ_POINT_NUM_MAX]
 			.wrvref_train_enable = 1,
 			.perbitwr_enable = 1,
 			.perbitrd_enable = 1,
-			.ca_perbit_enable = 1
+			.ca_perbit_enable = 0
 		},
 		//F6 training enable config
 		{
@@ -330,13 +338,11 @@ void ddrc_phy_iopvt_cal_seq(void)
 {
 	uint32 read_data;
 	uint32 data_tmp;
+	uint32 i;
+
 	/*step 1) check result */
 	data_tmp = __raw_readl((DMC_GUCPHY0_BASE + 0xd6*4));
-	if((data_tmp >> 3) & 0x1)
-	{
-		ddrc_print_err("polling io pvt failed\r\n");
-		while_loop();
-	}
+
 	/*step 2) reset the pu/pd base on the iopvt zq resut*/
 	/*0xe5*4 PU/PD code of IO PVT calibration result*/
 	/*bit[23:16] pdio_cfg_pd_code*/
@@ -347,8 +353,31 @@ void ddrc_phy_iopvt_cal_seq(void)
 	/*bit[23:16] cal_default_pd_cfg_default_pu*/
 	/*bit[11:8]  cal_default_pd_cfg_offset_pd*/
 	/*bit[3:0]	 cal_default_pd_cfg_offset_pu*/
-	reg_bits_set((DMC_GUCPHY0_BASE + 0xb4*4), 16, 8, (read_data & 0xff));//cfg_pu_code data_tmp[23:16] = read_data[7:0]
-	reg_bits_set((DMC_GUCPHY0_BASE + 0xb4*4), 24, 8, ((read_data >> 16) & 0xff));//cfg_pd_code;data_tmp[31:24] = read_data[23:16]
+	for(i = 0; i < 10; i++)
+	{
+		if((data_tmp >> 3) & 0x1)
+		{
+			/*disable cal*/
+			reg_bits_set((DMC_GUCPHY0_BASE + 0xCB*4), 11, 1, 0);
+			reg_bits_set((DMC_GUCPHY1_BASE + 0xCB*4), 11, 1, 0);
+			reg_bits_set((DMC_GUCPHY0_BASE + 0xB3*4), 1, 2, 3);//bitp[1]cal_disable,bit[2] cal_manual_mode
+			reg_bits_set((DMC_GUCPHY1_BASE + 0xB3*4), 1, 2, 3);//bitp[1]cal_disable,bit[2] cal_manual_mode
+			dmc_sprd_delay(20);
+			reg_bits_set((DMC_GUCPHY0_BASE + 0xB3*4), 1, 2, 0);
+			reg_bits_set((DMC_GUCPHY1_BASE + 0xB3*4), 1, 2, 0);
+			reg_bits_set((DMC_GUCPHY0_BASE + 0xCB*4), 11, 1, 1);
+			reg_bits_set((DMC_GUCPHY1_BASE + 0xCB*4), 11, 1, 1);
+			dmc_sprd_delay(30);
+			data_tmp = __raw_readl((DMC_GUCPHY0_BASE + 0xd6*4));
+			read_data = __raw_readl((DMC_GUCPHY0_BASE + 0xe5*4));
+		}
+		else
+		{
+			reg_bits_set((DMC_GUCPHY0_BASE + 0xb4*4), 16, 8, (read_data & 0xff));//cfg_pu_code data_tmp[23:16] = read_data[7:0]
+			reg_bits_set((DMC_GUCPHY0_BASE + 0xb4*4), 24, 8, ((read_data >> 16) & 0xff));//cfg_pd_code;data_tmp[31:24] = read_data[23:16]
+			break;
+		}
+	}
 
 	/*step 3) enable cal_manual_mode and disable iopvt zq cali*/
 	reg_bits_set((DMC_GUCPHY0_BASE + 0xB3*4), 1, 2, 3);//bitp[1]cal_disable,bit[2] cal_manual_mode
@@ -368,7 +397,57 @@ void ddrc_phy_post_setting(uint32 phy_base)
 	reg_bits_set(phy_base + 0xcb*4, 8, 4, 0); //eb
 	reg_bits_set(phy_base + 0xcb*4, 0, 4, 0);//ag_en
 	reg_bits_set(phy_base + 0xd1*4, 16, 1, 0); //reg_pwrup_cke_rstn_en
-	reg_bits_set(phy_base + 0xCB*4, 11, 1, 0); //reg_mlb_cal_eb_cfg_cal_eb
+	reg_bits_set(phy_base + 0xCB*4, 11, 1, 1); //reg_mlb_cal_eb_cfg_cal_eb
+}
+
+void dfi_rddata_set_for_train_pre(u32 dfs_freq_sel ,u32 rank)
+{
+	u32 this_freq = find_ddr_freq(dfs_freq_sel);
+	/*x8 mode read latency add 2 ddr clk*/
+	if (((0x8 == ddr_chip_cur.cs0_jedec_info->dw))||
+	    ((0x8 == ddr_chip_cur.cs1_jedec_info->dw)))
+        {
+		if (this_freq > 533)
+		{
+			if (this_freq == 1866)
+			{
+				REG32(DMC_GUCPHY0_BASE + 0x2A0) += (8 << 8);
+				REG32(DMC_GUCPHY1_BASE + 0x2A0) += (8 << 8);
+			} else if (this_freq > 1333)
+			{
+				REG32(DMC_GUCPHY0_BASE + 0x2A0) += (4 << 8);
+				REG32(DMC_GUCPHY1_BASE + 0x2A0) += (4 << 8);
+			} else {
+				REG32(DMC_GUCPHY0_BASE + 0x2A0) += (2 << 8);
+				REG32(DMC_GUCPHY1_BASE + 0x2A0) += (2 << 8);
+			}
+		}
+        }
+}
+void dfi_rddata_set_for_train_post(u32 dfs_freq_sel, u32 rank)
+{
+	u32 this_freq = find_ddr_freq(dfs_freq_sel);
+	/*x8 mode read latency add 2 ddr clk*/
+	if (((0x8 == ddr_chip_cur.cs0_jedec_info->dw)) ||
+	    ((0x8 == ddr_chip_cur.cs1_jedec_info->dw)))
+        {
+		if (this_freq > 533)
+		{
+			if(this_freq > 1333)
+			{
+			REG32(DMC_GUCPHY0_BASE + 0x2A0) -= (4 << 8);
+			REG32(DMC_GUCPHY1_BASE + 0x2A0) -= (4 << 8);
+			}
+			else
+			{
+			REG32(DMC_GUCPHY0_BASE + 0x2A0) -= (2 << 8);
+			REG32(DMC_GUCPHY1_BASE + 0x2A0) -= (2 << 8);
+			}
+
+		}
+
+
+        }
 }
 
 uint32 ddrc_phy_rpull_get(uint32 phy_base, uint32 freq_sel)
@@ -428,6 +507,9 @@ void ddrc_phy_io_set(uint32 phy_base, uint32 freq_sel)
 void ddrc_phy_rpull_set_for_gate_train_pre(uint32 phy_base, uint32 freq_sel)
 {
 	uint32 tmp_addr = phy_base + (freq_sel*20*4);
+	uint32 data_tmp;
+	uint32 regval;
+
 	ddrc_phy_io_get(phy_base, freq_sel);
 	//gate manual mode
 	reg_bits_set(phy_base + 0xb2*4, 1, 1, 0);
@@ -474,7 +556,16 @@ void ddrc_phy_rpull_set_for_gate_train_pre(uint32 phy_base, uint32 freq_sel)
 //	reg_bits_set(phy_base + 0xa0*4, 11, 2, 3);
 
 	reg_bits_set(tmp_addr + 0x8*4, 28, 1, 1);//edge mode
-
+	/* read later for more accuracy*/
+	if(freq_sel == 3)
+	{
+		regval = __raw_readl(phy_base + 0xE1*4);
+		data_tmp = (regval >> 18) & 0x1FF;
+		regval = __raw_readl(tmp_addr + 0x10*4);
+		regval = (regval >> 16) & 0x1FF;
+		data_tmp = (data_tmp + regval) / 2;
+		reg_bits_set((tmp_addr + 0x10*4), 16, 9, data_tmp);
+	}
 }
 void ddrc_phy_rpull_set_for_gate_train_post(uint32 phy_base, uint32 freq_sel)
 {
@@ -519,11 +610,42 @@ void phy_reload_rank0_gate(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 	ddrc_print_debug("gate training window fine_db0 ");
 	ddrc_print_debug(itoa_simple(((data_tmp >> 0) & 0xff), s_tmp, 10));
 	ddrc_print_debug("\r\n");
+
 	if ((((data_tmp >> 16) & 0xffff) < 10) || ((data_tmp & 0xffff) < 10))
 	{
-		ddrc_print_err("gate training window too small\r\n");
-		while_loop();
+		ddrc_print_err("gate too small\r\n");
+		gate_fail++;
+		if(training_retry == 0)
+		{
+			if(freq_sel < 2)
+			{
+				regval = __raw_readl(phy_base + freq_sel*4 + 0x104*4);
+				regval = (regval & 0x1FF);
+				reg_bits_set((tmp_addr + 0x10*4), 16, 9, regval);
+			}
+		}
+		else
+		{
+			if(freq_sel > 1)
+				while_loop();
+			else if(freq_sel == 0)
+				return;
+		}
 	}
+	else if(freq_sel == 1)
+	{
+		regval = ((data_tmp >> 24) & 0xff);
+		read_data = ((data_tmp >> 8) & 0xff);
+
+		if((regval < 6) || (read_data < 6))
+		{
+			gate_fail++;
+			regval = __raw_readl(phy_base + freq_sel*4 + 0x104*4);
+			regval = (regval & 0x1FF);
+			reg_bits_set((tmp_addr + 0x10*4), 16, 9, regval);
+		}
+	}
+
 	window_width_max = ((data_tmp >> 24) > (data_tmp >> 8)) ? (data_tmp >> 24) : (data_tmp >> 8);
 #if 0
 	if ((wr_bit >> 8) & 0x1)//GATE
@@ -555,6 +677,9 @@ void phy_reload_rank0_gate(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 		//	read_data += 0x0101;
 		//else if (freq_sel > 4)
 		//	read_data += 0x0202;
+		/* gate manual*/
+		if((freq_sel == 1) && (gate_fail > 0))
+			read_data = 0x303;
 
 		__raw_writel(tmp_addr + 0xd*4, read_data);
 		/*
@@ -589,6 +714,10 @@ void phy_reload_rank0_gate(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 		{
 			regval = read_data/4;
 		}
+
+		/* gate manual*/
+		if((freq_sel == 1) && (gate_fail > 0))
+			regval = 0x4;
 		reg_bits_set(tmp_addr + 0xf*4, 0, 4, (regval & 0xf));
 	}
 
@@ -607,25 +736,30 @@ int ca_reload_rank_reg(uint32 phy_base, uint32 freq_sel, uint32 rank)
 	ac_mst_delay = reg_bits_get((phy_base + 0xe1*4), 0, 9);
 
 	read_data = __raw_readl(phy_base + 0xe6*4);
-	if (((read_data >> 16) & 0xFF) < 10)
+	if (((read_data >> 16) & 0xFF) < 0x58)
 	{
-		if (rank)
-			ddrc_print_err("RANK 1 CA Training fine window size smaller than 10!\r\n");
-		else
-			ddrc_print_err("RANK 0 CA Training fine window size smaller than 10!\r\n");
-//		return -1;
+		ddrc_print_err("CA < 0x58\r\n");
+		return -1;
+	}
+
+	data_tmp = (read_data & 0xFF) << 8;
+	data_tmp += ((read_data >> 8) & 0xFF);
+	if((data_tmp > 0x138) || (data_tmp < 0xD0))
+	{
+		ddrc_print_err("mid def\r\n");
+		return -1;
 	}
 
 	data_tmp = __raw_readl(phy_base + 0xe6*4);
 	if ((((data_tmp >> 8) & 0xff) == 0xff) && ((data_tmp & 0x1) == 0x1))
 	{
-		ddrc_print_err("rank CA training failed because have not right boundary!\r\n");
+		ddrc_print_err("CA no boundary!\r\n");
 		return -1;
 	}
-	(lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr12 = u32_bits_set((lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr12, 0, 6, ((data_tmp >> 24) & 0x3f));
+
 	if(phy_train.freq_sel < MAX_FREQ_SEL)
 	{
-//		(lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr12 = u32_bits_set((lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel + 1)->mr12, 0, 6, ((data_tmp >> 24) & 0x3f));
+		//(lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr12 = u32_bits_set((lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel + 1)->mr12, 0, 6, ((data_tmp >> 24) & 0x3f));
 	}
 
 	if (rank == 0)
@@ -741,7 +875,7 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		ddrc_print_debug("\r\n");
 		if ((((data_tmp >> 16) & 0xffff) < 10) || ((data_tmp & 0xffff) < 10))
 		{
-			ddrc_print_err("gate training window too small\r\n");
+			ddrc_print_err("gate small\r\n");
 			while_loop();
 		}
 		window_width_max = ((data_tmp >> 24) > (data_tmp >> 8)) ? (data_tmp >> 24) : (data_tmp >> 8);
@@ -801,7 +935,7 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		if ((((read_data & 0xff) <= 10)) ||
 			(((read_data >> 8) & 0xFF) <= 10))
 		{
-			ddrc_print_err("rank 0 Read EYE window size too small!\r\n");
+			ddrc_print_err("RE small\r\n");
 			while_loop();
 		}
 		data_tmp = __raw_readl(phy_base + 0xeb*4);
@@ -814,11 +948,11 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		__raw_writel(tmp_addr + 0x11*4, data_tmp);
 
 		if ((((data_tmp >> 24) & 0xff) == 0xff) ||
-			(((data_tmp >> 16) & 0xff) == 0xf)||
+			(((data_tmp >> 16) & 0xff) == 0xff)||
 			(((data_tmp >> 8) & 0xff) == 0xff)||
 			((data_tmp & 0xff) == 0xff))
 		{
-			ddrc_print_err("rank 0 Read EYE training failed because have not right boundary!\r\n");
+			ddrc_print_err("RE no bdry\r\n");
 			while_loop();
 		}
 	}
@@ -833,20 +967,31 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		 * function disable control*/
 		/*bit[15:8] mlb_vref_phy_value_manu_db1_cfg_db1*/
 		/*bit[7:0]	mlb_vref_phy_value_manu_db1_cfg_db0*/
+		/*1333 or above read vref average*/
+		if(freq_sel >= 5)
+		{
+			data_tmp = (read_data >> 8) & 0xff;
+			data_tmp = (data_tmp + (read_data & 0xff)) / 2;
+			read_data = (data_tmp << 8) | data_tmp;
+		}
 		reg_bits_set(tmp_addr + 0x10*4, 0, 16, read_data & 0xffff);
 	}
 
 	if ((wr_bit >> 13) & 0x1)//WEYE
 	{
 		read_data = __raw_readl(phy_base + 0x3B8);
-		if ((((read_data & 0xff) <= 10)) ||
-			 (((read_data >> 8) & 0xFF) <= 10))
+		if ((((read_data & 0xff) <= 20)) ||
+			 (((read_data >> 8) & 0xFF) <= 20))
 		{
 			if (rank)
-				ddrc_print_err("RANK 1 Write EYE window size too small!\r\n");
+				ddrc_print_err("R1 WE small\r\n");
 			else
-				ddrc_print_err("RANK 0 Write EYE window size too small!\r\n");
-
+				ddrc_print_err("R0 WE small\r\n");
+			if(training_retry != 3 )
+			{
+				training_retry++;
+				return;
+			}
 			while_loop();
 		}
 
@@ -856,7 +1001,7 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		if (((((data_tmp >> 8) & 0xff) == 0xff) && (((data_tmp >> 20) & 0xf) == 0xf)) ||
 			((((data_tmp >>16) & 0xf) == 0xf) && ((data_tmp & 0xff) == 0xff)))
 		{
-			ddrc_print_err("rank 0 Write EYE training failed because have not right boundary!\r\n");
+			ddrc_print_err("WE no bdry\r\n");
 			while_loop();
 		}
 		phy_reload_weye_result(phy_base, freq_sel);
@@ -925,7 +1070,7 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		data_tmp = __raw_readl(phy_base + 0xe2*4);
 		if ((data_tmp & 0xf) != 0xf)
 		{
-			ddrc_print_err("perbit rd training failed\r\n");
+			ddrc_print_err("pb rd fail\r\n");
 			while_loop();//perbit rd training fail
 		}
 	}
@@ -963,7 +1108,7 @@ void phy_reload_rank_0_reg(uint32 wr_bit,uint32 phy_base, uint32 freq_sel, uint3
 		data_tmp = __raw_readl(phy_base + 0xe2*4);
 		if (((data_tmp >> 4) & 0xf) != 0xf)
 		{
-			ddrc_print_err("perbit wr training failed!\r\n");
+			ddrc_print_err("pb wr fail");
 			while_loop();
 		}
 	}
@@ -991,7 +1136,7 @@ void phy_reload_rank_1_reg(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 
 	data_tmp = __raw_readl(phy_base + 0xe1*4);
 	ac_mst_delay = data_tmp & 0x1ff;
-
+#if 0
 	if ((wr_bit >> 10) & 0x1)//rdeye
 	{
 		data_rank1 = __raw_readl(phy_base + 0xeb*4);
@@ -999,7 +1144,7 @@ void phy_reload_rank_1_reg(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 		if (((data_rank1 >> 24 & 0xff) == 0xff) || ((data_rank1 >> 16 & 0xff) == 0xff) ||
 			((data_rank1 >> 8 & 0xff) == 0xff) || ((data_rank1 & 0xff) == 0xff))
 		{
-			ddrc_print_err("Rank RDEYE CA training failed because have not right boundary!\r\n");
+			ddrc_print_err("Rank1 RDEYE fail no boundary!\r\n");
 			while_loop();
 
 		}
@@ -1042,7 +1187,7 @@ void phy_reload_rank_1_reg(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 			__raw_writel(tmp_addr + 0x11*4, data_rank0);
 		}
 	}
-
+#endif
 	if ((wr_bit >> 13) & 0x1)//weye
 	{
 		data_rank1 = __raw_readl(phy_base + 0xec*4);
@@ -1050,7 +1195,7 @@ void phy_reload_rank_1_reg(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 		if ((((data_rank1 >> 8 & 0xff) == 0xff) && ((data_rank1 >> 20 & 0xf) == 0xf)) ||
 			(((data_rank1 >> 16 & 0xf) == 0xf) && ((data_rank1 & 0xff) == 0xff)))
 		{
-			ddrc_print_err("Rank WEYE CA training failed because have not right boundary!\r\n");
+			ddrc_print_err("CS1 WE fail no bdry\r\n");
 			while_loop();
 
 		}
@@ -1088,10 +1233,10 @@ void phy_reload_rank_1_reg(uint32 wr_bit, uint32 phy_base, uint32 freq_sel, uint
 			fdl_db1_mul_wr_pre = data_rank0_bk - data_rank1_bk;
 			ddrc_training_status_table.wr_shorter_rank_db1 = 1;
 		}
-
+		/*
 		if (ddrc_training_status_table.wr_shorter_rank_db0	!= ddrc_training_status_table.wr_shorter_rank_db1)
 			ddrc_print_debug("wr_shorter_rank_dbx different\r\n");
-
+		*/
 		if (ddrc_training_status_table.wr_shorter_rank_db0 == 0)
 		{
 			reg_bits_set(phy_base + 0xd2*4, 8, 4, 2); //reg phy longer wr dl sel db0 <= #'RD reg_wdata[11:8]
@@ -1162,7 +1307,7 @@ void phy_load_ca_perbit_reg(uint32 phy_base, uint32 freq, uint32 rank)
 	read_data = __raw_readl(phy_base + 0xe6*4);
 	if (((read_data >> 16) & 0xFF) < 10)
 	{
-		ddrc_print_err("RANK 0 CA Perbit Training CA window size too small!\r\n");
+		ddrc_print_err("RANK0 CA Perbit too small!\r\n");
 		while_loop();
 	}
 
@@ -1302,7 +1447,7 @@ void phy_load_rw_perbit_reg(uint32 wr_bit, uint32 phy_base, uint32 freq, uint32 
 		data_tmp = __raw_readl(phy_base + 0xe2*4);
 		if ((data_tmp & 0xf) != 0xf)
 		{
-			ddrc_print_err("perbit read rank training failed\r\n");
+			ddrc_print_err("perbit rd fail\r\n");
 			while_loop();
 		}
 	}
@@ -1465,7 +1610,7 @@ void phy_load_rw_perbit_reg(uint32 wr_bit, uint32 phy_base, uint32 freq, uint32 
 		data_tmp = __raw_readl(phy_base + 0xe2*4);
 		if (((data_tmp >> 4) & 0xf) != 0xf)
 		{
-			ddrc_print_err("Perbit write rank training failed\r\n");
+			ddrc_print_err("Perbit wr fail\r\n");
 			while_loop();
 		}
 	}
@@ -1660,26 +1805,6 @@ void ddrc_phy_disable_all_training(void)
 	__raw_writel(DMC_GUCPHY1_BASE + 0xB3*4, (data_tmp | 0xDA22));
 };
 
-void ddrc_ctrl_mode_setting(uint32 wr_bit)
-{
-#if 0
-	//DDRC_R1P1_REG_INFO_PTR pdmc = (DDRC_R1P1_REG_INFO_PTR)DMC_REG_ADDR_BASE_PHY;
-	uint32 data_tmp;
-	if (((wr_bit >> 14) & 1) == 1)
-	{
-		data_tmp = reg_bits_get((DMC_GUCPHY0_BASE + 0xe9*4), 24, 6);
-		/*
-		pdmc->dmc_dcfg2 = data_tmp;
-		pdmc->dmc_dcfg1 = 0x810000E;//mr14 write vref(dq)
-		while(((pdmc->dmc_dcfg1 >> 19) & 0x1ff) != 0);
-		*/
-//		data_tmp |= (1<<6);//enable range1
-		(lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr14 = u32_bits_set((lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr14, 0, 6, data_tmp);
-		lpddr_dmc_mrw(CMD_CS_BOTH, 14, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr14);
-		dmc_sprd_delay(200);//vrcg
-	}
-#endif
-}
 void rw_eye_training_flow(uint32 wr_bit, uint32 rd_bit, uint32 freq_sel, uint32 rank)
 {
 	trigger_training_done(wr_bit, rd_bit);
@@ -1690,11 +1815,13 @@ void rw_eye_training_flow(uint32 wr_bit, uint32 rd_bit, uint32 freq_sel, uint32 
 		phy_reload_rank_0_reg(wr_bit, DMC_GUCPHY0_BASE, freq_sel, rank);
 		phy_reload_rank_0_reg(wr_bit, DMC_GUCPHY1_BASE, freq_sel, rank);
 	}
+#if(!defined(DDR_FREQ_AUTO_SEL) && !defined(GPIO_DETECT_DRAM_TYPE))
 	else
 	{
 		phy_reload_rank_1_reg(wr_bit, DMC_GUCPHY0_BASE, freq_sel, rank);
 		phy_reload_rank_1_reg(wr_bit, DMC_GUCPHY1_BASE, freq_sel, rank);
 	}
+#endif
 	if((ddrc_training_config_table[rank][freq_sel].perbitrd_enable)\
 	|| (ddrc_training_config_table[rank][freq_sel].perbitwr_enable))
 	{
@@ -1721,9 +1848,23 @@ void rw_eye_training_flow(uint32 wr_bit, uint32 rd_bit, uint32 freq_sel, uint32 
 	//step 2) soft send precharge all and auto refres
 	dmc_dosoft_cmd_setting(0x80100000);//dsoft_pre_all
 
-	ddrc_ctrl_mode_setting(wr_bit);
 	//step 5) disable this training
 	disable_this_training(wr_bit);
+}
+void phy_gate_use_lock(uint32 freq_sel, uint32 phy_base)
+{
+	uint32 regval, data_tmp;
+	uint32 tmp_addr = phy_base + (freq_sel*20*4);
+
+	if(freq_sel == 1)
+	{
+		regval = __raw_readl(phy_base + 0xE1*4);
+		data_tmp = (regval >> 18) & 0x1FF;
+		/*gate average of lock and gate training acc mannual*/
+		regval = ((__raw_readl(tmp_addr + 0x10*4)) >> 16) & 0x1FF;
+		data_tmp = (data_tmp + regval) / 2;
+		reg_bits_set((tmp_addr + 0x10*4), 16, 9, data_tmp);
+	}
 }
 void phy_gate_seq(uint32 freq_sel)
 {
@@ -1742,7 +1883,16 @@ void phy_gate_seq(uint32 freq_sel)
 
 	phy_reload_rank0_gate(wr_bit, DMC_GUCPHY0_BASE, freq_sel, 0);
 	phy_reload_rank0_gate(wr_bit, DMC_GUCPHY1_BASE, freq_sel, 0);
-
+	if((gate_fail == 0) || (training_retry == 1))
+	{
+		phy_gate_use_lock(freq_sel, DMC_GUCPHY0_BASE);
+		phy_gate_use_lock(freq_sel, DMC_GUCPHY1_BASE);
+	}
+	if(gate_fail > 0)
+	{
+		training_retry = 1;
+		gate_fail = 0;
+	}
 	/*soft send precharge all and auto refresh*/
 	dmc_dosoft_cmd_setting(0x80100000);//dsoft_pre_all
 
@@ -1781,8 +1931,8 @@ void read_cmos_vref_set(uint32 freq_sel, uint32 rw_sel)
 	if ((rw_sel == 0) && (regval & (1 << 11)))
 	{
 		/*read cmos mode*/
-		reg_bits_set(DMC_GUCPHY0_BASE + 0xc8*4, 8, 8, 0x48);
-		reg_bits_set(DMC_GUCPHY1_BASE + 0xc8*4, 8, 8, 0x48);
+		reg_bits_set(DMC_GUCPHY0_BASE + 0xc8*4, 8, 8, 0x2f);
+		reg_bits_set(DMC_GUCPHY1_BASE + 0xc8*4, 8, 8, 0x2f);
 	}
 	else
 	{
@@ -1795,7 +1945,7 @@ void phy_rweye_seq(uint32 freq_sel, uint32 rw_sel, uint32 rank)
 	uint32 wr_bit = BIT13_WREYE;
 	uint32 rd_bit = BIT23_WREYE_DONE;
 
-	//read_cmos_vref_set(freq_sel, rw_sel);
+	read_cmos_vref_set(freq_sel, rw_sel);
 
 	if (rw_sel == 0)
 	{
@@ -1817,7 +1967,8 @@ void phy_rweye_seq(uint32 freq_sel, uint32 rw_sel, uint32 rank)
 	}
 	else
 	{	//write manual_mode
-		vrcg_on();
+		if(soc_chip_id == 1)
+			vrcg_on();
 		reg_bits_set(DMC_GUCPHY0_BASE + 0xb2*4, 3, 1, 0);
 		reg_bits_set(DMC_GUCPHY1_BASE + 0xb2*4, 3, 1, 0);
 		if (ddrc_training_config_table[rank][freq_sel].wrvref_train_enable)
@@ -1981,14 +2132,14 @@ int phy_caeye_seq(uint32 freq_sel, uint32 rank)
 	data_tmp = reg_bits_get((DMC_GUCPHY0_BASE + 0xe6*4), 31, 1);
 	if (data_tmp)
 	{
-		ddrc_print_err("PHY 0  rank CA traininig  failed\r\n");
+		ddrc_print_err("P0 CA fail\r\n");
 		return -2;
 	}
 
 	data_tmp = reg_bits_get((DMC_GUCPHY1_BASE + 0xe6*4), 31, 1);
 	if ((data_tmp >> 31) & 0x1)
 	{
-		ddrc_print_err("PHY 1 rank CA traininig failed\r\n");
+		ddrc_print_err("P1 CA fail\r\n");
 		return -2;
 	}
 	return 1;
@@ -2073,14 +2224,14 @@ void phy_caperbit_seq(uint32 freq_sel, uint32 rank)
 	data_tmp = reg_bits_get((DMC_GUCPHY0_BASE + 0xe6*4), 31, 1);//0x0398
 	if (data_tmp)
 	{
-		ddrc_print_err("phy 0 ca perbit traininig failed\r\n");
+		ddrc_print_err("phy0 ca perbit fail\r\n");
 		while_loop();
 	}
 
 	data_tmp = reg_bits_get((DMC_GUCPHY1_BASE + 0xe6*4), 31, 1);
 	if (data_tmp)
 	{
-		ddrc_print_err("phy 1 ca perbit traininig failed\r\n");
+		ddrc_print_err("phy1 ca perbit fail\r\n");
 		while_loop();
 	}
 }
@@ -2191,6 +2342,8 @@ void cabt_postset(uint32 freq)
 {
 	reg_bits_set((DMC_GUCPHY0_BASE + 0x280), 12, 1, 0);
 	reg_bits_set((DMC_GUCPHY1_BASE + 0x280), 12, 1, 0);
+	reg_bits_set((DMC_GUCPHY0_BASE + 0xac*4), 2, 1, 0);
+	reg_bits_set((DMC_GUCPHY1_BASE + 0xac*4), 2, 1, 0);
 	/********** sharkl3 ca hw training, two rank recive cbt cmd ************/
 	//if (LP4_PINMUX_CASE0	== ddr_chip_cur.pinmux_case)
 	//{
@@ -2240,10 +2393,11 @@ void dll_half_mode_cfg(uint32 phy_base, uint32 freq_sel)
 
 	tmp_addr = phy_base + freq_sel*20*4;
 
-	//read slave delay setting
+	//1.read slave delay setting
 	read_data = __raw_readl(tmp_addr + 0x11*4);//rddeye_dqs
 	__raw_writel(tmp_addr + 0x11*4, read_data * 2);
-	//write slave delay setting
+
+	//2.write slave delay setting
 	read_data = __raw_readl(tmp_addr + 0x12*4);//wrdeye_dq
 	regval = ((read_data & 0xff) + ((read_data >> 0x8) & 0xff)) >> 1;
 	if(regval > 0x80)
@@ -2263,7 +2417,8 @@ void dll_half_mode_cfg(uint32 phy_base, uint32 freq_sel)
 	read_data = u32_bits_set(read_data, 0, 8, wr_data);//7:0, db0_dll_wrdeye_dq
 	read_data = u32_bits_set(read_data, 8, 8, wr_data);//15:8, db1_dll_wrdeye_dq
 	__raw_writel(tmp_addr + 0x12*4, read_data);
-	//CA slave delay setting
+
+	//3.CA slave delay setting
 	read_data = __raw_readl(tmp_addr + 0xC*4);//ca_delay
 	regval = ((read_data >> 0x8) & 0xff);
 	if(regval > 0x80)
@@ -2282,12 +2437,14 @@ void dll_half_mode_cfg(uint32 phy_base, uint32 freq_sel)
 	}
 	read_data = u32_bits_set(read_data, 8, 8, wr_data);//15:8, ca_delay
 	__raw_writel(tmp_addr + 0xC*4, read_data);
-	//acc_init_delay setting
+
+	//4.acc_init_delay setting
 	read_data = __raw_readl(tmp_addr + 0x7*4);//dll setting
 	regval = ((read_data >> 0x10) & 0x3f);
 	read_data = u32_bits_set(read_data, 16, 6, (regval / 2));//21:16, r_acc_init_delay
 	__raw_writel(tmp_addr + 0x7*4, read_data);
-	//dll_gate_trip dll_gate_fine setting
+
+	//5.dll_gate_trip dll_gate_fine setting
 	read_data = __raw_readl(tmp_addr + 0xD*4);//dll setting
 	regval = ((read_data >> 0x10) & 0xff);
 	if(regval >= 0x80)
@@ -2325,6 +2482,7 @@ int ddrc_phy_training_seq(uint32 this_freq, uint32 freq_sel, uint32 rank)
 	//step 1) setting some phy register for training mode this will change global argument
 	training_process_ctrl_pre(DMC_GUCPHY0_BASE, freq_sel, phy_train.rank);
 	training_process_ctrl_pre(DMC_GUCPHY1_BASE, freq_sel, phy_train.rank);
+	dfi_rddata_set_for_train_pre(freq_sel, rank);
 
 	//step 2) trigger mlb training
 	{
@@ -2341,16 +2499,19 @@ int ddrc_phy_training_seq(uint32 this_freq, uint32 freq_sel, uint32 rank)
 			while(1)
 			{
 				ca_result = phy_caeye_seq(freq_sel, rank);
-				if (ca_result == 1 && regval < 10)
+				if ((ca_result == 1) || (regval > 2))
 				{
 					break;
 				}
-				regval ++;
-				if (regval >= 10)
+				/*
+				else if(regval < 6)
 				{
-//					ddrc_ca_debug = regval;
-//					while_loop();
+					while_loop();
 				}
+				*/
+				reg_bits_set((DMC_GUCPHY0_BASE + 0xac*4), 2, 1, 1);
+				reg_bits_set((DMC_GUCPHY1_BASE + 0xac*4), 2, 1, 1);
+				regval++;
 			}
 			cabt_postset(freq_sel);
 		}
@@ -2358,6 +2519,11 @@ int ddrc_phy_training_seq(uint32 this_freq, uint32 freq_sel, uint32 rank)
 		if (ddrc_training_config_table[rank][freq_sel].gate_enable == 1)
 		{
 			phy_gate_seq(freq_sel);
+			if(training_retry == 1)
+			{
+					phy_gate_seq(freq_sel);
+					training_retry = 0;
+			}
 		}
 
 		//read perbit training
@@ -2374,11 +2540,12 @@ int ddrc_phy_training_seq(uint32 this_freq, uint32 freq_sel, uint32 rank)
 		if (ddrc_training_config_table[rank][freq_sel].reye_enable)
 		{
 			phy_rweye_seq(freq_sel, 0, rank);
-		}
-		/*perbit training twice*/
-		if (ddrc_training_config_table[rank][freq_sel].perbitrd_enable)
-		{
-			phy_rweye_seq(freq_sel, 0, rank);
+			/*thisi patch should change at the same with commnet "1333 or above read vref average"*/
+			if(freq_sel >= 5)
+			{
+				ddrc_training_config_table[rank][freq_sel].rdvref_train_enable = 0;
+				phy_rweye_seq(freq_sel, 0, rank);
+			}
 		}
 
 		//werit perbit training
@@ -2395,9 +2562,16 @@ int ddrc_phy_training_seq(uint32 this_freq, uint32 freq_sel, uint32 rank)
 		if (ddrc_training_config_table[rank][freq_sel].weye_enable)
 		{
 			phy_rweye_seq(freq_sel, 1, rank);
+			if(training_retry > 0)
+			{
+				training_retry = 3;
+				phy_rweye_seq(freq_sel, 1, rank);
+				training_retry = 0;
+			}
 		}
 	}
-	vrcg_on();
+	if(soc_chip_id == 1)
+		vrcg_on();
 
 	if (ddrc_training_config_table[rank][freq_sel].dll_half_mode)
 	{
@@ -2411,6 +2585,7 @@ int ddrc_phy_training_seq(uint32 this_freq, uint32 freq_sel, uint32 rank)
 	//step 6) training post setting
 	training_process_ctrl_post(DMC_GUCPHY0_BASE, freq_sel);
 	training_process_ctrl_post(DMC_GUCPHY1_BASE, freq_sel);
+	dfi_rddata_set_for_train_post(freq_sel, rank);
 	return 0;
 }
 
@@ -2420,7 +2595,10 @@ void ddrc_phy_reset(uint32 on)
 	dmc_sprd_delay(50);
 }
 
-
+static inline void reconfig_trfc_training(uint32 freq_sel, uint32 reg_base)
+{
+	reg_bits_set(reg_base, 24, 8,((trfc_dtmg2[freq_sel] >> 8) & 0xff));
+}
 void lpddr4_set_pre(uint32 phy_base, uint32 freq_sel)
 {
 	uint32 this_freq = find_ddr_freq(freq_sel);
@@ -2494,6 +2672,12 @@ void lpddr4_set_pre(uint32 phy_base, uint32 freq_sel)
 		default:
 			break;
 	}
+#ifdef DDR_AUTO_DETECT
+	if((detect_info_cs[0].mem_size > 0x40000000) || (detect_info_cs[1].mem_size > 0x40000000))
+	{
+		reconfig_trfc_training(freq_sel, (phy_base + 0x2A0));
+	}
+#endif
 
 }
 
@@ -2605,60 +2789,56 @@ void write_back_deskew_dll(uint32 phy_base, uint32 freq_sel)
 	//read_data = __raw_readl(phy_base + 0xdf*4);
 	//bit[8:0]phy_db0_dll_cfg_1st
 	//regval = (read_data & 0x1ff);
+	dmc_sprd_delay(200);
 
 	read_data = REG32(phy_base + (0x104 + freq_sel) * 4);
-	regval = ((read_data >> 16) & 0x1ff);
+	regval = ((read_data >> 16)& 0x1ff);
+
 
 	if (cur_freq > 256 && phy_base == DMC_GUCPHY0_BASE)
 	{
 		if ((regval == 0x1FF) || ((read_data & 0x1FF) == 0x1FF))
 		{
-			ddrc_print_err("ACC min/max delay value error!\r\n");
+			ddrc_print_err("ACC min/max err!\r\n");
 			while_loop();
 		}
 	}
-	if (cur_freq > 1066)
-	{
-		if (regval >= 30)
-			regval -= 30;
-		else
-			regval = 0;
-	}
-	else if (cur_freq > 384)
-	{
-		if (regval >= 40)
-			regval -= 40;
-		else
-			regval = 0;
-	}
-	else
-	{
-		if (regval >= 10)
-			regval -= 10;
-		else
-			regval = 0;
-	}
+
+
+
 	if (reg_bits_get((tmp_addr + 0x7*4), 31, 1) == 0)
 	{
-		read_data = u32_bits_set(read_data, 16, 9, regval);
+		read_data = regval % 8;
+		regval = regval / 8;
+		if(cur_freq == 768)
+		{
+			if(read_data > 3)
+			{
+				regval += 1;
+			}
+		}
 		data_tmp = __raw_readl(tmp_addr + 0x7*4);
 		//acc init delay;data_tmp[21:16] = read_data[24:19]
 		/*bit[21:16] master delay line initial deyal, start value setting*/
-		data_tmp = u32_bits_set(data_tmp, 16, 6, ((read_data >> 19) & 0x3f));
+		data_tmp = u32_bits_set(data_tmp, 16, 6, (regval & 0x3f));
 		__raw_writel(tmp_addr + 0x7*4, data_tmp);
 	}
 	data_tmp = __raw_readl(tmp_addr + 0x10*4);
-	if(data_tmp && (1 << 27))
+	if(data_tmp & (1 << 27))
 	{
-		//regval = __raw_readl(phy_base + freq_sel*4 + 0x104*4);
-		//max = regval & 0x1FF;
 		regval = __raw_readl(phy_base + 0xE1*4);
 		data_tmp = (regval >> 18) & 0x1FF;
-		/*384 add 16*/
 		if(freq_sel == 1)
-			data_tmp += 16;
+		{
+			regval = __raw_readl(phy_base + freq_sel*4 + 0x104*4);
+			data_tmp = (regval & 0x1FF);
+		}
+		if((freq_sel == 0) && (data_tmp < 0x180))
+			return;
 		reg_bits_set((tmp_addr + 0x10*4), 16, 9, data_tmp);
 	}
+	if(cur_freq > 667)
+		reg_bits_set((tmp_addr + 0x0*4), 4, 1, 0);
 }
 
 void master_dll_lock_seq_cut()
@@ -2777,47 +2957,27 @@ void ddrc_phy_mode_setting()
 
 void ddrc_phy_pin_mux_setting(void)
 {
-	if (ddr_chip_cur.pinmux_case == LP4_PINMUX_CASE0)
+	if (ddr_chip_cur.pinmux_case == LP4_PINMUX_CASE1)
 	{
-		reg_bits_set(DMC_GUCPHY0_BASE + 0xcb*4, 24, 8, 0x46);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xcc*4, 0x84210376);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xcd*4, 0x75862105);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xce*4, 0x1AC68843);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xcf*4, 0x76520431);
+		reg_bits_set(DMC_GUCPHY0_BASE + 0xcb*4, 24, 8, 0x3);//32c
+		__raw_writel(DMC_GUCPHY0_BASE + 0xcc*4, 0x10867342);//330
+		__raw_writel(DMC_GUCPHY0_BASE + 0xcd*4, 0x50176285);//334
+		__raw_writel(DMC_GUCPHY0_BASE + 0xce*4, 0x1AC68843);//338
+		__raw_writel(DMC_GUCPHY0_BASE + 0xcf*4, 0x76520431);//33c
 		reg_bits_set(DMC_GUCPHY0_BASE + 0xd1*4, 12, 4, 0x1);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xd4*4, 0x10862543);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xd5*4, 0x35872107);
+		__raw_writel(DMC_GUCPHY0_BASE + 0xd4*4, 0x34812076);//350
+		__raw_writel(DMC_GUCPHY0_BASE + 0xd5*4, 0x26871455);//354
 
-		reg_bits_set(DMC_GUCPHY1_BASE + 0xcb*4, 24, 8, 0x41);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xcc*4, 0x84120763);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xcd*4, 0x65832705);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xce*4, 0x1AC68841);
+		reg_bits_set(DMC_GUCPHY1_BASE + 0xcb*4, 24, 8, 0x24);
+		__raw_writel(DMC_GUCPHY1_BASE + 0xcc*4, 0x21780643);
+		__raw_writel(DMC_GUCPHY1_BASE + 0xcd*4, 0x60718255);
+		__raw_writel(DMC_GUCPHY1_BASE + 0xce*4, 0x1AC68843);
 		__raw_writel(DMC_GUCPHY1_BASE + 0xcf*4, 0x76504213);
-		reg_bits_set(DMC_GUCPHY1_BASE + 0xd0*4, 0, 9, 0x98);//reg_mlb_ca_bit_pattern_hi bit[7:0] = 0x13,reg_mlb_byte_pattern bit[8]=0
+		reg_bits_set(DMC_GUCPHY1_BASE + 0xd0*4, 0, 9, 0x98);//default 0x98
 		reg_bits_set(DMC_GUCPHY1_BASE + 0xd1*4, 12, 4, 0x1);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xd4*4, 0x21860453);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xd5*4, 0x65832707);
-	}
-	else if (ddr_chip_cur.pinmux_case == LP4_PINMUX_CASE1)
-	{
-		reg_bits_set(DMC_GUCPHY0_BASE + 0xcb*4, 24, 8, 0x41);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xcc*4, 0x86107324);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xcd*4, 0x50832715);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xce*4, 0x1AC68846);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xcf*4, 0x76235041);
-		reg_bits_set(DMC_GUCPHY0_BASE + 0xd1*4, 12, 4, 0x1);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xd4*4, 0x36802154);
-		__raw_writel(DMC_GUCPHY0_BASE + 0xd5*4, 0x76832057);
+		__raw_writel(DMC_GUCPHY1_BASE + 0xd4*4, 0x52810763);
+		__raw_writel(DMC_GUCPHY1_BASE + 0xd5*4, 0x60871354);
 
-		reg_bits_set(DMC_GUCPHY1_BASE + 0xcb*4, 24, 8, 0x47);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xcc*4, 0x86017243);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xcd*4, 0x40863525);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xce*4, 0x1AC68817);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xcf*4, 0x76250314);
-		reg_bits_set(DMC_GUCPHY1_BASE + 0xd0*4, 0, 9, 0x98);//reg_mlb_ca_bit_pattern_hi bit[7:0] = 0x13,reg_mlb_byte_pattern bit[8]=0
-		reg_bits_set(DMC_GUCPHY1_BASE + 0xd1*4, 12, 4, 0x1);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xd4*4, 0x36810245);
-		__raw_writel(DMC_GUCPHY1_BASE + 0xd5*4, 0x31620857);
 	}
 	else
 	{
@@ -2861,6 +3021,7 @@ void ddrc_phy_perbit_set_seq(void)
 }
 void ddrc_phy_pre_set_seq(void)
 {
+	uint32 data_tmp;
 	/*Step1. SW setting the PHY register according to the lpx_register_table_x16_v001 for PHY0 */
 	ddrc_phy_reg_set((unsigned int *)DMC_GUCPHY0_BASE);
 
@@ -3101,8 +3262,8 @@ void one_freq_point_init_flow(void)
 #ifdef DDR_SCAN_ENABLE
 	if(scan_freq == this_freq)
 	{
-		store_train_result(0);
-		store_train_result(1);
+		store_train_result(0, freq_sel);
+		store_train_result(1, freq_sel);
 	}
 #endif
 
@@ -3116,7 +3277,32 @@ void one_freq_point_init_flow(void)
 	ddrc_print_debug("\r\n");
 }
 
+uint32 x8_dtm1[][2] =  {
+	{1536, 0x03134E04},
+};
 
+void reset_x8_mode_dtm1(uint32 freq_sel)
+{
+	uint32 dtm1_base = DMC_REG_ADDR_BASE_PHY + 0x184;
+	uint32 dtm1_address = dtm1_base + 0x60 * freq_sel;
+	uint32 freq = find_ddr_freq(freq_sel);
+	int size = sizeof(x8_dtm1) / sizeof(x8_dtm1[0]);
+	int i;
+
+	for(i = 0; i < size; ++i) {
+		if (freq == x8_dtm1[i][0]) {
+			__raw_writel(dtm1_address, x8_dtm1[i][1]);
+			return;
+		}
+	}
+}
+
+static inline void reconfig_trfc_dtm2(uint32 freq_sel)
+{
+	uint32 dtm2_base = DMC_REG_ADDR_BASE_PHY + 0x188 + 0x60 * freq_sel;
+	reg_bits_set(dtm2_base, 16, 16,((trfc_dtmg2[freq_sel] & 0xffff)));
+	reg_bits_set(dtm2_base, 0, 10,((trfc_dtmg2[freq_sel] >> 16) & 0x3ff));
+}
 
 void ddrc_phy_init_seq(uint32 ddr_clk)
 {
@@ -3137,7 +3323,7 @@ void ddrc_phy_init_seq(uint32 ddr_clk)
 	#endif
 	if(!(freq_sel_mask & (0x1 << min_freq)))
 	{
-		ddrc_print_err("min_freq masked\r\n");
+		ddrc_print_err("min_err\r\n");
 		while_loop();
 	}
 
@@ -3160,7 +3346,7 @@ void ddrc_phy_init_seq(uint32 ddr_clk)
 				dmc_exit_self_refresh(8);
 				if(FALSE == mr_freq_select(&ddr_clk))
 				{
-					ddrc_print_err("ddr freq auto sel failed. Invaild device.\r\n");
+					ddrc_print_err("ddr freq auto sel failed\r\n");
 				}
 
 				max_freq = find_freq_num(ddr_clk);
@@ -3168,7 +3354,20 @@ void ddrc_phy_init_seq(uint32 ddr_clk)
 				freq_sel_mask = freq_sel_mask | ((1 << (max_freq + 1)) - 1);
 				dmc_entry_self_refresh(8);
 				#endif
+				if (hynix_misc_mode) {
+					ddrc_training_config_table[0][5].perbitwr_enable = 0;
+					ddrc_training_config_table[0][5].perbitrd_enable = 0;
+				}
 			}
+			if((0x8 == ddr_chip_cur.cs0_jedec_info->dw) || (0x8 == ddr_chip_cur.cs1_jedec_info->dw)){
+				reset_x8_mode_dtm1(i);
+			}
+#ifdef DDR_AUTO_DETECT
+			if((detect_info_cs[0].mem_size > 0x40000000) || (detect_info_cs[1].mem_size > 0x40000000))
+			{
+				reconfig_trfc_dtm2(i);
+			}
+#endif
 		}
 	}
 //	phy_train.freq_sel = max_freq_tmp;

@@ -19,6 +19,7 @@
 #define REFIN 26
 #define LPLL_REFIN 260
 #define MPLL_N(FREQ,REFIN)	(FREQ/REFIN)
+#define ROC1_CHIP_VER_AB             3
 
 #define string_log(x) ddrc_print_debug(x)
 
@@ -232,7 +233,9 @@ static void soc_voltage_init()
 #endif
 
 #ifdef DCDC_SRAM
-    regulator_set_voltage("vddsram",mcu_clk_para.dcdc_sram.value);
+    if (ROC1_CHIP_VER_AB == CHIP_REG_GET(REG_AON_APB_AON_VER_ID)) {
+	regulator_set_voltage("vddsram",mcu_clk_para.dcdc_sram.value);
+    }
 #endif
 #endif
     delay();
@@ -506,10 +509,10 @@ static uint32 mcu_clk_config(void)
 
 	/* config core4,5,6,7 */
 	//set_mpll(mcu_clk_para.core4_freq.value, 1);
-	REG32(REG_AON_SEC_APB_APCPU_PROMETHEUS_CLK_CFG) |= BIT_AON_SEC_APB_CGM_CORE4_SEL(2) |
-						BIT_AON_SEC_APB_CGM_CORE5_SEL(2) |
-						BIT_AON_SEC_APB_CGM_CORE6_SEL(2) |
-						BIT_AON_SEC_APB_CGM_CORE7_SEL(2);
+	REG32(REG_AON_SEC_APB_APCPU_PROMETHEUS_CLK_CFG) |= BIT_AON_SEC_APB_CGM_CORE4_SEL(1) |
+						BIT_AON_SEC_APB_CGM_CORE5_SEL(1) |
+						BIT_AON_SEC_APB_CGM_CORE6_SEL(1) |
+						BIT_AON_SEC_APB_CGM_CORE7_SEL(1);
 
 	/* ACE should configure before SCU */
 	REG32(REG_AON_SEC_APB_APCPU_BUS_CLK_CFG) &= ~BIT_AON_SEC_APB_CGM_ACE_DIV(~0);
@@ -601,29 +604,30 @@ void pll_ref_sel(void)
 	REG32(REG_PMU_APB_TWPLL_REL_CFG) |= BIT_PMU_APB_TWPLL_REF_SEL(1);
 	REG32(REG_PMU_APB_TWPLL_REL_CFG) |= BIT_PMU_APB_TWPLL_AP_SEL;
 
-	/* modify top dvfs clock source from TWPLL(default) to RCO */
-	REG32(REG_AON_CLK_CORE_CGM_TOP_DVFS_CFG) &= ~BIT_AON_CLK_CORE_CGM_TOP_DVFS_CFG_CGM_TOP_DVFS_SEL(~0);
-	REG32(REG_AON_CLK_CORE_CGM_TOP_DVFS_CFG) |= BIT_AON_CLK_CORE_CGM_TOP_DVFS_CFG_CGM_TOP_DVFS_SEL(2);
+	if (REG32(0x320900F8) == 0x1) {
+		/* modify top dvfs clock source from TWPLL(default) to RCO */
+		REG32(REG_AON_CLK_CORE_CGM_TOP_DVFS_CFG) &= ~BIT_AON_CLK_CORE_CGM_TOP_DVFS_CFG_CGM_TOP_DVFS_SEL(~0);
+		REG32(REG_AON_CLK_CORE_CGM_TOP_DVFS_CFG) |= BIT_AON_CLK_CORE_CGM_TOP_DVFS_CFG_CGM_TOP_DVFS_SEL(2);
 
-	/*all_pll_pd only rco bypass*/
-	REG32(REG_PMU_APB_ALL_PLL_PD_RCO_BYP) |= BIT_PMU_APB_ALL_PLL_PD_RCO_BYP;
-	/*RCO always on */
-	REG32(REG_PMU_APB_RCO_REL_CFG) |= BIT_PMU_APB_RCO_FRC_ON;
+		/*all_pll_pd only rco bypass*/
+		REG32(REG_PMU_APB_ALL_PLL_PD_RCO_BYP) |= BIT_PMU_APB_ALL_PLL_PD_RCO_BYP;
+		/*RCO always on */
+		REG32(REG_PMU_APB_RCO_REL_CFG) |= BIT_PMU_APB_RCO_FRC_ON;
+	}
 }
 
 void pll_sel_cfg(void)
 {
 	/* XTL sel */
 	REG32(REG_PMU_APB_XTL0_REL_CFG) |= BIT_PMU_APB_XTL0_AP_SEL |
-					BIT_PMU_APB_XTL0_WTLCP_SEL |
-					BIT_PMU_APB_XTL0_PUBCP_SEL |
-					BIT_PMU_APB_XTL0_AUDCP_SYS_SEL |
-					BIT_PMU_APB_XTL0_PUB_SYS_SEL |
-					BIT_PMU_APB_XTL0_SP_SYS_SEL |
-					BIT_PMU_APB_XTL0_ESE_SEL |
-					//BIT_PMU_APB_XTL0_TOP_DVFS_SEL |
-					BIT_PMU_APB_XTL0_IPA_SEL;
-	REG32(REG_PMU_APB_XTL0_REL_CFG) &= ~BIT_PMU_APB_XTL0_TOP_DVFS_SEL;
+					   BIT_PMU_APB_XTL0_WTLCP_SEL |
+					   BIT_PMU_APB_XTL0_PUBCP_SEL |
+					   BIT_PMU_APB_XTL0_AUDCP_SYS_SEL |
+					   BIT_PMU_APB_XTL0_PUB_SYS_SEL |
+					   BIT_PMU_APB_XTL0_SP_SYS_SEL |
+					   BIT_PMU_APB_XTL0_ESE_SEL |
+					   BIT_PMU_APB_XTL0_TOP_DVFS_SEL |
+					   BIT_PMU_APB_XTL0_IPA_SEL;
 
 	REG32(REG_PMU_APB_XTL1_REL_CFG) &= ~(BIT_PMU_APB_XTL1_AP_SEL |
 					BIT_PMU_APB_XTL1_WTLCP_SEL |
@@ -636,15 +640,14 @@ void pll_sel_cfg(void)
 					BIT_PMU_APB_XTL1_IPA_SEL);
 
 	REG32(REG_PMU_APB_XTLBUF0_REL_CFG) |= BIT_PMU_APB_XTLBUF0_AP_SEL |
-					BIT_PMU_APB_XTLBUF0_WTLCP_SEL |
-					BIT_PMU_APB_XTLBUF0_PUBCP_SEL |
-					BIT_PMU_APB_XTLBUF0_AUDCP_SYS_SEL |
-					BIT_PMU_APB_XTLBUF0_PUB_SYS_SEL |
-					BIT_PMU_APB_XTLBUF0_SP_SYS_SEL |
-					BIT_PMU_APB_XTLBUF0_ESE_SEL |
-					//BIT_PMU_APB_XTLBUF0_TOP_DVFS_SEL |
-					BIT_PMU_APB_XTLBUF0_IPA_SEL;
-	REG32(REG_PMU_APB_XTLBUF0_REL_CFG) &= ~BIT_PMU_APB_XTLBUF0_TOP_DVFS_SEL;
+					      BIT_PMU_APB_XTLBUF0_WTLCP_SEL |
+					      BIT_PMU_APB_XTLBUF0_PUBCP_SEL |
+					      BIT_PMU_APB_XTLBUF0_AUDCP_SYS_SEL |
+					      BIT_PMU_APB_XTLBUF0_PUB_SYS_SEL |
+					      BIT_PMU_APB_XTLBUF0_SP_SYS_SEL |
+					      BIT_PMU_APB_XTLBUF0_ESE_SEL |
+					      BIT_PMU_APB_XTLBUF0_TOP_DVFS_SEL |
+					      BIT_PMU_APB_XTLBUF0_IPA_SEL;
 
 	REG32(REG_PMU_APB_XTLBUF1_REL_CFG) &= ~(BIT_PMU_APB_XTLBUF1_AP_SEL |
 					BIT_PMU_APB_XTLBUF1_WTLCP_SEL |
@@ -678,27 +681,25 @@ void pll_sel_cfg(void)
 
 	/* TWPLL select all */
 	REG32(REG_PMU_APB_TWPLL_REL_CFG) |= BIT_PMU_APB_TWPLL_AP_SEL |
-					BIT_PMU_APB_TWPLL_WTLCP_SEL |
-					BIT_PMU_APB_TWPLL_PUBCP_SEL |
-					BIT_PMU_APB_TWPLL_AUDCP_SYS_SEL |
-					BIT_PMU_APB_TWPLL_PUB_SYS_SEL |
-					BIT_PMU_APB_TWPLL_SP_SYS_SEL |
-					BIT_PMU_APB_TWPLL_ESE_SEL |
-					//BIT_PMU_APB_TWPLL_TOP_DVFS_SEL |
-					BIT_PMU_APB_TWPLL_IPA_SEL;
-	REG32(REG_PMU_APB_TWPLL_REL_CFG) &= ~BIT_PMU_APB_TWPLL_TOP_DVFS_SEL;
+					    BIT_PMU_APB_TWPLL_WTLCP_SEL |
+					    BIT_PMU_APB_TWPLL_PUBCP_SEL |
+					    BIT_PMU_APB_TWPLL_AUDCP_SYS_SEL |
+					    BIT_PMU_APB_TWPLL_PUB_SYS_SEL |
+					    BIT_PMU_APB_TWPLL_SP_SYS_SEL |
+					    BIT_PMU_APB_TWPLL_ESE_SEL |
+					    BIT_PMU_APB_TWPLL_TOP_DVFS_SEL |
+					    BIT_PMU_APB_TWPLL_IPA_SEL;
 
 	/* RPLL select all */
 	REG32(REG_PMU_APB_RPLL_REL_CFG) |= BIT_PMU_APB_RPLL_AP_SEL |
-					BIT_PMU_APB_RPLL_WTLCP_SEL |
-					BIT_PMU_APB_RPLL_PUBCP_SEL |
-					BIT_PMU_APB_RPLL_AUDCP_SYS_SEL |
-					BIT_PMU_APB_RPLL_PUB_SYS_SEL |
-					BIT_PMU_APB_RPLL_SP_SYS_SEL |
-					BIT_PMU_APB_RPLL_ESE_SEL |
-					//BIT_PMU_APB_RPLL_TOP_DVFS_SEL |
-					BIT_PMU_APB_RPLL_IPA_SEL;
-	REG32(REG_PMU_APB_RPLL_REL_CFG) &= ~BIT_PMU_APB_RPLL_TOP_DVFS_SEL;
+					   BIT_PMU_APB_RPLL_WTLCP_SEL |
+					   BIT_PMU_APB_RPLL_PUBCP_SEL |
+					   BIT_PMU_APB_RPLL_AUDCP_SYS_SEL |
+					   BIT_PMU_APB_RPLL_PUB_SYS_SEL |
+					   BIT_PMU_APB_RPLL_SP_SYS_SEL |
+					   BIT_PMU_APB_RPLL_ESE_SEL |
+					   BIT_PMU_APB_RPLL_TOP_DVFS_SEL |
+					   BIT_PMU_APB_RPLL_IPA_SEL;
 
 	/* LTEPLL select ap/wtlcp/audcp/pub/ipa */
 	REG32(REG_PMU_APB_LTEPLL_REL_CFG) |= BIT_PMU_APB_LTEPLL_AP_SEL |
@@ -717,6 +718,18 @@ void pll_sel_cfg(void)
 					BIT_PMU_APB_RCO_ESE_SEL |
 					BIT_PMU_APB_RCO_TOP_DVFS_SEL |
 					BIT_PMU_APB_RCO_IPA_SEL;
+	if (REG32(0x320900F8) == 0x1) {
+		/* XTL sel */
+		REG32(REG_PMU_APB_XTL0_REL_CFG) &= ~BIT_PMU_APB_XTL0_TOP_DVFS_SEL;
+
+		REG32(REG_PMU_APB_XTLBUF0_REL_CFG) &= ~BIT_PMU_APB_XTLBUF0_TOP_DVFS_SEL;
+
+		/* TWPLL select all */
+		REG32(REG_PMU_APB_TWPLL_REL_CFG) &= ~BIT_PMU_APB_TWPLL_TOP_DVFS_SEL;
+
+		/* RPLL select all */
+		REG32(REG_PMU_APB_RPLL_REL_CFG) &= ~BIT_PMU_APB_RPLL_TOP_DVFS_SEL;
+	}
 }
 
 void enable_auto_gate_for_lp(void)
@@ -734,6 +747,29 @@ static void rco100m_config()
 	//REG32(REG_AON_APB_RTC4M_0_CFG) |= BIT_AON_APB_RTC4M0_FORCE_EN;
 	REG32(REG_AON_APB_RC100M_CFG) |= BIT_AON_APB_RC100M_CAL_START;
 	while(!(REG32(REG_AON_APB_RC100M_CFG) & BIT_AON_APB_RC100M_CAL_DONE));
+}
+
+void config_for_rco100m_solution(void)
+{
+	/* chip_sleep bypass cm4 */
+	REG32(REG_PMU_APB_PAD_OUT_CHIP_SLEEP_CFG) |= BIT_PMU_APB_PAD_OUT_CHIP_SLEEP_SP_SYS_DEEP_SLEEP_MASK;
+
+	/* set adi clock source to rco100m */
+	REG32(REG_AON_CLK_CORE_CGM_ADI_CFG) = BIT_AON_CLK_CORE_CGM_ADI_CFG_CGM_ADI_SEL(2);
+
+	/*
+	 * DEBOUNCE will affect the deep flow, if not switch to rco25m, cm4
+	 * will cannot sleep
+	*/
+	REG32(REG_AON_CLK_CORE_CGM_DEBOUNCE_CFG) =
+		BIT_AON_CLK_CORE_CGM_DEBOUNCE_CFG_CGM_DEBOUNCE_SEL(2);
+
+	/* PAD XTL_EN1 should not mask cm4, uboot will configure this  */
+
+	/* pll_pd bypass rco */
+	REG32(REG_PMU_APB_ALL_PLL_PD_RCO_BYP) |= BIT_PMU_APB_ALL_PLL_PD_RCO_BYP;
+
+	REG32(REG_PMU_APB_EIC_SEL) |= BIT_PMU_APB_EIC_DEEP_SLEEP_SEL;
 }
 #endif
 
@@ -765,11 +801,23 @@ void reset_mm_subsystem(void)
 	REG32(REG_AON_APB_APB_RST1) &= ~BIT_AON_APB_ANA_SOFT_RST;
 }
 
+static void memory_repair_once()
+{
+	CHIP_REG_OR(REG_PMU_APB_BISR_FORCE_SEL,BIT_PMU_APB_PD_AON_MEM_BISR_FORCE_SEL);
+}
+
+static void apcpu_pmu_clk_cfg_sel(void)
+{
+	/*Set apcpu pmu clk to 128MHZ*/
+	REG32(REG_AON_CLK_CORE_CGM_APCPU_PMU_CFG) |= BIT_AON_CLK_CORE_CGM_APCPU_PMU_CFG_CGM_APCPU_PMU_SEL(0x3);
+}
+
 extern void sdram_init(void);
 extern int sc27xx_adc_init(void);
 
 void Chip_Init (void) /*lint !e765 "Chip_Init" is used by init.s entry.s*/
 {
+	memory_repair_once();
 	local_enable_scr_el3_ea();
 	local_async_enable();
 	timer_init();
@@ -779,6 +827,7 @@ void Chip_Init (void) /*lint !e765 "Chip_Init" is used by init.s entry.s*/
 #endif
 	REG32(REG_AON_APB_APB_EB1) |= BIT_AON_APB_ANA_EB;
 	rco100m_config();
+	config_for_rco100m_solution();
 	sci_adi_init();
 	pll_sel_cfg();
 	pll_ref_sel();
@@ -790,6 +839,7 @@ void Chip_Init (void) /*lint !e765 "Chip_Init" is used by init.s entry.s*/
 	sdram_init();
 	sprd_ptm_init();
 	sprd_log();
+	apcpu_pmu_clk_cfg_sel();
 #endif
 }
 

@@ -268,6 +268,10 @@ void dram_type_pinmux_auto_detect()
 		dram_info.dram_detect_type |= (DRAM_LP4<<24);
 		dram_info.pinmux_type=LPDDR4_PINMUX_CASE0;
 		dram_info.fn_max=LP4_FN_MAX;
+		if(dram_status==DRAM_DISCRETE)
+		{
+			dram_info.pinmux_type=LPDDR4_PINMUX_CASE1;
+		}
 		//regulator_set_voltage("vddcore",mcu_clk_para.dcdc_core.value);
 		//regulator_set_voltage("vddcore",800);
 		regulator_set_voltage("vddmem",DCDC_MEM);

@@ -4,8 +4,10 @@
 
 DFS_PARA **g_dfs_para;
 
+#ifdef DDR_DFS_TEST
 //uint32 dfs_valid_frq[]={256,384,667,768,1024,1333,1536,1866};
 uint32 dfs_valid_frq[]={256,384,667,768,1024,1333,1536};//};
+#endif
 typedef struct
 {
 	uint64 dfs_time_total;
@@ -122,16 +124,23 @@ uint32 sw_dfs_go(uint32 dfs_point)
 //init
 uint32 dfs_init()
 {
-	uint32 i = 0;
-	uint32 array_size = 0;
-	char s_tmp[11] = {0};
-	g_dfs_para = dfs_para_init	;
+	 g_dfs_para = dfs_para_init;
 	//dfs open
 	reg_bits_set(REG_CUR_FREQ,0,1,1);
 	//sw mode
 	sw_dfs_mode();
+
+	return 0;
+}
+
+#ifdef DDR_DFS_TEST
+void dfs_test()
+{
+	uint32 array_size = 0;
+	uint32 i = 0;
+	char s_tmp[11] = {0};
+
 	array_size = sizeof(dfs_valid_frq)/sizeof(uint32);
-#if 0
 	while(1)
 	{
 		for(i = 0; i < array_size; i++)
@@ -149,7 +158,6 @@ uint32 dfs_init()
 //			dmc_sprd_delay(100);
 		}
 	}
-#endif
 	return 0;
 }
-
+#endif

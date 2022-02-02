@@ -63,6 +63,7 @@ typedef struct{
     CLK_VOL_UNIT dcdc_gen1;
     CLK_VOL_UNIT dcdc_gpu;
     CLK_VOL_UNIT dcdc_memq;
+    CLK_VOL_UNIT dcdc_modem;
     CLK_VOL_UNIT debug_flags[4];
     CLK_LIST_UNIT algio_freq;
     CLK_LIST_UNIT vsp_freq;

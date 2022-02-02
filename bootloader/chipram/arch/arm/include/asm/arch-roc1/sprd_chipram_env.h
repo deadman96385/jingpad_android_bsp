@@ -16,13 +16,13 @@ typedef enum bootloader_mode {
 typedef struct chipram_env {
 	u32 magic; //0x43454e56
 	boot_mode_t mode;
-	u64 dram_size; //MB
+	ulong dram_size; //MB
 	u64 vol_para_addr;
 	u32 keep_charge;
 	u32 channel_sel;//usb,uart0,uart1
 	u32 cs_number;
-	u32 cs0_size;
-	u32 cs1_size;
+	ulong cs0_size;
+	ulong cs1_size;
 	u32 reserved;
 }chipram_env_t;
 void chipram_env_set(u32 mode);

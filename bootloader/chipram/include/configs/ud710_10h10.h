@@ -13,7 +13,7 @@
 #define CONFIG_CHIP_ENV_SET
 #define UBOOT_HASH_SIZE        0x200
 
-//#define SPRD_EVM_TAG_ON 1 
+//#define SPRD_EVM_TAG_ON 1
 #ifdef SPRD_EVM_TAG_ON
 #define SPRD_EVM_ADDR_START 0x00026000
 #define SPRD_EVM_TAG(_x) (*(((unsigned long *)SPRD_EVM_ADDR_START)+_x) = *(volatile unsigned long *)0x87003004)

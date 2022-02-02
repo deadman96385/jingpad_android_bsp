@@ -7,6 +7,8 @@ extern DRAM_CHIP_INFO ddr_chip_cur;
 extern dfs_freq_table dfs_table[8];
 extern TRAIN_CONDITIONS_TABLE phy_train;
 extern LPDDR4_MR_INFO lpddr4_mr_info;
+extern uint32 hynix_misc_mode;
+uint32 soc_chip_id;
 
 typedef enum __DDR_UNSYMMETRY_MODE {
 	DDR_6Gb_10_COL_MODE,
@@ -349,7 +351,10 @@ static uint32 dmc_pub_addr_remap(void)
 	{
 		/*24G bit*/
 		case 0x60000000:
-			dmc_portx_remap_addr_x(0x10654210, 0x42106542);
+			if (ddr_chip_cur.cs_num == 1)
+				dmc_portx_remap_addr_x(0x76543210, 0x3210ba98);
+			else
+				dmc_portx_remap_addr_x(0x10654210, 0x42106542);
 			break;
 		/*48G bit*/
 		case 0xC0000000:
@@ -389,6 +394,8 @@ void ctrl_init_dtmg1(void)
 				val = (pdmc->dmc_dtmg_f[i][1] >> 8) & (0xf);
 				pdmc->dmc_dtmg_f[i][1]  = ((pdmc->dmc_dtmg_f[i][1] & (~(0xf << 8))) | (((val + 1) << 8)));
 			}
+			val = (pdmc->dmc_dtmg_f[i][6] >> 8) & (0x1f);
+			pdmc->dmc_dtmg_f[i][6] = (pdmc->dmc_dtmg_f[i][6] & (~0x1f)) | val;
 		}
 	}
 }
@@ -463,10 +470,12 @@ void ctrl_dram_setting(void)
 	{
 		val = pdmc->dmc_dcfg3;
 		/*data width 1:x8, 0:x16*/
-		dw = (ddr_chip_cur.cs0_jedec_info->dw == 8) ? 0x1: 0;
+		if((ddr_chip_cur.cs0_jedec_info->dw == 8) || (ddr_chip_cur.cs1_jedec_info->dw == 8))
+			dw = 1;
+		else
+			dw = 0;
 		val = u32_bits_set(val, 16, 1, dw);
 		val = u32_bits_set(val, 18, 1, dw);
-		dw = (ddr_chip_cur.cs1_jedec_info->dw == 8) ? 0x1: 0;
 		val = u32_bits_set(val, 17, 1, dw);
 		val = u32_bits_set(val, 19, 1, dw);
 		pdmc->dmc_dcfg3 = val;
@@ -529,30 +538,60 @@ void dfs_mrw_update(uint32 freq_sel)
 	DDRC_R1P1_REG_INFO_PTR pdmc = (DDRC_R1P1_REG_INFO_PTR)DMC_REG_ADDR_BASE_PHY;
 	volatile uint32 val;
 	//need disable first and last four DFS mrw. offset:0x124 DCFG11 [15:13] 3'b011
-	val = pdmc->dmc_dtmg_f[freq_sel][13];	//mrw5 mrw4
-	val = u32_bits_set(val, 8, 8, 22);
-	val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr22);
-	val = u32_bits_set(val, 24, 8, 11);
-	val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr11);
-	pdmc->dmc_dtmg_f[freq_sel][13] = val;
-	val = pdmc->dmc_dtmg_f[freq_sel][14];	//mrw7 mrw6
-	val = u32_bits_set(val, 8, 8, 2);
-	val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr2);
-	val = u32_bits_set(val, 24, 8, 1);
-	val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr1);
-	pdmc->dmc_dtmg_f[freq_sel][14] = val;
-	val = pdmc->dmc_dtmg_f[freq_sel][15];	//mrw9 mrw8
-	val = u32_bits_set(val, 8, 8, 3);
-	val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
-	val = u32_bits_set(val, 24, 8, 3);
-	val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
-	pdmc->dmc_dtmg_f[freq_sel][15] = val;
-	val = pdmc->dmc_dtmg_f[freq_sel][16];	//mrw11 mrw10
-	val = u32_bits_set(val, 8, 8, 3);
-	val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
-	val = u32_bits_set(val, 24, 8, 14);
-	val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr14);
-	pdmc->dmc_dtmg_f[freq_sel][16] = val;
+	if(soc_chip_id == 1)
+	{
+		val = pdmc->dmc_dtmg_f[freq_sel][13];	//mrw5 mrw4
+		val = u32_bits_set(val, 8, 8, 22);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr22);
+		val = u32_bits_set(val, 24, 8, 11);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr11);
+		pdmc->dmc_dtmg_f[freq_sel][13] = val;
+		val = pdmc->dmc_dtmg_f[freq_sel][14];	//mrw7 mrw6
+		val = u32_bits_set(val, 8, 8, 2);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr2);
+		val = u32_bits_set(val, 24, 8, 1);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr1);
+		pdmc->dmc_dtmg_f[freq_sel][14] = val;
+		val = pdmc->dmc_dtmg_f[freq_sel][15];	//mrw9 mrw8
+		val = u32_bits_set(val, 8, 8, 3);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
+		val = u32_bits_set(val, 24, 8, 3);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
+		pdmc->dmc_dtmg_f[freq_sel][15] = val;
+		val = pdmc->dmc_dtmg_f[freq_sel][16];	//mrw11 mrw10
+		val = u32_bits_set(val, 8, 8, 3);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
+		val = u32_bits_set(val, 24, 8, 14);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr14);
+		pdmc->dmc_dtmg_f[freq_sel][16] = val;
+	}
+	else
+	{
+		val = pdmc->dmc_dtmg_f[freq_sel][13];	//mrw5 mrw4
+		val = u32_bits_set(val, 8, 8, 13);
+		val = u32_bits_set(val, 0, 8, 8);
+		val = u32_bits_set(val, 24, 8, 22);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr22);
+		pdmc->dmc_dtmg_f[freq_sel][13] = val;
+		val = pdmc->dmc_dtmg_f[freq_sel][14];	//mrw7 mrw6
+		val = u32_bits_set(val, 8, 8, 11);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr11);
+		val = u32_bits_set(val, 24, 8, 2);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr2);
+		pdmc->dmc_dtmg_f[freq_sel][14] = val;
+		val = pdmc->dmc_dtmg_f[freq_sel][15];	//mrw9 mrw8
+		val = u32_bits_set(val, 8, 8, 1);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr1);
+		val = u32_bits_set(val, 24, 8, 14);
+		val = u32_bits_set(val, 16, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr14);
+		pdmc->dmc_dtmg_f[freq_sel][15] = val;
+		val = pdmc->dmc_dtmg_f[freq_sel][16];	//mrw11 mrw10
+		val = u32_bits_set(val, 8, 8, 3);
+		val = u32_bits_set(val, 0, 8, (lpddr4_mr_info.p_odt_cfg + phy_train.freq_sel)->mr3);
+		val = u32_bits_set(val, 24, 8, 13);
+		val = u32_bits_set(val, 16, 8, 0);
+		pdmc->dmc_dtmg_f[freq_sel][16] = val;
+	}
 }
 
 uint32 ddr_device_vaild_check(uint32 cs_n)
@@ -576,6 +615,7 @@ int ctrl_pre_set_seq(dfs_freq_table dfs_frequency[8])
 	DDRC_R1P1_REG_INFO_PTR pdmc = (DDRC_R1P1_REG_INFO_PTR)DMC_REG_ADDR_BASE_PHY;
 	uint32 regval;
 
+	soc_chip_id = REG32(REG_AON_APB_AON_VER_ID);
 	/*step 1) disable auto_sleep_en*/
 	regval = pdmc->dmc_cfg0;
 	regval = u32_bits_set(regval, 8, 1, 0);

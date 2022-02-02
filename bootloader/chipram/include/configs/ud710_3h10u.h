@@ -36,19 +36,20 @@
 #define _LITTLE_ENDIAN 1
 
 #define CONFIG_SYS_64BIT_LBA
-#define CONFIG_UFS_BOOT
 //#define CONFIG_ARCH_SCX35L
 #define CONFIG_SD_BOOT
 
 #define SDCARD_BOOT_SECTOR	200
 
 #ifdef  CONFIG_EMMC_BOOT
+#define SML_LOAD_MAX_SIZE       (1024*1024)
 #define CONFIG_MMC_V40
 #define EMMC_SECTOR_SIZE 512
 #define CONFIG_SYS_EMMC_U_BOOT_SECTOR_NUM ((CONFIG_SYS_NAND_U_BOOT_SIZE+EMMC_SECTOR_SIZE-1)/EMMC_SECTOR_SIZE)
 #endif
 
 #ifdef CONFIG_UFS_BOOT
+#define SML_LOAD_MAX_SIZE       (1024*1024)
 #define CONFIG_UFS_SPRD_PHY
 #define UFS_SECTOR_SIZE 4096
 #endif
@@ -75,17 +76,17 @@
 //#define CONFIG_UBOOT_INTERTWINE_ADDR
 
 /* Load U-Boot to this address */
-#define CONFIG_UBOOT_MAX_SIZE 0x100000
+#define CONFIG_UBOOT_MAX_SIZE 0x200000
 #define CONFIG_SYS_NAND_U_BOOT_DST	0x9f000000
 #define CONFIG_SYS_NAND_U_BOOT_START	CONFIG_SYS_NAND_U_BOOT_DST
 #define CONFIG_SYS_SDRAM_BASE 0x80000000
 #define CONFIG_SYS_SDRAM_END (CONFIG_SYS_SDRAM_BASE + 256*1024*1024)
 
 //#define CONFIG_SMLBOOT          1 /*to be add*/
-#define SML_LOAD_MAX_SIZE       (64*1024)
 #define TOS_LOAD_MAX_SIZE       (6*1024*1024)
 //#define CONFIG_SML_LDADDR_START (0x94000000)
 //#define CONFIG_TOS_LDADDR_START (0x94100000)
+#define TEECFG_LOAD_MAX_SIZE 	  (1*1024*1024)
 #define IMAGE_HEAD_SIZE		(512)
 
 #ifndef CONFIG_NAND_SPL
@@ -151,13 +152,14 @@
 #define CLK_ACE         (CLK_SCU/2)
 
 #ifdef CONFIG_NAND_SPL
-#define CLK_DDR_FREQ        1333000000
+#define CLK_DDR_FREQ        1866000000
 #else
-#define CLK_DDR_FREQ        256000000
+#define CLK_DDR_FREQ        1866000000
 #endif
 
 #define DCDC_CORE	800
 #define DCDC_GPU	800
+#define DCDC_SRAM	900
 
 
 //clk_list
@@ -167,7 +169,7 @@
 #define CLK_VSP_LEVEL               4
 #define CLK_VSP_LEVEL_ID            3
 #define CLK_PERIPH_LEVEL            4
-#define CLK_PERIPH_LEVEL_ID         3
+#define CLK_PERIPH_LEVEL_ID         2
 #define CLK_AP_AXI_LEVEL            4
 #define CLK_AP_AXI_LEVEL_ID         3
 #define CLK_AP_MM_LEVEL             4
@@ -193,9 +195,16 @@
 #define CFG_DRAM_TYPE	DRAM_LPDDR4X
 #define CFG_PINMUX_CASE LP4_PINMUX_CASE0
 #define DDR_AUTO_DETECT
-#define ADC_DETECT_DRAM_TYPE
+/*
+#ifdef DDR_AUTO_DETECT
+#define DRAM_TYPE_DETECT_GPIO_N0 76
+#define GPIO_DETECT_DRAM_TYPE
+#endif
+*/
+//#define ADC_DETECT_DRAM_TYPE
 #define DDR_MODE	0xF0000
 
+//#define DDR_DFS_TEST
 //#define DDR_DFS_SUPPORT
 //#define DDR_DFS_VAL_BASE 0X1c00
 //#define DDR_SCAN_SUPPORT

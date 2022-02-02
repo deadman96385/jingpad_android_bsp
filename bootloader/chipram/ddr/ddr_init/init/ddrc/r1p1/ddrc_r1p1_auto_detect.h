@@ -19,6 +19,7 @@ typedef struct __lpddr_jedec_originize {
 typedef enum
 {
 	S16_SDRAM_LP4 = 0,
+	S8_SDRAM_LP4X = 1,
 	S16_SDRAM_LP4X = 2,
 	S16_SDRAM_LP4Y = 3
 }DDR_TYPE_E;

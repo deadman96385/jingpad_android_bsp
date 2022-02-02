@@ -23,7 +23,7 @@
 #define UIC_ENDPOINT_RESET_CMD   0x15
 #define UIC_LINK_STARTUP_CMD   0x16
 #define UIC_EXIT_HIBERNATE     0x18
-#define MAX_PRDT_ENTRIES       128
+#define MAX_PRDT_ENTRIES       2
 #define PRDT_BUFFER_SIZE       SZ_256K
 #define TOTAL_PRDT_CAP		((MAX_PRDT_ENTRIES) * (PRDT_BUFFER_SIZE))
 #define LOGICAL_BLK_SIZE       4096
@@ -37,7 +37,7 @@
 #define HCE_RESET              0x1
 #define SENSE_KEY_INDEX        2
 #define CMD_DESC_ALIGNMENT     128
-#define ALIGNED_UPIU_SIZE      512
+#define ALIGNED_UPIU_SIZE      128
 #define SCSI_TRANS_TYPE        0x21
 #define NOP_TRANS_TYPE         0x20
 #define UNIT_DESCS_COUNT       8
@@ -209,7 +209,7 @@ struct ufs_driver_info {
 	void			*base_addr;
 	struct dwc_ufs_tcd      *cmd_desc;
 	struct dwc_ufs_utrd     *utrd_desc;
-	struct dwc_ufs_utmrd    *utm_desc;
+	//struct dwc_ufs_utmrd    *utm_desc;
 	uint8_t                 unit_offset;  /* Offset of first Unit Configuration Desc */
 	uint8_t                 unit_length;  /* Length Of Configuration Unit Descriptor */
 	uint8_t		   lu_num;
@@ -222,9 +222,6 @@ struct ufs_driver_info {
 	uint32_t		prdt_entry_size;   /*Physical Region Description Table entry size, unit of bytes*/
 	uint64_t		max_prdt_cap;   /*Physical Region Description Table total capability, unit of bytes*/
 	uint64_t		dev_total_cap;   /*total capacity, in unit of 512 bytes*/
-
-	block_dev_desc_t  block_dev[UFS_MAX_DEV_NUM];
-	struct lu_info_tbl       lu_info[UFS_MAX_LU_NUM];
 } ;
 
 

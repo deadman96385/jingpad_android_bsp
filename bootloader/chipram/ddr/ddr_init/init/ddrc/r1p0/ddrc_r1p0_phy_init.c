@@ -103,7 +103,7 @@ void ddrc_phy_post_setting(u32 phy_base)
 	reg_bits_set(phy_base + 0xcb*4, 8, 4, 0); //eb
 	reg_bits_set(phy_base + 0xcb*4, 0, 4, 0);//ag_en
 	reg_bits_set(phy_base + 0xd1*4, 16, 1, 0); //reg_pwrup_cke_rstn_en
-	reg_bits_set(phy_base + 0x32c, 11, 1, 0); //reg_mlb_cal_eb_cfg_cal_eb
+	reg_bits_set(phy_base + 0x32c, 11, 1, 1); //reg_mlb_cal_eb_cfg_cal_eb
 }
 
 void dfi_rddata_set_for_train_pre(u32 dfs_freq_sel ,u32 rank)
@@ -2296,13 +2296,13 @@ void write_back_deskew_dll(u32 phy_base, u32 dfs_freq_sel)
 		else
 			regval = 0;
 	}
-	else if (cur_freq > 384)
-	{
-		if (regval >= 40)
-			regval -= 40;
-		else
-			regval = 0;
-	}
+	//else if (cur_freq > 384)
+	//{
+	//	if (regval >= 40)
+	//		regval -= 40;
+	//	else
+	//		regval = 0;
+	//}
 	else
 	{
 		if (regval >= 10)
@@ -2684,6 +2684,15 @@ void store_rank0_train_result()
 	rank0_training_result.PHY1_WRITE_EE=data_tmp;
 #endif
 }
+void dll_lock_tracking(u32 phy_base, u32 dfs_freq_sel, u32 freq)
+{
+	u32 tmp_addr = phy_base + (dfs_freq_sel*20*4);
+	u32 manual = (REG32(tmp_addr + 0x7*4) >> 31) & 0x1;
+	if ( !manual ) {
+		reg_bits_set((tmp_addr + 0x0*4), 4, 1, 0);
+		reg_bits_set((tmp_addr + 0x0*4), 24, 8, (freq == 622)?(freq/128):(freq/256));
+	}
+}
 void one_freq_point_init_flow(u32 dfs_freq_sel)
 {
 	u32 this_freq = find_ddr_freq(dfs_freq_sel);
@@ -2712,6 +2721,10 @@ void one_freq_point_init_flow(u32 dfs_freq_sel)
 		ddrc_phy_init_flow(this_freq, dfs_freq_sel, &ddrc_training_table);//rank 1
 	}
 #endif
+	if (dfs_freq_sel >= 5) {
+		dll_lock_tracking(DMC_GUCPHY0_BASE, dfs_freq_sel, this_freq);
+		dll_lock_tracking(DMC_GUCPHY1_BASE, dfs_freq_sel, this_freq);
+	}
 }
 
 void ddrc_phy_init_seq(void)

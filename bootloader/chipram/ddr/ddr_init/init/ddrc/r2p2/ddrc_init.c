@@ -895,7 +895,7 @@ void ddrc_train_seq(u32 ddr_mode,u32 train_top_clk)
 							dpll_cfg(ddr_clk);//convert dll source
 						}else
 						{
-							dmc_print_str("Error:ddr_mode for 1024 freq is disable");
+							dmc_print_str("Error:ddr 1024 disable");
 							continue;
 						}
 					}
@@ -1063,7 +1063,7 @@ void ddrc_zqc_seq()
 			}
 			if(zqcal_val_a ==0x0){
 				//zq cal fail
-				dmc_print_str("\r\nDec PCAL fail");
+				dmc_print_str("\r\nD P f");//Dec PCAL fail
 				while(1);
 			}
 
@@ -1090,7 +1090,7 @@ void ddrc_zqc_seq()
 			}
 			if(zqcal_val_b ==0xf){
 				//zq cal fail
-				dmc_print_str("\r\nInc PCAL fail");
+				dmc_print_str("\r\nI P f");//Inc PCAL fail
 				if(zqcal_val_a == 0xf)
 				{
 					dmc_print_str("\r\nnot 240ohm");
@@ -1110,7 +1110,7 @@ void ddrc_zqc_seq()
 			zq_pcal=(zqcal_val_a+zqcal_val_b)/2;
 		}else
 		{
-			dmc_print_str("\r\ndelat P > 4");
+			dmc_print_str("\r\nD P > 4");//delat P > 4
 			while(1);
 		}
 	}else
@@ -1120,7 +1120,7 @@ void ddrc_zqc_seq()
 			zq_pcal=(zqcal_val_a+zqcal_val_b)/2;
 		}else
 		{
-			dmc_print_str("\r\ndelat N > 4");
+			dmc_print_str("\r\nD N > 4");//delat N > 4
 			while(1);
 		}
 
@@ -1143,7 +1143,7 @@ void ddrc_zqc_seq()
 			}
 			if(zqcal_val_a ==0xf){
 				//zq cal fail
-				dmc_print_str("Inc NCAL fail");
+				dmc_print_str("I N f");//Inc NCAL fail
 				while(1);
 			}
 		}
@@ -1167,7 +1167,7 @@ void ddrc_zqc_seq()
 			}
 			if(zqcal_val_b ==0x0){
 				//zq cal fail
-				dmc_print_str("\r\nDec NCAL fail");
+				dmc_print_str("\r\nD N f");//Dec NCAL fail
 				while(1);
 			}
 		}
@@ -1183,7 +1183,7 @@ void ddrc_zqc_seq()
 			zq_ncal=(zqcal_val_a+zqcal_val_b)/2;
 		}else
 		{
-			dmc_print_str("\r\ndelta N > 4");
+			dmc_print_str("\r\nD N > 4");//delta N > 4
 			while(1);
 		}
 	}else
@@ -1193,7 +1193,7 @@ void ddrc_zqc_seq()
 			zq_ncal=(zqcal_val_a+zqcal_val_b)/2;
 		}else
 		{
-			dmc_print_str("\r\ndelta P > 4");
+			dmc_print_str("\r\nD P > 4");//delta P > 4
 			while(1);
 
 		}

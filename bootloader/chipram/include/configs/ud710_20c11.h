@@ -25,7 +25,7 @@
 #define BOOT_FLAG_ADDRESS 0x5028
 //#define CONFIG_SCX35L64
 //
-//
+
 //#define CONFIG_SUPPORT_WLTE
 
 //dual-backup, sansung demand
@@ -195,12 +195,6 @@
 #define CFG_DRAM_TYPE	DRAM_LPDDR4X
 #define CFG_PINMUX_CASE LP4_PINMUX_CASE0
 #define DDR_AUTO_DETECT
-/*
-#ifdef DDR_AUTO_DETECT
-#define DRAM_TYPE_DETECT_GPIO_N0 76
-#define GPIO_DETECT_DRAM_TYPE
-#endif
-*/
 //#define ADC_DETECT_DRAM_TYPE
 #define DDR_MODE	0xF0000
 

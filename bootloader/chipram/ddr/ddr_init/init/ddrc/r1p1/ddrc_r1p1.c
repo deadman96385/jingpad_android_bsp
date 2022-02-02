@@ -58,6 +58,9 @@ static PORT_PARA port_para[8] = {
 	{0x0A, 0x80, 0x80, 0x0A, 0x00, 0x00}
 };
 
+#ifdef DDR_FREQ_AUTO_SEL
+extern u32 max_ddr_clk_sel;
+#endif
 uint32 find_freq_num(uint32 clk_freq)
 {
 	uint32 i=0;
@@ -187,16 +190,14 @@ static void dmc_update_param_for_uboot(void)
 	{
 		#if defined(CONFIG_CHIPRAM_DDR_CUSTOMIZE)
 		dmc_ddr_size_limit(p_env, CONFIG_CHIPRAM_DDR_CUSTOMIZE);
-		#else
-		p_env->cs1_size -= BIST_RESERVE_SIZE;
 		#endif
+		if(p_env->dram_size >= 0x1FFFFFFFF)
+			p_env->cs1_size -= BIST_RESERVE_SIZE;
 	}
 	else if (ddr_chip_cur.cs_num == 1)
 	{
 		#if defined(CONFIG_CHIPRAM_DDR_CUSTOMIZE)
 		dmc_ddr_size_limit(p_env, CONFIG_CHIPRAM_DDR_CUSTOMIZE);
-		#else
-		p_env->cs0_size -= BIST_RESERVE_SIZE;
 		#endif
 	}
 	/*Save physical ddr size int dmc reg for kernel driver*/
@@ -204,6 +205,7 @@ static void dmc_update_param_for_uboot(void)
 //	REG32(DMC_DTMG18_F0) = p_env->dram_size >> 32;
 }
 
+u32 g_mr5_8[DDR_RANK_NUM_MAX] = {0};
 typedef struct
 {
 	uint32 magic;	//0x5a5a3c3c
@@ -214,6 +216,9 @@ typedef struct
 	uint32 ddr_dfs_dis;
 	uint32 ddr_dfs_mask;
 	uint32 ddr_dfs_max_freq;
+	uint32 type;
+	uint32 cs0_mr;
+	uint32 cs1_mr;
 }param_for_sp;
 #define AON_RAM_FOR_DDR 0x3000
 #define AON_RAM_FOR_DDR_SIZE 0x1400
@@ -229,6 +234,18 @@ static void dmc_update_param_for_sp(void)
 	sdram_chip_whole_size(&(p_param_for_sp->dram_size));
 }
 
+static void ddrc_mr2sp(param_for_sp * p_param_for_sp)
+{
+	u32 val;
+
+	val = (ddr_chip_cur.chip_type & 0xf) + 1;
+	val |= (ddr_chip_cur.cs_num & 0xf) << 4;
+	p_param_for_sp->type = val;
+
+	p_param_for_sp->cs0_mr = g_mr5_8[0];
+	p_param_for_sp->cs1_mr = g_mr5_8[1];
+}
+
 static void dmc_ddr_debug_mode(void)
 {
 	#if defined(DDR_MODE)
@@ -237,6 +254,12 @@ static void dmc_ddr_debug_mode(void)
 	u32 ddr_mode = 0xF0000;
 	#endif
 	u32 regval;
+
+	ddr_mode = 0xF6E00;
+#ifdef DDR_FREQ_AUTO_SEL
+	if(max_ddr_clk_sel != 1866)
+		ddr_mode &= ~(1 << 19);
+#endif
 	/* ddr_mode
 	 * bit[0] 1'b1 dfs disable; 1'b0 dfs_enable
 	 * bit[1] 1'b1 retention disable; 1'b0 retention enable
@@ -275,12 +298,12 @@ static void dmc_ddr_debug_mode(void)
 
 	if ((ddr_mode & 0xF0000) != 0xF0000)
 	{
-		/*  debug info pub light disable    */
+		/*  0x70000 max 1866 disable    */
 		p_param_for_sp->ddr_dfs_max_freq = (ddr_mode & 0xF0000) >> 8;
 	}
+	ddrc_mr2sp(p_param_for_sp);
 
 }
-
 
 static void pub_soft_reset(void)
 {
@@ -335,6 +358,8 @@ static void ddrc_apb_lowpower_setting(void)
 	/*bit[7] 1'b0 pub_cfg_slow_en*/
 //	reg_bits_set(REG_AON_CLK_LP_CLK_AUTO_GATE_EN_CTRL3, 6, 2, 0x1);
 //	reg_bits_set(REG_PMU_APB_PMU_DUMMY_REG1, 14, 2, 0x1);//debug
+	reg_bits_set(REG_AON_APB_C_CHANNEL_SYNC_SEL_CFG, 2, 2, 0);
+	reg_bits_set(REG_AON_APB_C_CHANNEL_SYNC_SEL_CFG, 14, 1, 0);
 }
 static void ddrc_pub_lowpoer_setting(void)
 {
@@ -360,6 +385,7 @@ static void ddrc_pub_lowpoer_setting(void)
 	/*bit[23] bit[15] set 1 for debug,128M clock always on*/
 	reg_bits_set(REG_PUB_APB_DMC_DDR_CLK_CTRL, 23, 1, 0x0);
 	reg_bits_set(REG_PUB_APB_DMC_DDR_CLK_CTRL, 15, 1, 0x0);
+	reg_bits_set(REG_PUB_APB_DMC_DDR_CLK_CTRL, 4, 1, 0x0);
 
 	/* REG_PUB_APB_DMC_DESKEW_WAIT_CNT0[31:16] deskewpll reset,uint: 7.8125ns */
 	reg_bits_set(REG_PUB_APB_DMC_DESKEW_WAIT_CNT0, 16, 16, 0x80);
@@ -423,7 +449,7 @@ static void ddrc_pub_lowpoer_setting(void)
 	/*bit[31:16] pub_sys_deep_sleep_wait_cnt, default 0*/
 	/*bit[15:0] pub_sys_sleep_wait_cnt, default 0, uint:26M cycle*/
 //	reg_bits_set(REG_PMU_APB_DDR_SLP_WAIT_CNT, 16, 16, 0x0);
-	reg_bits_set(REG_PMU_APB_DDR_SLP_WAIT_CNT, 0, 16, 0x104);
+	reg_bits_set(REG_PMU_APB_DDR_SLP_WAIT_CNT, 0, 16, 0x80);
 
 }
 static void ddrc_smart_light_setting(void)
@@ -552,32 +578,15 @@ void ddrc_qos_setting(void)
 	/*[11:8]  arqos_threshold_ap_aon*/
 	/*[7:4]   aon_awqos*/
 	/*[3:0]   aon_arqos*/
-	data_tmp = REG32(REG_PUB_APB_QOS_THRESHOLD_0);
-	data_tmp = u32_bits_set(data_tmp, 28, 4, 0xD);
-	data_tmp = u32_bits_set(data_tmp, 24, 4, 0xD);
-	data_tmp = u32_bits_set(data_tmp, 20, 4, 0xC);
-	data_tmp = u32_bits_set(data_tmp, 16, 4, 0xF);
-	data_tmp = u32_bits_set(data_tmp, 12, 4, 0xB);
-	data_tmp = u32_bits_set(data_tmp, 8, 4, 0xB);
-	data_tmp = u32_bits_set(data_tmp, 4, 4, 0x5);
-	data_tmp = u32_bits_set(data_tmp, 0, 4, 0x5);
-	REG32(REG_PUB_APB_QOS_THRESHOLD_0) = data_tmp;
+	REG32(REG_PUB_APB_QOS_THRESHOLD_0) = 0xDDDCBB55;
 	/*QOS_THRESHOLD_1 Setting*/
 	/*[7:4]   awqos_threshold_isp_vdsp*/
 	/*[3:0]   arqos_threshold_isp_vdsp*/
-	data_tmp = REG32(REG_PUB_APB_QOS_THRESHOLD_1);
-	data_tmp = u32_bits_set(data_tmp, 4, 4, 0xF);
-	data_tmp = u32_bits_set(data_tmp, 0, 4, 0xD);
-	REG32(REG_PUB_APB_QOS_THRESHOLD_1) = data_tmp;
-
+	reg_bits_set(REG_PUB_APB_QOS_THRESHOLD_1, 0, 8, 0xFD);
 	/*QOS_SWITCH Setting*/
 	/*[1]   urgent_chn_sel*/
 	/*[0]   qos_urgent_sel*/
-	data_tmp = REG32(REG_PUB_APB_QOS_SWITCH);
-	data_tmp = u32_bits_set(data_tmp, 1, 1, 0x1);
-	data_tmp = u32_bits_set(data_tmp, 0, 1, 0x1);
-	REG32(REG_PUB_APB_QOS_SWITCH) = data_tmp;
-
+	reg_bits_set(REG_PUB_APB_QOS_SWITCH, 0, 2, 0x3);
 	/*PUB_AXI_QOS_URGENT_REG_0 Setting*/
 	/*[31:28] rf_arqos_urgent_ch3*/
 	/*[27:24] rf_awqos_urgent_ch3*/
@@ -587,16 +596,7 @@ void ddrc_qos_setting(void)
 	/*[11:8]  rf_awqos_urgent_ch1*/
 	/*[7:4]   rf_arqos_urgent_ch0*/
 	/*[3:0]   rf_awqos_urgent_ch0*/
-	data_tmp = REG32(REG_PUB_APB_PUB_AXI_QOS_URGENT_REG_0);
-	data_tmp = u32_bits_set(data_tmp, 28, 4, 0xA);
-	data_tmp = u32_bits_set(data_tmp, 24, 4, 0xA);
-	data_tmp = u32_bits_set(data_tmp, 20, 4, 0xD);
-	data_tmp = u32_bits_set(data_tmp, 16, 4, 0xD);
-	data_tmp = u32_bits_set(data_tmp, 12, 4, 0x6);
-	data_tmp = u32_bits_set(data_tmp, 8, 4, 0x6);
-	data_tmp = u32_bits_set(data_tmp, 4, 4, 0x6);
-	data_tmp = u32_bits_set(data_tmp, 0, 4, 0x6);
-	REG32(REG_PUB_APB_PUB_AXI_QOS_URGENT_REG_0) = data_tmp;
+	REG32(REG_PUB_APB_PUB_AXI_QOS_URGENT_REG_0) = 0xAADD6666;
 	/*PUB_AXI_QOS_URGENT_REG_1 Setting*/
 	/*[31:28] rf_arqos_urgent_ch7*/
 	/*[27:24] rf_awqos_urgent_ch7*/
@@ -606,16 +606,7 @@ void ddrc_qos_setting(void)
 	/*[11:8]  rf_awqos_urgent_ch5*/
 	/*[7:4]   rf_arqos_urgent_ch4*/
 	/*[3:0]   rf_awqos_urgent_ch4*/
-	data_tmp = REG32(REG_PUB_APB_PUB_AXI_QOS_URGENT_REG_1);
-	data_tmp = u32_bits_set(data_tmp, 28, 4, 0x7);
-	data_tmp = u32_bits_set(data_tmp, 24, 4, 0x7);
-	data_tmp = u32_bits_set(data_tmp, 20, 4, 0x9);
-	data_tmp = u32_bits_set(data_tmp, 16, 4, 0x9);
-	data_tmp = u32_bits_set(data_tmp, 12, 4, 0xE);
-	data_tmp = u32_bits_set(data_tmp, 8, 4, 0xE);
-	data_tmp = u32_bits_set(data_tmp, 4, 4, 0x9);
-	data_tmp = u32_bits_set(data_tmp, 0, 4, 0x9);
-	REG32(REG_PUB_APB_PUB_AXI_QOS_URGENT_REG_1) = data_tmp;
+	REG32(REG_PUB_APB_PUB_AXI_QOS_URGENT_REG_1) = 0x7799EE99;
 
 }
 
@@ -623,14 +614,14 @@ void ddr_power_cfg(void)
 {
 	if(LPDDR4 == ddr_chip_cur.chip_type)
 	{
-		regulator_set_voltage("vddcore", 800);	//mv
+		regulator_set_voltage("vddcore", DCDC_CORE);	//mv
 		regulator_set_voltage("vddmem", 1100);
 		regulator_set_voltage("vddmemq", 1100);
 	}
 	else if(LPDDR4X == ddr_chip_cur.chip_type)
 	{
-		regulator_set_voltage("vddcore", 800);
-		regulator_set_voltage("vddmem", 1100);
+		regulator_set_voltage("vddcore", DCDC_CORE);
+		regulator_set_voltage("vddmem", 1130);
 		regulator_set_voltage("vddmemq", 600);
 	}
 }
@@ -653,7 +644,7 @@ void ddr_init(void)
 	wdt_rst_keep_sre();
 	if (find_freq_num(ddr_clk) > 7)
 	{
-		ddrc_print_err("invalid ddr clock\r\n");
+		ddrc_print_err("ck");
 		while(1);
 	}
 
@@ -700,7 +691,7 @@ void ddr_init(void)
 	}
 	else
 	{
-		regulator_set_voltage("vddcore", 800);	//mv
+		regulator_set_voltage("vddcore", DCDC_CORE);	//mv
 		dmc_sprd_delay(7);
 	}
 	sw_dfs_go((ddr_clk));
@@ -735,9 +726,9 @@ void ddr_init(void)
 }
 void test_entry(void)
 {
-	#ifdef DFS_SUPPORT
-	dfs_init();
-	#endif
+#ifdef DDR_DFS_TEST
+	dfs_test();
+#endif
 	#ifdef DDR_REINIT_TEST
 	DMC_ReInit();
 	#endif

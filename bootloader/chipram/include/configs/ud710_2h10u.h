@@ -152,9 +152,9 @@
 #define CLK_ACE         (CLK_SCU/2)
 
 #ifdef CONFIG_NAND_SPL
-#define CLK_DDR_FREQ        667000000
+#define CLK_DDR_FREQ        1866000000
 #else
-#define CLK_DDR_FREQ        256000000
+#define CLK_DDR_FREQ        1866000000
 #endif
 
 #define DCDC_CORE	800
