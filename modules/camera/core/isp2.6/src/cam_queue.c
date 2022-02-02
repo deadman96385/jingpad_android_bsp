@@ -26,13 +26,13 @@
 	fmt, current->pid, __LINE__, __func__
 
 
-int camera_enqueue(struct camera_queue *q, struct camera_frame *pframe)
+int camera_enqueue(struct camera_queue *q, struct list_head *list)
 {
 	int ret = 0;
 	unsigned long flags;
 
-	if (q == NULL || pframe == NULL) {
-		pr_err("fail to get valid param %p %p\n", q, pframe);
+	if (q == NULL || list == NULL) {
+		pr_err("fail to get valid param %p %p\n", q, list);
 		return -EINVAL;
 	}
 
@@ -49,48 +49,12 @@ int camera_enqueue(struct camera_queue *q, struct camera_frame *pframe)
 		goto unlock;
 	}
 	q->cnt++;
-	list_add_tail(&pframe->list, &q->head);
+	list_add_tail(list, &q->head);
 
 unlock:
 	spin_unlock_irqrestore(&q->lock, flags);
 
 	return ret;
-}
-
-struct camera_frame *camera_dequeue(struct camera_queue *q)
-{
-	int fatal_err;
-	unsigned long flags;
-	struct camera_frame *pframe = NULL;
-
-	if (q == NULL) {
-		pr_err("fail to get valid param\n");
-		return NULL;
-	}
-
-	spin_lock_irqsave(&q->lock, flags);
-	if (q->state == CAM_Q_CLEAR) {
-		pr_warn("q is clear\n");
-		goto unlock;
-	}
-
-	if (list_empty(&q->head) || q->cnt == 0) {
-		pr_debug("queue empty %d, %d\n",
-			list_empty(&q->head), q->cnt);
-		fatal_err = (list_empty(&q->head) ^ (q->cnt == 0));
-		if (fatal_err)
-			pr_err("fail to get list node, empty %d, cnt %d\n",
-					list_empty(&q->head), q->cnt);
-		goto unlock;
-	}
-
-	pframe = list_first_entry(&q->head, struct camera_frame, list);
-	list_del(&pframe->list);
-	q->cnt--;
-unlock:
-	spin_unlock_irqrestore(&q->lock, flags);
-
-	return pframe;
 }
 
 /* dequeue frame from tail of queue */
@@ -176,44 +140,8 @@ unlock:
 	return pframe;
 }
 
-struct camera_frame *camera_dequeue_peek(struct camera_queue *q)
-{
-	int fatal_err;
-	unsigned long flags;
-	struct camera_frame *pframe = NULL;
-
-	if (q == NULL) {
-		pr_err("fail to get valid param\n");
-		return NULL;
-	}
-
-	spin_lock_irqsave(&q->lock, flags);
-	if (q->state == CAM_Q_CLEAR) {
-		pr_warn("q is clear\n");
-		goto unlock;
-	}
-
-	if (list_empty(&q->head) || q->cnt == 0) {
-		pr_debug("queue empty %d, %d\n",
-				list_empty(&q->head), q->cnt);
-		fatal_err = (list_empty(&q->head) ^ (q->cnt == 0));
-		if (fatal_err)
-			pr_err("fail to get list node, empty %d, cnt %d\n",
-					list_empty(&q->head), q->cnt);
-		goto unlock;
-	}
-
-	pframe = list_first_entry(&q->head, struct camera_frame, list);
-
-unlock:
-	spin_unlock_irqrestore(&q->lock, flags);
-
-	return pframe;
-}
-
 int camera_queue_init(struct camera_queue *q,
-			uint32_t max, uint32_t type,
-			void (*cb_func)(void *))
+	uint32_t max, void (*cb_func)(void *))
 {
 	int ret = 0;
 
@@ -223,62 +151,10 @@ int camera_queue_init(struct camera_queue *q,
 	}
 	q->cnt = 0;
 	q->max = max;
-	q->type = type;
 	q->state = CAM_Q_INIT;
 	q->destroy = cb_func;
 	spin_lock_init(&q->lock);
 	INIT_LIST_HEAD(&q->head);
-
-	return ret;
-}
-
-
-int camera_queue_clear(struct camera_queue *q)
-{
-	int ret = 0;
-	int fatal_err;
-	unsigned long flags;
-	struct camera_frame *pframe = NULL;
-
-	if (q == NULL) {
-		pr_err("fail to get valid param\n");
-		return -EINVAL;
-	}
-	spin_lock_irqsave(&q->lock, flags);
-
-	do {
-		if (list_empty(&q->head) || q->cnt == 0) {
-			pr_debug("queue empty %d, %d\n",
-				list_empty(&q->head), q->cnt);
-			fatal_err = (list_empty(&q->head) ^ (q->cnt == 0));
-			if (fatal_err)
-				pr_debug("error:  empty %d, cnt %d\n",
-						list_empty(&q->head), q->cnt);
-			break;
-		}
-
-		pframe = list_first_entry(&q->head, struct camera_frame, list);
-		if (pframe == NULL)
-			break;
-
-		list_del(&pframe->list);
-		q->cnt--;
-
-		if (q->destroy) {
-			spin_unlock_irqrestore(&q->lock, flags);
-			q->destroy(pframe);
-			spin_lock_irqsave(&q->lock, flags);
-		}
-	} while (1);
-
-	q->cnt = 0;
-	q->max = 0;
-	q->type = 0;
-	q->state = CAM_Q_CLEAR;
-	q->destroy = NULL;
-	INIT_LIST_HEAD(&q->head);
-
-	spin_unlock_irqrestore(&q->lock, flags);
 
 	return ret;
 }
@@ -369,7 +245,7 @@ struct camera_frame *get_empty_frame(void)
 
 	pr_debug("Enter.\n");
 	do {
-		pframe = camera_dequeue(q);
+		pframe = camera_dequeue(q, struct camera_frame, list);
 		if (pframe == NULL) {
 			if (in_interrupt()) {
 				/* fast alloc and return for irq handler */
@@ -389,7 +265,7 @@ struct camera_frame *get_empty_frame(void)
 				}
 				atomic_inc(&g_mem_dbg->empty_frm_cnt);
 				pr_debug("alloc frame %p\n", pframe);
-				ret = camera_enqueue(q, pframe);
+				ret = camera_enqueue(q, &pframe->list);
 				if (ret) {
 					/* q full, return pframe directly here */
 					break;
@@ -417,7 +293,7 @@ int put_empty_frame(struct camera_frame *pframe)
 	pr_debug("put frame %p\n", pframe);
 
 	memset(pframe, 0, sizeof(struct camera_frame));
-	ret = camera_enqueue(g_empty_frm_q, pframe);
+	ret = camera_enqueue(g_empty_frm_q, &pframe->list);
 	if (ret) {
 		pr_info("queue should be enlarged\n");
 		atomic_dec(&g_mem_dbg->empty_frm_cnt);
@@ -435,5 +311,82 @@ void free_empty_frame(void *param)
 	pr_debug("free frame %p, cnt %d\n", pframe,
 		atomic_read(&g_mem_dbg->empty_frm_cnt));
 	kfree(pframe);
+}
+
+struct isp_stream_ctrl *get_empty_state(void)
+{
+	int ret = 0;
+	uint32_t i;
+	struct camera_queue *q = g_empty_state_q;
+	struct isp_stream_ctrl *stream_state = NULL;
+
+	pr_debug("Enter.\n");
+	do {
+		stream_state = camera_dequeue(q, struct isp_stream_ctrl, list);
+		if (stream_state == NULL) {
+			if (in_interrupt()) {
+				/* fast alloc and return for irq handler */
+				stream_state = kzalloc(sizeof(*stream_state), GFP_ATOMIC);
+				if (stream_state)
+					atomic_inc(&g_mem_dbg->empty_state_cnt);
+				else
+					pr_err("fail to alloc memory\n");
+				return stream_state;
+			}
+
+			for (i = 0; i < CAM_EMP_Q_LEN_INC; i++) {
+				stream_state = kzalloc(sizeof(*stream_state), GFP_KERNEL);
+				if (stream_state == NULL) {
+					pr_err("fail to alloc memory, retry\n");
+					continue;
+				}
+				atomic_inc(&g_mem_dbg->empty_state_cnt);
+				pr_debug("alloc frame %p\n", stream_state);
+				ret = camera_enqueue(q, &stream_state->list);
+				if (ret) {
+					/* q full, return pframe directly here */
+					break;
+				}
+				stream_state = NULL;
+			}
+			pr_debug("alloc %d empty states, cnt %d\n",
+				i, atomic_read(&g_mem_dbg->empty_state_cnt));
+		}
+	} while (stream_state == NULL);
+
+	pr_debug("Done. get state %p\n", stream_state);
+	return stream_state;
+}
+
+void put_empty_state(void *param)
+{
+	int ret = 0;
+	struct isp_stream_ctrl *stream_state = NULL;
+
+	if (param == NULL) {
+		pr_err("fail to get valid param\n");
+		return;
+	}
+	stream_state = (struct isp_stream_ctrl *)param;
+	pr_debug("put state %p\n", stream_state);
+
+	memset(stream_state, 0, sizeof(struct isp_stream_ctrl));
+	ret = camera_enqueue(g_empty_state_q, &stream_state->list);
+	if (ret) {
+		pr_debug("queue should be enlarged\n");
+		atomic_dec(&g_mem_dbg->empty_state_cnt);
+		kfree(stream_state);
+	}
+}
+
+void free_empty_state(void *param)
+{
+	struct isp_stream_ctrl *stream_state = NULL;
+
+	stream_state = (struct isp_stream_ctrl *)param;
+	atomic_dec(&g_mem_dbg->empty_state_cnt);
+	pr_debug("free state %p, cnt %d\n", stream_state,
+		atomic_read(&g_mem_dbg->empty_state_cnt));
+	kfree(stream_state);
 }
 

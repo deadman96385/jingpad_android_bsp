@@ -138,6 +138,11 @@ struct kbasep_debug_assert_cb {
 #define KBASE_DEBUG_CODE(X) CSTD_NOP()
 #endif				/* CONFIG_MALI_DEBUG */
 
+extern int mali_debug_level;
+#define KBASE_DEBUG_PRINT(level, fmt, ...) \
+        if((level) <=  mali_debug_level) {\
+                 printk("MALI " pr_fmt(fmt),##__VA_ARGS__); \
+        }
 /** @} */
 
 /**

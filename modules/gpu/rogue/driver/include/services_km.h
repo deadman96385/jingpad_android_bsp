@@ -82,11 +82,20 @@ typedef struct _PVRSRV_DEV_CONNECTION_ PVRSRV_DEV_CONNECTION;
 	Flags for Services connection.
 	Allows to define per-client policy for Services
 */
+/*
+ *   Use of the 32-bit connection flags mask
+ *   ( X = taken/in use, - = available/unused )
+ *
+ *   31  27     20             6   2 0
+ *    |   |      |             |   | |
+ *    X---XXXXXXXX-------------XXXXX--
+ */
 
 #define SRV_WORKEST_ENABLED             (1U << 2)  /*!< If Workload Estimation is enabled */
 #define SRV_PDVFS_ENABLED               (1U << 3)  /*!< If PDVFS is enabled */
 #define SRV_NO_HWPERF_CLIENT_STREAM     (1U << 4)  /*!< Don't create HWPerf for this connection */
 #define SRV_FLAGS_CLIENT_64BIT_COMPAT   (1U << 5)  /*!< This flags gets set if the client is 64 Bit compatible. */
+#define SRV_FLAGS_CLIENT_SLR_DISABLED   (1U << 6)  /*!< This flag is set if the client does not want Sync Lockup Recovery (SLR) enabled. */
 #define SRV_FLAGS_PDUMPCTRL             (1U << 31) /*!< PDump Ctrl client flag */
 
 /*

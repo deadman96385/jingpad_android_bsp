@@ -1777,6 +1777,12 @@ Disable software estimation of the GPU frequency done on the Host and used_\
 for timer correlation._\
 ))
 
+$(eval $(call TunableKernelConfigC,RGX_INITIAL_SLR_HOLDOFF_PERIOD_MS,0,\
+Period (in ms) for which any Sync Lockup Recovery (SLR) behaviour should be_\
+suppressed following driver load. This can help to avoid any attempted SLR_\
+during the boot process._\
+))
+
 # Key for log2 CCB sizes:
 # 13=8K 14=16K 15=32K 16=64K 17=128K
 

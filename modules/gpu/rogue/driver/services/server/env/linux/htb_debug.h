@@ -45,9 +45,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /**************************************************************************/ /*!
  @Function     HTB_CreateFSEntry
- 
+
  @Description  Create the debugFS entry-point for the host-trace-buffer
- 
+
  @Returns      eError          internal error code, PVRSRV_OK on success
 
  */ /**************************************************************************/
@@ -55,7 +55,7 @@ PVRSRV_ERROR HTB_CreateFSEntry(void);
 
 /**************************************************************************/ /*!
  @Function     HTB_DestroyFSEntry
- 
+
  @Description  Destroy the debugFS entry-point created by earlier
                HTB_CreateFSEntry() call.
 */ /**************************************************************************/

@@ -88,7 +88,7 @@ static PHYS_HEAP_CONFIG gsPhysHeapConfigHostMemDevice[] =
 };
 
 /* device configuration for host driver's device */
-static PVRSRV_DEVICE_CONFIG gsHostMemDevConfig[] = 
+static PVRSRV_DEVICE_CONFIG gsHostMemDevConfig[] =
 {
 	{
 		.pszName = "HostMemDevice",

@@ -8,7 +8,7 @@
 #   done is this Kbuild file
 #
 
-ifeq ($(filter $(strip $(BSP_BOARD_UNISOC_WCN_SOCKET)),sipc sdio),)
+ifeq ($(filter $(strip $(BSP_BOARD_UNISOC_WCN_SOCKET)),sipc sdio pcie),)
 $(error no BSP_BOARD_UNISOC_WCN_SOCKET, pls fix it !!!)
 endif
 

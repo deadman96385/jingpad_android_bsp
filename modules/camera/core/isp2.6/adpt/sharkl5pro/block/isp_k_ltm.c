@@ -27,16 +27,6 @@
 #define	ISP_LTM_HIST_BUF0		0
 #define	ISP_LTM_HIST_BUF1		1
 
-static struct isp_dev_rgb_ltm_info g_ltm_rgb_info = {
-	.ltm_stat.bypass = 1,
-	.ltm_map.bypass = 1,
-};
-
-static struct isp_dev_yuv_ltm_info g_ltm_yuv_info = {
-	.ltm_stat.bypass = 1,
-	.ltm_map.bypass = 1,
-};
-
 static void isp_ltm_config_hists(uint32_t idx,
 	enum isp_ltm_region ltm_id, struct isp_ltm_hists *hists)
 {
@@ -62,6 +52,7 @@ static void isp_ltm_config_hists(uint32_t idx,
 		return;
 	}
 
+	pr_debug("isp %d rgb ltm hist bypass %d\n", idx, hists->bypass);
 	if (g_isp_bypass[idx] & (1 << _EISP_LTM))
 		hists->bypass = 1;
 	ISP_REG_MWR(idx, base + ISP_LTM_HIST_PARAM, BIT_0, hists->bypass);
@@ -127,6 +118,7 @@ static void isp_ltm_config_map(uint32_t idx,
 		return;
 	}
 
+	pr_debug("isp %d rgb ltm map bypass %d\n", idx, map->bypass);
 	if (g_isp_bypass[idx] & (1 << _EISP_LTM))
 		map->bypass = 1;
 	ISP_REG_MWR(idx, base + ISP_LTM_MAP_PARAM0, BIT_0, map->bypass);
@@ -181,59 +173,35 @@ int isp_ltm_config_param(struct isp_ltm_ctx_desc *ctx,
 	return 0;
 }
 
-struct isp_ltm_info *isp_ltm_get_tuning_config(int type,
-		enum isp_ltm_region ltm_id)
-{
-	struct isp_dev_rgb_ltm_info *rgb_ltm_info = NULL;
-	struct isp_dev_yuv_ltm_info *yuv_ltm_info = NULL;
-	struct isp_ltm_info *ltm_info = NULL;
-
-	switch (ltm_id) {
-	case LTM_RGB:
-		rgb_ltm_info = &g_ltm_rgb_info;
-		ltm_info = (struct isp_ltm_info *)rgb_ltm_info;
-		break;
-	case LTM_YUV:
-		yuv_ltm_info = &g_ltm_yuv_info;
-		ltm_info = (struct isp_ltm_info *)yuv_ltm_info;
-		break;
-	default:
-		pr_err("fail to get ltm id:%d, not supported.\n", ltm_id);
-	}
-
-	pr_debug("tuning hist %d %d %d %d %d %d %d %d %d.\n",
-		ltm_id,
-		ltm_info->ltm_stat.bypass,
-		ltm_info->ltm_stat.tile_num.tile_num_x,
-		ltm_info->ltm_stat.tile_num.tile_num_y,
-		ltm_info->ltm_stat.strength,
-		ltm_info->ltm_stat.tile_num_auto,
-		ltm_info->ltm_stat.channel_sel,
-		ltm_info->ltm_stat.text_point_thres,
-		ltm_info->ltm_stat.ltm_text.textture_proporion);
-
-	pr_debug("ltm tuning map %d %d %d.\n", ltm_id,
-		ltm_info->ltm_map.bypass,
-		ltm_info->ltm_map.ltm_map_video_mode);
-
-	if (type == ISP_PRO_LTM_PRE_PARAM)
-		ltm_info->ltm_map.ltm_map_video_mode = 1;
-	if (type == ISP_PRO_LTM_CAP_PARAM){
-		ltm_info->ltm_stat.bypass = 1;
-		ltm_info->ltm_map.ltm_map_video_mode = 0;
-	}
-
-	return ltm_info;
-}
-
-int isp_k_ltm_rgb_block(struct isp_io_param *param, uint32_t idx)
+int isp_k_ltm_rgb_block(struct isp_io_param *param,
+		struct isp_k_block *isp_k_param, uint32_t idx)
 {
 	int ret = 0;
-	struct isp_dev_rgb_ltm_info *ltm_info = &g_ltm_rgb_info;
+	struct isp_dev_rgb_ltm_info *p = NULL;
 
-	ret = copy_from_user((void *)ltm_info,
-			     param->property_param,
-			     sizeof(struct isp_dev_rgb_ltm_info));
+	p = &isp_k_param->rgb_ltm;
+	ret = copy_from_user((void *)p, (void __user *)param->property_param,
+		sizeof(struct isp_dev_rgb_ltm_info));
+	if (ret != 0) {
+		pr_err("fail to get ltm from user, ret = %d\n", ret);
+		return -EPERM;
+	}
+
+	pr_debug("isp %d ltm hist %d map %d\n",
+		idx, p->ltm_stat.bypass, p->ltm_map.bypass);
+
+	return ret;
+}
+
+int isp_k_ltm_yuv_block(struct isp_io_param *param,
+		struct isp_k_block *isp_k_param, uint32_t idx)
+{
+	int ret = 0;
+	struct isp_dev_yuv_ltm_info *p = NULL;
+
+	p = &isp_k_param->yuv_ltm;
+	ret = copy_from_user((void *)p, (void __user *)param->property_param,
+		sizeof(struct isp_dev_yuv_ltm_info));
 	if (ret != 0) {
 		pr_err("fail to get ltm from user, ret = %d\n", ret);
 		return -EPERM;
@@ -242,29 +210,14 @@ int isp_k_ltm_rgb_block(struct isp_io_param *param, uint32_t idx)
 	return ret;
 }
 
-int isp_k_ltm_yuv_block(struct isp_io_param *param, uint32_t idx)
-{
-	int ret = 0;
-	struct isp_dev_yuv_ltm_info *ltm_info = &g_ltm_yuv_info;
-
-	ret = copy_from_user((void *)ltm_info,
-			     param->property_param,
-			     sizeof(struct isp_dev_yuv_ltm_info));
-	if (ret != 0) {
-		pr_err("fail to get ltm from user, ret = %d\n", ret);
-		return -EPERM;
-	}
-
-	return ret;
-}
-
-int isp_k_cfg_rgb_ltm(struct isp_io_param *param, uint32_t idx)
+int isp_k_cfg_rgb_ltm(struct isp_io_param *param,
+		struct isp_k_block *isp_k_param, uint32_t idx)
 {
 	int ret = 0;
 
 	switch (param->property) {
 	case ISP_PRO_RGB_LTM_BLOCK:
-		ret = isp_k_ltm_rgb_block(param, idx);
+		ret = isp_k_ltm_rgb_block(param, isp_k_param, idx);
 		break;
 	default:
 		pr_err("fail to support cmd id = %d\n",
@@ -275,13 +228,14 @@ int isp_k_cfg_rgb_ltm(struct isp_io_param *param, uint32_t idx)
 	return ret;
 }
 
-int isp_k_cfg_yuv_ltm(struct isp_io_param *param, uint32_t idx)
+int isp_k_cfg_yuv_ltm(struct isp_io_param *param,
+		struct isp_k_block *isp_k_param, uint32_t idx)
 {
 	int ret = 0;
 
 	switch (param->property) {
 	case ISP_PRO_YUV_LTM_BLOCK:
-		ret = isp_k_ltm_yuv_block(param, idx);
+		ret = isp_k_ltm_yuv_block(param, isp_k_param, idx);
 		break;
 	default:
 		pr_err("fail to support cmd id = %d\n",

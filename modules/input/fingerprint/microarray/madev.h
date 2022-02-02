@@ -24,7 +24,7 @@
 #define MA_CHR_DEV_NAME     "madev"   /*do not neeed modify usually */
 
 #define MA_EINT_NAME        "sprd,finger_print-eint"
-
+//#define IRQ_TRIGGER_HIGH
 
 /*key define   just modify the KEY_FN_* for different platform*/
 #define FINGERPRINT_SWIPE_UP        KEY_FN_F1
@@ -202,6 +202,10 @@ extern int mas_switch_power(unsigned int on_off);
 #define MA_IOC_GET_SCREEN       _IOR(MA_IOC_MAGIC, 43, unsigned int)
 /*get the system's screen */
 #define MA_IOC_GET_INT_STATE    _IOR(MA_IOC_MAGIC, 44, unsigned int)
+
+/*get reset pin state*/
+#define SET_RESET_PIN		_IOW(MA_IOC_MAGIC, 48, unsigned int)
+#define GET_RESET_PIN		_IOR(MA_IOC_MAGIC, 49, unsigned int)
 /*get the int pin state high or low*/
 #define MA_IOC_GET_FACTORY_FLAG    _IOR(MA_IOC_MAGIC, 53, unsigned int)
 #define MA_IOC_SET_FACTORY_FLAG    _IOW(MA_IOC_MAGIC, 54, unsigned int)

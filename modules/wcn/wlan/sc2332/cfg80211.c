@@ -882,9 +882,11 @@ static int sprdwl_cfg80211_get_station(struct wiphy *wiphy,
 				       struct station_info *sinfo)
 {
 	struct sprdwl_vif *vif = netdev_priv(ndev);
-	s8 signal, noise;
+	struct sprdwl_cmd_get_station sta;
+	struct sprdwl_rate_info *tx_rate;
+	struct sprdwl_rate_info *rx_rate;
 	u8 rate;
-	s32 failed, i;
+	s32 i;
 	int ret;
 
 	sinfo->filled |= BIT(NL80211_STA_INFO_TX_BYTES) |
@@ -898,37 +900,113 @@ static int sprdwl_cfg80211_get_station(struct wiphy *wiphy,
 
 	/* Get current RSSI */
 	ret = sprdwl_get_station(vif->priv, vif->mode,
-				 &signal, &noise, &rate, &failed);
+				 &sta);
 	if (ret)
 		goto out;
-	sinfo->signal = signal;
+
+	sinfo->signal = sta.signal;
 	sinfo->filled |= BIT(NL80211_STA_INFO_SIGNAL);
 
-	sinfo->tx_failed = failed;
+	sinfo->tx_failed = sta.txfailed;
 	sinfo->filled |= BIT(NL80211_STA_INFO_TX_BITRATE) |
 			 BIT(NL80211_STA_INFO_TX_FAILED);
 
+	if (!sta.reserved) {
+		rate = sta.txrate;
 	/* Convert got rate from hw_value to NL80211 value */
-	if (!(rate & 0x7f)) {
-		netdev_info(ndev, "%s rate %d\n", __func__, (rate & 0x7f));
-		sinfo->txrate.legacy = 10;
-	} else {
-		for (i = 0; i < ARRAY_SIZE(sprdwl_rates); i++) {
-			if (rate == sprdwl_rates[i].hw_value) {
-				sinfo->txrate.legacy = sprdwl_rates[i].bitrate;
-				if (rate & 0x80)
-					sinfo->txrate.mcs =
-					    sprdwl_rates[i].hw_value;
-				break;
+		if (!(rate & 0x7f)) {
+			netdev_info(ndev, "%s rate %d\n", __func__, (rate & 0x7f));
+			sinfo->txrate.legacy = 10;
+		} else {
+			for (i = 0; i < ARRAY_SIZE(sprdwl_rates); i++) {
+				if (rate == sprdwl_rates[i].hw_value) {
+					sinfo->txrate.legacy = sprdwl_rates[i].bitrate;
+					if (rate & 0x80)
+						sinfo->txrate.mcs =
+					    	sprdwl_rates[i].hw_value;
+					break;
+				}
 			}
+
+			if (i >= ARRAY_SIZE(sprdwl_rates))
+				sinfo->txrate.legacy = 10;
 		}
 
-		if (i >= ARRAY_SIZE(sprdwl_rates))
-			sinfo->txrate.legacy = 10;
+		netdev_info(ndev, "%s signal %d txrate %d\n", __func__, sinfo->signal,
+			    sinfo->txrate.legacy);
+	} else if (sta.reserved & BIT(0)) {
+		rx_rate = &sta.rx_rate;
+		tx_rate = &sta.tx_rate;
+
+		if (!(tx_rate->flags & 0x1c))
+			sinfo->txrate.bw = RATE_INFO_BW_20;
+
+		if ((tx_rate->flags) & BIT(2))
+			sinfo->txrate.bw = RATE_INFO_BW_40;
+
+		if ((tx_rate->flags) & BIT(3))
+			sinfo->txrate.bw = RATE_INFO_BW_80;
+
+		if ((tx_rate->flags) & BIT(4) ||
+			(tx_rate->flags) & BIT(5))
+			sinfo->txrate.bw = RATE_INFO_BW_160;
+
+		if ((tx_rate->flags) & BIT(6))
+			sinfo->txrate.flags |= RATE_INFO_FLAGS_SHORT_GI;
+
+
+		if ((tx_rate->flags & RATE_INFO_FLAGS_MCS) ||
+			(tx_rate->flags & RATE_INFO_FLAGS_VHT_MCS)) {
+			sinfo->txrate.flags = (tx_rate->flags & 0x3);
+			sinfo->txrate.mcs = tx_rate->mcs;
+
+			if ((tx_rate->flags & RATE_INFO_FLAGS_VHT_MCS) &&
+				(0 != tx_rate->nss)) {
+				sinfo->txrate.nss = tx_rate->nss;
+			}
+		} else {
+			sinfo->txrate.legacy = tx_rate->legacy;
+		}
+
+		/*rx rate*/
+		sinfo->filled |= BIT(NL80211_STA_INFO_RX_BITRATE);
+		if (!(rx_rate->flags & 0x1c))
+			sinfo->rxrate.bw = RATE_INFO_BW_20;
+
+		if ((rx_rate->flags) & BIT(2))
+			sinfo->rxrate.bw = RATE_INFO_BW_40;
+
+		if ((rx_rate->flags) & BIT(3))
+			sinfo->rxrate.bw = RATE_INFO_BW_80;
+
+		if ((rx_rate->flags) & BIT(4) ||
+			(rx_rate->flags) & BIT(5))
+			sinfo->rxrate.bw = RATE_INFO_BW_160;
+
+		if ((rx_rate->flags) & BIT(6))
+			sinfo->rxrate.flags |= RATE_INFO_FLAGS_SHORT_GI;
+
+		if ((rx_rate->flags & RATE_INFO_FLAGS_MCS) ||
+			(rx_rate->flags & RATE_INFO_FLAGS_VHT_MCS)) {
+
+			sinfo->rxrate.flags = (rx_rate->flags & 0x3);
+			sinfo->rxrate.mcs = rx_rate->mcs;
+
+			if ((rx_rate->flags & RATE_INFO_FLAGS_VHT_MCS) &&
+				(0 != rx_rate->nss)) {
+				sinfo->rxrate.nss = rx_rate->nss;
+			}
+		} else {
+			sinfo->rxrate.legacy = rx_rate->legacy;
+		}
+
+		netdev_info(ndev, "%s signal %d noise=%d, txlegacy %d txmcs:%d txflags:0x:%x,rxlegacy %d rxmcs:%d rxflags:0x:%x\n",
+			__func__, sinfo->signal, sta.noise, sinfo->txrate.legacy,
+			tx_rate->mcs, tx_rate->flags,
+			sinfo->rxrate.legacy,
+			rx_rate->mcs, rx_rate->flags);
 	}
 
-	netdev_info(ndev, "%s signal %d txrate %d\n", __func__, sinfo->signal,
-		    sinfo->txrate.legacy);
 out:
 	return ret;
 }

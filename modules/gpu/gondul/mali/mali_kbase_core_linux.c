@@ -102,7 +102,10 @@
 #include <mali_kbase_timeline.h>
 
 #include <mali_kbase_as_fault_debugfs.h>
-
+/* Module parameter to control log level */
+int mali_debug_level = 2;
+module_param(mali_debug_level, int, S_IRUSR | S_IWUSR | S_IWGRP | S_IRGRP | S_IROTH); /* rw-rw-r-- */
+MODULE_PARM_DESC(mali_debug_level, "Higher number, more dmesg output");
 /* GPU IRQ Tags */
 #define	JOB_IRQ_TAG	0
 #define MMU_IRQ_TAG	1

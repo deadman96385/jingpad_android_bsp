@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for rgxsignals
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_RGXSIGNALS_BRIDGE_H
 #define COMMON_RGXSIGNALS_BRIDGE_H
@@ -52,14 +52,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "rgx_bridge.h"
 
-
 #define PVRSRV_BRIDGE_RGXSIGNALS_CMD_FIRST			0
 #define PVRSRV_BRIDGE_RGXSIGNALS_RGXNOTIFYSIGNALUPDATE			PVRSRV_BRIDGE_RGXSIGNALS_CMD_FIRST+0
 #define PVRSRV_BRIDGE_RGXSIGNALS_CMD_LAST			(PVRSRV_BRIDGE_RGXSIGNALS_CMD_FIRST+0)
 
-
 /*******************************************
-            RGXNotifySignalUpdate          
+            RGXNotifySignalUpdate
  *******************************************/
 
 /* Bridge in structure for RGXNotifySignalUpdate */
@@ -67,13 +65,12 @@ typedef struct PVRSRV_BRIDGE_IN_RGXNOTIFYSIGNALUPDATE_TAG
 {
 	IMG_HANDLE hPrivData;
 	IMG_DEV_VIRTADDR sDevSignalAddress;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_RGXNOTIFYSIGNALUPDATE;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_RGXNOTIFYSIGNALUPDATE;
 
 /* Bridge out structure for RGXNotifySignalUpdate */
 typedef struct PVRSRV_BRIDGE_OUT_RGXNOTIFYSIGNALUPDATE_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_RGXNOTIFYSIGNALUPDATE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RGXNOTIFYSIGNALUPDATE;
 
 #endif /* COMMON_RGXSIGNALS_BRIDGE_H */

@@ -40,6 +40,7 @@ int sprdwl_debug_level = L_INFO;
 int sprdwl_debug_level = L_WARN;
 #endif
 struct device *sprdwl_dev;
+extern struct sprdwl_intf *g_intf;
 void adjust_debug_level(char *buf, unsigned char offset)
 {
 	int level = buf[offset] - '0';
@@ -111,6 +112,52 @@ void adjust_tdls_threshold(char *buf, unsigned char offset)
 	wl_err("%s, change tdls_threshold to %d\n", __func__, value);
 }
 
+void adjust_tcpack_th_in_mb(char *buf, unsigned char offset)
+{
+#define MAX_LEN 4
+	unsigned int cnt = 0;
+	unsigned int i = 0;
+
+	for(i = 0; i < MAX_LEN; (cnt *= 10), i++) {
+		if((buf[offset + i] >= '0') &&
+		   (buf[offset + i] <= '9')) {
+			cnt += (unsigned int)(buf[offset + i] - '0');
+		} else {
+			cnt /= 10;
+			break;
+		}
+	}
+
+	if (cnt < 0 || cnt > 9999)
+		cnt = DROPACK_TP_TH_IN_M;
+	g_intf->tcpack_delay_th_in_mb = cnt;
+	wl_info("tcpack_delay_th_in_mb: %d\n", g_intf->tcpack_delay_th_in_mb);
+#undef MAX_LEN
+}
+
+void adjust_tcpack_time_in_ms(char *buf, unsigned char offset)
+{
+#define MAX_LEN 4
+	unsigned int cnt = 0;
+	unsigned int i = 0;
+
+	for(i = 0; i < MAX_LEN; (cnt *= 10), i++) {
+		if((buf[offset + i] >= '0') &&
+		   (buf[offset + i] <= '9')) {
+			cnt += (unsigned int)(buf[offset + i] - '0');
+		} else {
+			cnt /= 10;
+			break;
+		}
+	}
+
+	if (cnt < 0 || cnt > 9999)
+		cnt = RX_TP_COUNT_IN_MS;
+	g_intf->tcpack_time_in_ms = cnt;
+	wl_info("tcpack_time_in_ms: %d\n", g_intf->tcpack_time_in_ms);
+#undef MAX_LEN
+}
+
 struct debuginfo_s {
 	void (*func)(char *, unsigned char offset);
 	char str[30];
@@ -122,6 +169,8 @@ struct debuginfo_s {
 	{adjust_tcp_ack_delay, "tcpack_delay_cnt="},
 	{adjust_tcp_ack_delay_win, "tcpack_delay_win="},
 	{adjust_tdls_threshold, "tdls_threshold="},
+	{adjust_tcpack_th_in_mb, "tcpack_delay_th_in_mb="},
+	{adjust_tcpack_time_in_ms, "tcpack_time_in_ms="},
 };
 
 /* TODO: Could we use netdev_alloc_frag instead of kmalloc?

@@ -84,7 +84,7 @@ PVRSRV_ERROR SOPvrDbgRequestNotifyRegister(IMG_HANDLE *phNotify,
  @Description  SO Interface function called from the OS layer implementation.
                Remove and clean up the specified notifier registration so that
                it does not receive any further callbacks.
- @Input        hNotify     Handle returned to caller from 
+ @Input        hNotify     Handle returned to caller from
                            SOPvrDbgRequestNotifyRegister().
  @Return       PVRSRV_ERROR
 */ /***************************************************************************/

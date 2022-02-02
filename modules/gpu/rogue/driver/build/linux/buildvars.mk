@@ -208,6 +208,7 @@ TESTED_KBUILD_FLAGS := \
  $(call kernel-cc-option,-Wmissing-include-dirs) \
  $(call kernel-cc-option,-Wno-type-limits) \
  $(call kernel-cc-option,-Wno-pointer-arith) \
+ $(call kernel-cc-option,-Wno-pointer-sign) \
  $(call kernel-cc-option,-Wno-aggregate-return) \
  $(call kernel-cc-option,-Wno-unused-but-set-variable) \
  $(call kernel-cc-option,-Wno-ignored-qualifiers) \

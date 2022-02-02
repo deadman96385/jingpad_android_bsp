@@ -105,6 +105,7 @@ static long mas_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int ioctl_ret = 0;
 	int cp_ret;
+	int cp_val;
 	unsigned int version = MA_DRV_VERSION;
 
 	switch (cmd) {
@@ -281,6 +282,16 @@ static long mas_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				&int_pin_state, sizeof(unsigned int));
 			mutex_unlock(&ioctl_lock);
 		}
+		break;
+	case SET_RESET_PIN:
+		mas_finger_set_reset(arg);
+		break;
+	case GET_RESET_PIN:
+	    cp_val = mas_finger_get_reset();
+		mutex_lock(&ioctl_lock);
+		cp_ret = copy_to_user((unsigned int *)arg,
+			&cp_val, sizeof(unsigned int));
+		mutex_unlock(&ioctl_lock);
 		break;
 	case MA_IOC_GET_FACTORY_FLAG:
 		mutex_lock(&ioctl_lock);

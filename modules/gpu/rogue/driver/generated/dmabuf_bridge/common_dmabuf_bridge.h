@@ -59,7 +59,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_DMABUF_CMD_LAST			(PVRSRV_BRIDGE_DMABUF_CMD_FIRST+2)
 
 /*******************************************
-            PhysmemImportDmaBuf          
+            PhysmemImportDmaBuf
  *******************************************/
 
 /* Bridge in structure for PhysmemImportDmaBuf */
@@ -81,7 +81,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTDMABUF_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTDMABUF;
 
 /*******************************************
-            PhysmemExportDmaBuf          
+            PhysmemExportDmaBuf
  *******************************************/
 
 /* Bridge in structure for PhysmemExportDmaBuf */
@@ -98,7 +98,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMEXPORTDMABUF_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PHYSMEMEXPORTDMABUF;
 
 /*******************************************
-            PhysmemImportSparseDmaBuf          
+            PhysmemImportSparseDmaBuf
  *******************************************/
 
 /* Bridge in structure for PhysmemImportSparseDmaBuf */

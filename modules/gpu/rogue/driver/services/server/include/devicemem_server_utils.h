@@ -106,7 +106,7 @@ static INLINE PVRSRV_ERROR DevmemCPUCacheMode(PVRSRV_DEVICE_NODE *psDeviceNode,
 	}
 
 	*pui32Ret = ui32Ret;
-	
+
 	return eError;
 }
 
@@ -169,7 +169,7 @@ static INLINE PVRSRV_ERROR DevmemDeviceCacheMode(PVRSRV_DEVICE_NODE *psDeviceNod
 	}
 
 	*pui32Ret = ui32Ret;
-	
+
 	return eError;
 }
 

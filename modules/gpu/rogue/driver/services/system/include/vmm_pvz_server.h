@@ -2,7 +2,7 @@
 @File           vmm_pvz_server.h
 @Title          VM manager para-virtualization interface helper routines
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Header provides API(s) available to VM manager, this must be 
+@Description    Header provides API(s) available to VM manager, this must be
                 called to close the loop during guest para-virtualization calls.
 @License        Dual MIT/GPLv2
 
@@ -61,7 +61,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerCreateDevConfig(IMG_UINT32 ui32OSID,
 						 IMG_UINT32 ui32FuncID,
 						 IMG_UINT32 ui32DevID,
@@ -79,7 +79,7 @@ PvzServerCreateDevConfig(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerDestroyDevConfig(IMG_UINT32 ui32OSID,
 						  IMG_UINT32 ui32FuncID,
 						  IMG_UINT32 ui32DevID);
@@ -94,7 +94,7 @@ PvzServerDestroyDevConfig(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerCreateDevPhysHeaps(IMG_UINT32 ui32OSID,
 							IMG_UINT32 ui32FuncID,
 							IMG_UINT32 ui32DevID,
@@ -114,7 +114,7 @@ PvzServerCreateDevPhysHeaps(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerDestroyDevPhysHeaps(IMG_UINT32 ui32OSID,
 							 IMG_UINT32 ui32FuncID,
 							 IMG_UINT32 ui32DevID);
@@ -129,7 +129,7 @@ PvzServerDestroyDevPhysHeaps(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerMapDevPhysHeap(IMG_UINT32 ui32OSID,
 						IMG_UINT32 ui32FuncID,
 						IMG_UINT32 ui32DevID,
@@ -146,7 +146,7 @@ PvzServerMapDevPhysHeap(IMG_UINT32 ui32OSID,
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32OSID,
 						  IMG_UINT32 ui32FuncID,
 						  IMG_UINT32 ui32DevID);
@@ -157,12 +157,12 @@ PvzServerUnmapDevPhysHeap(IMG_UINT32 ui32OSID,
 
  @Description 		The VM manager calls this when guest VM machine comes online.
                     The host driver might initialize the FW if it has not done so
-					already.                    
+					already.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerOnVmOnline(IMG_UINT32 ui32OSID, IMG_UINT32 ui32Priority);
 
 /*!
@@ -178,10 +178,10 @@ PvzServerOnVmOnline(IMG_UINT32 ui32OSID, IMG_UINT32 ui32Priority);
 
  @Return			PVRSRV_OK on success. PVRSRV_ERROR_TIMEOUT if
                     for some reason the FW is taking too long to
-					clean-up the resources of the OSID. Otherwise, 
+					clean-up the resources of the OSID. Otherwise,
 					a PVRSRV_ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzServerOnVmOffline(IMG_UINT32 ui32OSID);
 
 /*!
@@ -194,8 +194,8 @@ PvzServerOnVmOffline(IMG_UINT32 ui32OSID);
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
-PvzServerVMMConfigure(VMM_CONF_PARAM eVMMParamType, 
+PVRSRV_ERROR
+PvzServerVMMConfigure(VMM_CONF_PARAM eVMMParamType,
                       IMG_UINT32 ui32ParamValue);
 
 #endif /* _VMM_PVZ_SERVER_H_ */

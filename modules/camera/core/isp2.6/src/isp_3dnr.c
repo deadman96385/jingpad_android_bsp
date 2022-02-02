@@ -188,8 +188,13 @@ static int isp_3dnr_gen_memctrl_config(struct isp_3dnr_ctx_desc *ctx)
 						(ctx->width * ctx->height);
 	}
 
+	mem_ctrl->frame_addr.addr_ch0 = mem_ctrl->ft_luma_addr;
+	mem_ctrl->frame_addr.addr_ch1 = mem_ctrl->ft_chroma_addr;
 	mem_ctrl->first_line_mode = 0;
 	mem_ctrl->last_line_mode = 0;
+
+	if (ctx->type == NR3_FUNC_PRE || ctx->type == NR3_FUNC_CAP)
+		isp_3dnr_update_memctrl_base_on_mv(ctx);
 
 	/*configuration param 8~11*/
 	mem_ctrl->blend_y_en_start_row = 0;
@@ -209,10 +214,6 @@ static int isp_3dnr_gen_memctrl_config(struct isp_3dnr_ctx_desc *ctx)
 	/*configuration param 13*/
 	mem_ctrl->pipe_nfull_num = 100;
 	mem_ctrl->ft_fifo_nfull_num = 2648;
-
-	if (ctx->type == NR3_FUNC_PRE || ctx->type == NR3_FUNC_CAP)
-		isp_3dnr_update_memctrl_base_on_mv(ctx);
-
 
 	return ret;
 }
@@ -492,7 +493,6 @@ static int isp_3dnr_gen_crop_config(struct isp_3dnr_ctx_desc *ctx)
 	return ret;
 }
 
-
 int isp_3dnr_gen_config(struct isp_3dnr_ctx_desc *ctx)
 {
 	int ret = 0;
@@ -586,7 +586,6 @@ int isp_3dnr_update_memctrl_slice_info(struct nr3_slice *in,
 				out->src_chr_addr += mv_x;
 			}
 		}
-
 	} else { /* slice > 1 */
 		if (out->start_col == 0) {
 			if (mv_x < 0) {
@@ -701,82 +700,6 @@ int isp_3dnr_update_memctrl_slice_info(struct nr3_slice *in,
  *   out_mv_x
  *   out_mv_y
  */
-#if 0
-static int mv_conversion_base_on_resolution(
-		int mv_x, int mv_y,
-		uint32_t mode_projection,
-		uint32_t sub_me_bypass,
-		int input_width, int output_width,
-		int input_height, int output_height,
-		int *out_mv_x, int *out_mv_y)
-{
-	if (sub_me_bypass == 1) {
-		if (mode_projection == 1) {
-			if (mv_x > 0)
-				*out_mv_x = (mv_x * 2 * output_width +
-					(input_width >> 1)) / input_width;
-			else
-				*out_mv_x = (mv_x * 2 * output_width -
-					(input_width >> 1)) / input_width;
-
-			if (mv_y > 0)
-				*out_mv_y = (mv_y * 2 * output_height +
-					(input_height >> 1)) / input_height;
-			else
-				*out_mv_y = (mv_y * 2 * output_height -
-					(input_height >> 1)) / input_height;
-		} else {
-			if (mv_x > 0)
-				*out_mv_x = (mv_x * output_width +
-					(input_width >> 1)) / input_width;
-			else
-				*out_mv_x = (mv_x * output_width -
-					(input_width >> 1)) / input_width;
-
-			if (mv_y > 0)
-				*out_mv_y = (mv_y * output_height +
-					(input_height >> 1)) / input_height;
-			else
-				*out_mv_y = (mv_y * output_height -
-					(input_height >> 1)) / input_height;
-		}
-	} else {
-		if (mode_projection == 1) {
-			if (mv_x > 0)
-				*out_mv_x = (mv_x * output_width +
-					 (input_width >> 1)) / input_width;
-			else
-				*out_mv_x = (mv_x * output_width -
-					(input_width >> 1)) / input_width;
-
-			if (mv_y > 0)
-				*out_mv_y = (mv_y * output_height +
-					(input_height >> 1)) / input_height;
-			else
-				*out_mv_y = (mv_y * output_height -
-					(input_height >> 1)) / input_height;
-		} else {
-			if (mv_x > 0)
-				*out_mv_x = (mv_x * output_width +
-					input_width) / (input_width * 2);
-			else
-				*out_mv_x = (mv_x * output_width -
-					input_width) / (input_width * 2);
-
-			if (mv_y > 0)
-				*out_mv_y = (mv_y * output_height +
-					input_height) / (input_height * 2);
-			else
-				*out_mv_y = (mv_y * output_height -
-					input_height) / (input_height * 2);
-		}
-	}
-
-	return 0;
-}
-#endif
-
-
 static int mv_conversion_base_on_resolution(
 		int mv_x, int mv_y,
 		uint32_t mode_projection,
@@ -833,7 +756,6 @@ static int mv_conversion_base_on_resolution(
 
 	return 0;
 }
-
 
 int isp_3dnr_conversion_mv(struct isp_3dnr_ctx_desc *nr3_ctx)
 {

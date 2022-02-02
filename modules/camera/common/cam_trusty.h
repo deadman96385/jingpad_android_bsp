@@ -45,6 +45,12 @@ enum cam_command {
 	TA_GET_CAM_STATUS,
 };
 
+enum cam_trusty_mode {
+	CAM_TRUSTY_ENTER,
+	CAM_TRUSTY_EXIT,
+	CAM_TRUSTY_MAX,
+};
+
 struct img_yuv_reg_msg {
 	uint32_t msg_cmd;
 	unsigned long y_addr;
@@ -124,6 +130,6 @@ bool camca_isp_fetch_addr_set(unsigned long y_addr, unsigned long u_addr,
 bool  camca_isp_pitch_set(uint32_t y_pitch, uint32_t u_pitch,uint32_t v_pitch);
 bool  camca_isp_3dnr_fetch_set(uint32_t chroma, uint32_t luma, uint32_t pitch);
 bool  camca_csi_switch_ctrl_set(uint32_t csi_sel_ctrl);
-bool  camca_security_set(struct  sprd_cam_sec_cfg   * camsec_cfg);
+bool  camca_security_set(struct  sprd_cam_sec_cfg *camsec_cfg, enum cam_trusty_mode mode);
 
 #endif

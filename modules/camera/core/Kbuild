@@ -66,6 +66,8 @@ ifeq ($(ADAPT_DIR), sharkl3)
 ccflags-y += -DPROJ_SHARKL3
 else ifeq ($(ADAPT_DIR), sharkl5pro)
 ccflags-y += -DPROJ_SHARKL5PRO
+else ifeq ($(ADAPT_DIR), roc1)
+ccflags-y += -DPROJ_ROC1
 endif
 
 #

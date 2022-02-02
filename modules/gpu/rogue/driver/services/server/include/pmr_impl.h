@@ -507,7 +507,7 @@ typedef PVRSRV_ERROR (*PFN_FINALIZE_FN)(PMR_IMPL_PRIVDATA pvPriv);
 
 				Implementation of this callback is optional.
 
-@Return			void.
+@Return			None
 */
 /*****************************************************************************/
 typedef void (*PFN_ACQUIRE_PMR_FACTORY_LOCK_FN)(void);
@@ -520,7 +520,7 @@ typedef void (*PFN_ACQUIRE_PMR_FACTORY_LOCK_FN)(void);
 
 				Implementation of this callback is optional.
 
-@Return			void.
+@Return			None
 */
 /*****************************************************************************/
 typedef void (*PFN_RELEASE_PMR_FACTORY_LOCK_FN)(void);

@@ -1,94 +1,96 @@
-########################################################################### ###
-#@Copyright     Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-#@License       Dual MIT/GPLv2
-# 
-# The contents of this file are subject to the MIT license as set out below.
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-# 
-# Alternatively, the contents of this file may be used under the terms of
-# the GNU General Public License Version 2 ("GPL") in which case the provisions
-# of GPL are applicable instead of those above.
-# 
-# If you wish to allow use of your version of this file only under the terms of
-# GPL, and not to allow others to use your version of this file under the terms
-# of the MIT license, indicate your decision by deleting the provisions above
-# and replace them with the notice and other provisions required by GPL as set
-# out in the file called "GPL-COPYING" included in this distribution. If you do
-# not delete the provisions above, a recipient may use your version of this file
-# under the terms of either the MIT license or GPL.
-# 
-# This License is also included in this distribution in the file called
-# "MIT-COPYING".
-# 
-# EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
-# PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
-# BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
-# PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
-# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-### ###########################################################################
-include ../config/preconfig.mk
 
-# $(gettop) can get top dir in shell
-# method: make file call bash shell
+# pvrsrvkm.o
+CURRENT_PATH := $(shell cd $(BSP_ROOT_DIR)/modules/gpu/rogue/driver/build/linux/roc1_android; pwd)#$(MAKEFILE_PATH)/rogue/driver/build/linux/roc1_android
 
-#defines
-ARCH ?= arm64
-BUILD ?= release
-HAL_VARIANT ?= generic
-LDM_PLATFORM := 1
+#include $(CLEAR_UNISOC_KO)
+KO_MODULE_PATH      := $(shell cd $(CURRENT_PATH); pwd)
+KO_MODULE_NAME      := pvrsrvkm
+PLATFORM_VERSION := 10
+export KERNELDIR ?= $(BSP_KERNEL_OUT)
+export OUT := $(BSP_OUT_DIR)/$(BSP_BOARD_NAME)/obj/modules/pvrsrvkm
+ANDROID_ROOT := $(BSP_ROOT_DI)
+export KERNEL_PATH := kernel4.14
+TARGET_KERNEL_ARCH := $(BSP_BOARD_ARCH)
+PRODUCT_OUT := $(BSP_ROOT_DI)
+MALI_PLATFORM_NAME := roc1
+export PVRSRV_APPHINT_HWRDEBUGDUMPLIMIT := 4
 
-RGX_BVNC ?= 24.50.208.504
-$(warning  "$(BOARD_NAME) GPU RGX_BVNC : $(RGX_BVNC)")
+$(warning OUT: $(OUT))
+$(warning CURRENT_PATH: $(CURRENT_PATH))
+$(warning KERNEL_PATH: $(KERNEL_PATH))
+#$(warning PLATFORM_VERSION: $(PLATFORM_VERSION))
+#$(warning PLATFORM_VERSION_CODENAME: $(PLATFORM_VERSION_CODENAME))
+#$(warning MALI_PLATFORM_NAME: $(MALI_PLATFORM_NAME))
+#$(warning TARGET_ARCH: $(TARGET_ARCH))
 
-RGX_NOHW ?= 0
-MULTIARCH ?= 64only
-# PDUMP := 1
-CACHEFLUSH_NO_KMRBF_USING_UMVA ?= 1
-
-ANDROID_ROOT ?= $(ANDROID_BUILD_TOP)
-TARGET_DEVICE ?= $(notdir $(ANDROID_PRODUCT_OUT))
-DISCIMAGE ?= $(ANDROID_PRODUCT_OUT)
-KERNELDIR ?= $(ANDROID_PRODUCT_OUT)/obj/KERNEL
-
-ifeq ($(RGX_NOHW),1)
-$(warning Warning-----------Now building no hardware user driver!)
-PVR_SYSTEM := rgx_nohw
-override NO_HARDWARE := 1
+BUILD_ := release
+RGX_NOHW_ := 0
+KO_MODULE_FLAGS     := BUILD=$(BUILD_)
+KO_MODULE_FLAGS     += PLATFORM_VERSION=$(PLATFORM_VERSION)
+KO_MODULE_FLAGS     += PLATFORM_VERSION_CODENAME=$(PLATFORM_VERSION_CODENAME)
+KO_MODULE_FLAGS     += RGX_NOHW=$(RGX_NOHW_)
+KO_MODULE_FLAGS     += BOARD_NAME=$(MALI_PLATFORM_NAME)
+KO_MODULE_EXPORT    := export PVRSRV_NEED_PVR_DPF=1;
+KO_MODULE_MAKEFILE  := true
+ifeq ($(TARGET_KERNEL_ARCH), arm64)
+TARGET_PRIMARY_ARCH := target_aarch64
 else
-PVR_SYSTEM := rgx_sprd
-override NO_HARDWARE := 0
+TARGET_PRIMARY_ARCH := target_armv7-a
 endif
+KO_MODULE_TARGET    := $(OUT)/$(TARGET_PRIMARY_ARCH)/kbuild/$(KO_MODULE_NAME).ko
+#include $(BUILD_UNISOC_KO)
 
 
+UNISOC_CCFLAGS      := $(KO_MODULE_CCFLAGS)
+
+#we can't set DEBUG default, becuase of re-define errors
+#ifneq ($(TARGET_BUILD_VARIANT),user)
+#UNISOC_CCFLAGS      += -DDEBUG
+#endif
+
+KO_MODULE_EXPORT    += export UNISOC_CCFLAGS="$(UNISOC_CCFLAGS)";
+KO_MODULE_EXPORT    += export UNISOC_EXTRA_FLAGS="$(KO_MODULE_EXTRA_FLAGS)";
+
+#convert to absolute directory
+PRODUCT_OUT_ABSOLUTE:=$(shell cd $(PRODUCT_OUT); pwd)
+ifeq ($(KO_MODULE_MAKEFILE), true)
+COMMON_MODULE_FLAGS := -C $(KO_MODULE_PATH)
+UNISOC_MAKEFILE_ABSOLUTE :=
+else
+UNISOC_MAKEFILE_ABSOLUTE:=$(shell cd $(OUT_DIR)/..; pwd)/$(shell dirname $(BUILD_UNISOC_KO))/Makefile
+COMMON_MODULE_FLAGS := -f $(UNISOC_MAKEFILE_ABSOLUTE)
+ifeq ($(KO_MODULE_MAKEFILE_RELOCATE), true)
+UNISOC_MAKEFILE_ABSOLUTE :=
+endif
+endif
+COMMON_MODULE_FLAGS += UNISOC_MAKEFILE="$(UNISOC_MAKEFILE_ABSOLUTE)"
+COMMON_MODULE_FLAGS += UNISOC_MODULE="$(KO_MODULE_NAME)"
+COMMON_MODULE_FLAGS += UNISOC_PREFIX="$(PRODUCT_OUT_ABSOLUTE)/kernel_modules/$(KO_MODULE_NAME)"
+COMMON_MODULE_FLAGS += UNISOC_SRC_PATH="$(KO_MODULE_PATH)"
+COMMON_MODULE_FLAGS += UNISOC_MODULE_OBJS="$(KO_MODULE_OBJS)"
+COMMON_MODULE_FLAGS += UNISOC_MODULE_OBJS_EXCLUDE="$(KO_MODULE_OBJS_EXCLUDE) $(KO_MODULE_NAME).o"
+COMMON_MODULE_FLAGS += ARCH="$(BSP_BOARD_ARCH)"
+COMMON_MODULE_FLAGS += CROSS_COMPILE="$(BSP_KERNEL_CROSS_COMPILE)"
+#COMMON_MODULE_FLAGS += KDIR="$(KERNELDIR)"
+#COMMON_MODULE_FLAGS += KERNELDIR="$(KERNELDIR)"
+COMMON_MODULE_FLAGS += \
+    $(if $(filter CC=clang,$(BSP_MAKE_EXTRA_ARGS)),\
+    $(subst CC=clang,KERNEL_CC=clang,$(BSP_MAKE_EXTRA_ARGS)) USE_CCACHE="",\
+    $(BSP_MAKE_EXTRA_ARGS))
 
 
-$(warning ******************checking the settings****************)
-$(warning ANDROID_ROOT: $(ANDROID_ROOT) ANDROID_BUILD_TOP: $(ANDROID_BUILD_TOP))
-$(warning ANDROID_PRODUCT_OUT: $(ANDROID_PRODUCT_OUT))
-$(warning DEBUGMODE: $(BUILD) ARCH=$(ARCH))
-$(warning RGX_NOHW=$(RGX_NOHW) PVR_SYSTEM: $(PVR_SYSTEM))
-$(warning CROSS_COMPILE: $(CROSS_COMPILE))
-$(warning CACHEFLUSH_NO_KMRBF_USING_UMVA: $(CACHEFLUSH_NO_KMRBF_USING_UMVA))
-$(warning *******************************************************)
+$(shell cd $(CURRENT_PATH))
+$(BSP_MODULES_DIST)/$(KO_MODULE_NAME).ko: $(TARGET_PREBUILT_KERNEL)
+	echo "current module name --- $(notdir $(basename $@)) ---"
+	$(BUILT_$(notdir $(basename $@)))
 
+.PHONY:modules
 
-include ../common/android/paths.mk
-include ../common/android/arch.mk
-include ../common/android/$(BOARD_NAME)/features.mk
+modules:
+	$(MAKE) -f $(CURRENT_PATH)/Makefile.rogue $(KO_MODULE_FLAGS) $(COMMON_MODULE_FLAGS)
 
+modules_install:
+	$(MAKE) -C $(BSP_KERNEL_PATH) M=$(OUT)/$(TARGET_PRIMARY_ARCH)/kbuild $@
 
-PDUMP_STREAMBUF_SIZE_MB := 10
-include ../config/core.mk
-include ../common/android/extra_config.mk
-
+clean:
+	rm -rf $(OUT)

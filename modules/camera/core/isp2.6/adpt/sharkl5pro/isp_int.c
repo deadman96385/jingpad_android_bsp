@@ -403,14 +403,16 @@ static void isp_rgb_ltm_hists_done(enum isp_context_hw_id hw_idx, void *isp_hand
 
 	pctx = &dev->ctx[idx];
 
-	dev->ltm_handle->ops->set_frmidx(pctx->ltm_ctx.fid);
-	completion = dev->ltm_handle->ops->get_completion(LTM_RGB);
+	dev->ltm_handle->ops->set_frmidx(pctx->ltm_ctx.fid, pctx->ltm_ctx.ltm_index);
+	completion = dev->ltm_handle->ops->get_completion(LTM_RGB,
+		pctx->ltm_ctx.ltm_index);
 	pr_debug("ltm rgb hists done. cxt_id:%d, %d, fid:[%d], completion[%d]\n",
 		idx, pctx->ltm_ctx.isp_pipe_ctx_id,
 		pctx->ltm_ctx.fid, completion);
 
 	if (completion && (pctx->ltm_ctx.fid >= completion)) {
-		completion = dev->ltm_handle->ops->complete_completion(LTM_RGB);
+		completion = dev->ltm_handle->ops->complete_completion(LTM_RGB,
+			pctx->ltm_ctx.ltm_index);
 		pr_info("complete completion fid [%d], completion[%d]\n",
 			pctx->ltm_ctx.fid, completion);
 	}
@@ -432,14 +434,16 @@ static void isp_yuv_ltm_hists_done(enum isp_context_hw_id hw_idx, void *isp_hand
 
 	pctx = &dev->ctx[idx];
 
-	dev->ltm_handle->ops->set_frmidx(pctx->ltm_ctx.fid);
-	completion = dev->ltm_handle->ops->get_completion(LTM_YUV);
+	dev->ltm_handle->ops->set_frmidx(pctx->ltm_ctx.fid, pctx->ltm_ctx.ltm_index);
+	completion = dev->ltm_handle->ops->get_completion(LTM_YUV,
+		pctx->ltm_ctx.ltm_index);
 	pr_debug("ltm yuv hists done. cxt_id:%d, %d, fid:[%d], completion[%d]\n",
 		idx, pctx->ltm_ctx.isp_pipe_ctx_id,
 		pctx->ltm_ctx.fid, completion);
 
 	if (completion && (pctx->ltm_ctx.fid >= completion)) {
-		completion = dev->ltm_handle->ops->complete_completion(LTM_YUV);
+		completion = dev->ltm_handle->ops->complete_completion(LTM_YUV,
+			pctx->ltm_ctx.ltm_index);
 		pr_info("complete completion fid [%d], completion[%d]\n",
 			pctx->ltm_ctx.fid, completion);
 	}

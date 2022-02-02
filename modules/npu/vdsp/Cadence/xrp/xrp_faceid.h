@@ -80,6 +80,13 @@ int sprd_faceid_secboot_entry(struct xvp *xvp);
 int sprd_faceid_secboot_exit(struct xvp *xvp);
 
 int sprd_faceid_sec_sign(struct xvp *xvp);
+int sprd_faceid_load_firmware(struct xvp *xvp);
+
+int sprd_faceid_halt_vdsp(struct xvp *xvp);
+int sprd_faceid_reset_vdsp(struct xvp *xvp);
+int sprd_faceid_release_vdsp(struct xvp *xvp);
+int sprd_faceid_enable_vdsp(struct xvp *xvp);
+int sprd_faceid_disable_vdsp(struct xvp *xvp);
 
 
 int sprd_iommu_map_faceid_fwbuffer(struct xvp *xvp);

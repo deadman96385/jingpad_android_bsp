@@ -300,6 +300,7 @@ PVRSRV_ERROR PVRSRVRGXOverallocateBPRegistersKM(CONNECTION_DATA    * psConnectio
 	sBPCmd.uCmdData.sBPData.ui32BPDataFlags = RGXFWIF_BPDATA_FLAGS_REGS;
 	sBPCmd.uCmdData.sBPData.ui32TempRegs = ui32TempRegs;
 	sBPCmd.uCmdData.sBPData.ui32SharedRegs = ui32SharedRegs;
+	sBPCmd.uCmdData.sBPData.psFWMemContext.ui32Addr = 0U;
 
 #if !defined(PVRSRV_USE_BRIDGE_LOCK)
 	OSLockAcquire(psDevInfo->hBPLock);

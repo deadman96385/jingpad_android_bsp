@@ -350,7 +350,13 @@ static inline int synaptics_rmi4_reg_write(
 	return rmi4_data->i2c_write(rmi4_data, addr, data, len);
 }
 
+int rmi4_fw_update_module_init(void);
+int rmidev_module_init(void);
+int rmi4_f54_module_init(void);
 
+void rmi4_fw_update_module_exit(void);
+void rmidev_module_exit(void);
+void rmi4_f54_module_exit(void);
 
 void synaptics_rmi4_new_function(struct synaptics_rmi4_exp_fn *exp_fn_module,
 		bool insert);

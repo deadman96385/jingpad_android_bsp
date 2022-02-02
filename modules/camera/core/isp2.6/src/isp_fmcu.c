@@ -135,16 +135,15 @@ static int isp_fmcu_start(struct isp_fmcu_ctx_desc *fmcu_ctx)
 	}
 	cmd_num = (int) fmcu_ctx->cmdq_pos[fmcu_ctx->cur_buf_id] / 2;
 
-#if 0
 	{
 		unsigned int i = 0;
 		unsigned long addr =
 			(unsigned long)fmcu_ctx->cmd_buf[fmcu_ctx->cur_buf_id];
-		pr_info("fmcu %d  cmd num %d\n",
+		pr_debug("fmcu %d  cmd num %d\n",
 				(int)fmcu_ctx->fid,  cmd_num);
 
 		for (i = 0; i <= cmd_num; i += 2) {
-			pr_info("a:0x%08x c: 0x%08x | a:0x%08x c: 0x%08x\n",
+			pr_debug("a:0x%08x c: 0x%08x | a:0x%08x c: 0x%08x\n",
 				*(uint32_t *)(addr + 4),
 				*(uint32_t *)(addr),
 				*(uint32_t *)(addr + 12),
@@ -152,7 +151,6 @@ static int isp_fmcu_start(struct isp_fmcu_ctx_desc *fmcu_ctx)
 			addr += 16;
 		}
 	}
-#endif
 
 /*
  * FLUSH_DCACHE(fmcu_ctx->cmd_buf[fmcu_ctx->cur_buf_id],

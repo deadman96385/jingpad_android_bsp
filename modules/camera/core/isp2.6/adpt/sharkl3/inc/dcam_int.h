@@ -105,7 +105,7 @@ enum {
 
 /*
  * error bits
- * same in DCAM0/1/2
+ * same in DCAM0/1
  */
 #define DCAMINT_ALL_ERROR \
 	(BIT(DCAM_DCAM_OVF) |\
@@ -162,6 +162,18 @@ enum {
 	(DCAMINT_ALL_ERROR | DCAMINT_ALL_TX_DONE |\
 	 BIT(DCAM_CAP_SOF) |\
 	 BIT(DCAM_SENSOR_EOF))
+
+#define DCAM2INT_IRQ_LINE_MASK \
+	(DCAMINT_FATAL_ERROR | BIT(DCAM2_MMU_INT) \
+	|BIT(DCAM2_FULL_PATH_TX_DONE) |\
+	 BIT(DCAM2_SENSOR_EOF) |\
+	 BIT(DCAM2_SENSOR_SOF))
+
+#define DCAM2INT_IRQ_LINE_EN_NORMAL \
+	(DCAMINT_FATAL_ERROR | BIT(DCAM2_MMU_INT) \
+	|BIT(DCAM2_FULL_PATH_TX_DONE) |\
+	 BIT(DCAM2_SENSOR_EOF) |\
+	 BIT(DCAM2_SENSOR_SOF))
 
 /*
  * enabled interrupt source in slow motion scene

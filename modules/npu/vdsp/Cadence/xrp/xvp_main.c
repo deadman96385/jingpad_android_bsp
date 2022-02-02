@@ -63,7 +63,6 @@
 #include <asm/uaccess.h>
 #include "xrp_cma_alloc.h"
 #include "xrp_firmware.h"
-#include "xrp_faceid_firmware.h"
 #include "vdsp_hw.h"
 #include "xrp_internal.h"
 #include "xrp_kernel_defs.h"
@@ -357,7 +356,7 @@ static int xrp_faceid_run(struct xvp *xvp, struct xrp_faceid_ctrl *faceid)
 	u32 v;
 	int ret = -1, ret2;
 	unsigned long deadline = jiffies + 5 * HZ;
-	struct xrp_dsp_sync_v1 __iomem *shared_sync = xvp->comm;
+	struct xrp_dsp_sync_v1 __iomem *shared_sync = xvp->faceid_comm;
 	struct faceid_hw_sync_data faceid_data;
 
 	faceid_data.fd_p_coffe_addr = xvp->faceid_pool.ion_fd_weights_p.addr_p[0];
@@ -391,8 +390,7 @@ static int xrp_faceid_run(struct xvp *xvp, struct xrp_faceid_ctrl *faceid)
 	faceid_data.in_addr = xvp->faceid_pool.ion_face_in.iova[0];
 	faceid_data.out_addr = xvp->faceid_pool.ion_face_out.iova[0];
 
-	pr_debug("fd_p %X,fd_r %X,fd_o %X,fp %X,flv %X,fv %X,mem pool %X",
-		"transfer %X,in %X,out %X\n",
+	pr_debug("fd_p %X,fd_r %X,fd_o %X,fp %X,flv %X,fv %X,mem pool %X,transfer %X,in %X,out %X\n",
 		faceid_data.fd_p_coffe_addr, faceid_data.fd_r_coffe_addr,
 		faceid_data.fd_o_coffe_addr, faceid_data.fp_coffe_addr,
 		faceid_data.flv_coffe_addr, faceid_data.fv_coffe_addr,
@@ -437,7 +435,7 @@ static int xrp_synchronize(struct xvp *xvp)
 	void *hw_sync_data;
 	unsigned long deadline = jiffies + firmware_command_timeout * HZ;
 	struct xrp_dsp_sync_v1 __iomem *shared_sync = xvp->comm;
-	int ret;
+	int ret, res;
 	u32 v, v1;
 
 	/*
@@ -445,6 +443,9 @@ static int xrp_synchronize(struct xvp *xvp)
 	 * BAD METHOD
 	 * Just Using sz temp for transfer share memory address
 	 */
+	if (xvp->secmode)
+		shared_sync = xvp->faceid_comm;
+
 	if (xvp->vdsp_mem_desc->cb_func[CB_MSG])
 		sz = (size_t)xvp->vdsp_mem_desc->cb_func[CB_MSG](
 		xvp->vdsp_mem_desc->cb_args[CB_MSG]);
@@ -460,7 +461,7 @@ static int xrp_synchronize(struct xvp *xvp)
 	}
 	ret = -ENODEV;
 	xrp_comm_write32(&shared_sync->sync, XRP_DSP_SYNC_START);
-	pr_info("start sync:%d\n", XRP_DSP_SYNC_START);
+	pr_info("start sync:%x\n", XRP_DSP_SYNC_START);
 
 	mb();
 	do {
@@ -471,7 +472,7 @@ static int xrp_synchronize(struct xvp *xvp)
 			goto err;
 		schedule();
 	} while (time_before(jiffies, deadline));
-	pr_debug("sync:%d\n", v);
+	pr_debug("sync:%x\n", v);
 
 	switch (v) {
 	case XRP_DSP_SYNC_DSP_READY_V1:
@@ -518,7 +519,7 @@ static int xrp_synchronize(struct xvp *xvp)
 	pr_debug("completev2 end, send devie irq-32k timer[%lld]\n", sprd_sysfrt_read());
 
 	if (xvp->host_irq_mode) {
-		int res = wait_for_completion_timeout(&xvp->queue[0].completion,
+		res = wait_for_completion_timeout(&xvp->queue[0].completion,
 			firmware_command_timeout * HZ);
 
 		ret = -ENODEV;
@@ -539,10 +540,16 @@ err:
 	return ret;
 }
 
-static bool xrp_cmd_complete(struct xrp_comm *xvp)
+static bool xrp_cmd_complete(struct xvp *xvp, struct xrp_comm *xrp)
 {
-	struct xrp_dsp_cmd __iomem *cmd = xvp->comm;
-	u32 flags = xrp_comm_read32(&cmd->flags);
+	u32 flags;
+
+	struct xrp_dsp_cmd __iomem *cmd = xrp->comm;
+	if(xvp->secmode)
+	{
+		cmd = xvp->faceid_comm;
+	}
+	flags = xrp_comm_read32(&cmd->flags);
 
 	rmb();
 	return (flags & (XRP_DSP_CMD_FLAG_REQUEST_VALID |
@@ -558,7 +565,7 @@ irqreturn_t xrp_irq_handler(int irq, struct xvp *xvp)
 		return IRQ_NONE;
 
 	for (i = 0; i < xvp->n_queues; ++i) {
-		if (xrp_cmd_complete(xvp->queue + i)) {
+		if (xrp_cmd_complete(xvp, xvp->queue + i)) {
 			complete(&xvp->queue[i].completion);
 			++n;
 		}
@@ -578,11 +585,11 @@ static inline void xvp_file_unlock(struct xvp_file *xvp_file)
 }
 
 static long xvp_complete_cmd_irq(struct xvp *xvp, struct xrp_comm *comm,
-	bool(*cmd_complete)(struct xrp_comm *p))
+	bool(*cmd_complete)(struct xvp *xvp, struct xrp_comm *p))
 {
 	long timeout = firmware_command_timeout * HZ;
 
-	if (cmd_complete(comm))
+	if (cmd_complete(xvp,comm))
 		return 0;
 	if (xrp_panic_check(xvp)) {
 		pr_err("[error]xrp panic\n");
@@ -592,7 +599,7 @@ static long xvp_complete_cmd_irq(struct xvp *xvp, struct xrp_comm *comm,
 		timeout = wait_for_completion_interruptible_timeout(
 			&comm->completion,
 			timeout);
-		if (cmd_complete(comm))
+		if (cmd_complete(xvp,comm))
 			return 0;
 		if (xrp_panic_check(xvp)) {
 			pr_err("[error]xrp panic\n");
@@ -610,12 +617,12 @@ static long xvp_complete_cmd_irq(struct xvp *xvp, struct xrp_comm *comm,
 }
 
 static long xvp_complete_cmd_poll(struct xvp *xvp, struct xrp_comm *comm,
-	bool(*cmd_complete)(struct xrp_comm *p))
+	bool(*cmd_complete)(struct xvp *xvp, struct xrp_comm *p))
 {
 	unsigned long deadline = jiffies + firmware_command_timeout * HZ;
 
 	do {
-		if (cmd_complete(comm))
+		if (cmd_complete(xvp, comm))
 			return 0;
 		if (xrp_panic_check(xvp))
 			return -EBUSY;
@@ -627,39 +634,81 @@ static long xvp_complete_cmd_poll(struct xvp *xvp, struct xrp_comm *comm,
 
 static inline int xvp_enable_dsp(struct xvp *xvp)
 {
-	if (loopback < LOOPBACK_NOMMIO &&
-		xvp->hw_ops->enable)
-		return xvp->hw_ops->enable(xvp->hw_arg);
+	if(xvp->secmode)
+	{
+		if (loopback < LOOPBACK_NOMMIO)
+			return sprd_faceid_enable_vdsp(xvp);
+		else
+			return 0;
+	}
 	else
-		return 0;
+	{
+		if (loopback < LOOPBACK_NOMMIO &&
+			xvp->hw_ops->enable)
+			return xvp->hw_ops->enable(xvp->hw_arg);
+		else
+			return 0;
+	}
 }
 
 static inline void xvp_disable_dsp(struct xvp *xvp)
 {
-	if (loopback < LOOPBACK_NOMMIO &&
-		xvp->hw_ops->disable)
-		xvp->hw_ops->disable(xvp->hw_arg);
+	if(xvp->secmode)
+	{
+		if (loopback < LOOPBACK_NOMMIO)
+			sprd_faceid_disable_vdsp(xvp);
+	}
+	else
+	{
+		if (loopback < LOOPBACK_NOMMIO &&
+			xvp->hw_ops->disable)
+			xvp->hw_ops->disable(xvp->hw_arg);
+	}
 }
 
 static inline void xrp_reset_dsp(struct xvp *xvp)
 {
-	if (loopback < LOOPBACK_NOMMIO &&
-		xvp->hw_ops->reset)
-		xvp->hw_ops->reset(xvp->hw_arg);
+	if(xvp->secmode)
+	{
+		if (loopback < LOOPBACK_NOMMIO)
+			sprd_faceid_reset_vdsp(xvp);
+	}
+	else
+	{
+		if (loopback < LOOPBACK_NOMMIO &&
+			xvp->hw_ops->reset)
+			xvp->hw_ops->reset(xvp->hw_arg);
+	}
 }
 
 static inline void xrp_halt_dsp(struct xvp *xvp)
 {
-	if (loopback < LOOPBACK_NOMMIO &&
-		xvp->hw_ops->halt)
-		xvp->hw_ops->halt(xvp->hw_arg);
+	if(xvp->secmode)
+	{
+		if (loopback < LOOPBACK_NOMMIO)
+			sprd_faceid_halt_vdsp(xvp);
+	}
+	else
+	{
+		if (loopback < LOOPBACK_NOMMIO &&
+			xvp->hw_ops->halt)
+			xvp->hw_ops->halt(xvp->hw_arg);
+	}
 }
 
 static inline void xrp_release_dsp(struct xvp *xvp)
 {
-	if (loopback < LOOPBACK_NOMMIO &&
-		xvp->hw_ops->release)
-		xvp->hw_ops->release(xvp->hw_arg);
+	if(xvp->secmode)
+	{
+		if (loopback < LOOPBACK_NOMMIO)
+			sprd_faceid_release_vdsp(xvp);
+	}
+	else
+	{
+		if (loopback < LOOPBACK_NOMMIO &&
+			xvp->hw_ops->release)
+			xvp->hw_ops->release(xvp->hw_arg);
+	}
 }
 static inline void xvp_dsp_enable_dvfs(struct xvp *xvp)
 {
@@ -733,10 +782,13 @@ static int xrp_boot_firmware(struct xvp *xvp)
 static int xrp_boot_faceid_firmware(struct xvp *xvp)
 {
 	int ret;
-	struct xrp_dsp_sync_v1 __iomem *shared_sync = xvp->comm;
+	struct xrp_dsp_sync_v1 __iomem *shared_sync = xvp->faceid_comm;
 	s64 tv0, tv1, tv2;
 
 	tv0 = ktime_to_us(ktime_get());
+	ret = sprd_faceid_secboot_entry(xvp);
+	if (ret < 0)
+		return ret;
 
 	xrp_halt_dsp(xvp);
 	xrp_reset_dsp(xvp);
@@ -745,9 +797,14 @@ static int xrp_boot_faceid_firmware(struct xvp *xvp)
 		xvp->firmware2_viraddr, loopback);
 	if (xvp->firmware2_viraddr) {
 		if (loopback < LOOPBACK_NOFIRMWARE) {
-			ret = sprd_load_faceid_firmware(xvp);
-			if (ret < 0)
+			ret = sprd_faceid_sec_sign(xvp);
+			if (ret < 0) {
 				return ret;
+			}
+			ret = sprd_faceid_load_firmware(xvp);
+			if (ret < 0) {
+				return ret;
+			}
 		}
 
 		if (loopback < LOOPBACK_NOIO) {
@@ -755,10 +812,6 @@ static int xrp_boot_faceid_firmware(struct xvp *xvp)
 			mb();
 		}
 	}
-
-	ret = sprd_faceid_secboot_entry(xvp);
-	if (ret < 0)
-		return ret;
 
 	xrp_release_dsp(xvp);
 	tv1 = ktime_to_us(ktime_get());
@@ -1714,38 +1767,33 @@ static int xvp_open(struct inode *inode, struct file *filp)
 	if (filp->f_flags & O_RDWR){
 		/*check cur open type*/
 		if ((xvp->cur_opentype == 0xffffffff) || (xvp->cur_opentype == 1)) {
-			pr_err("[ERROR]open faceid mode!!!!!\n");
-			ret = sprd_faceid_sec_sign(xvp);
-			if (ret < 0) {
-				mutex_unlock(&xvp->xvp_lock);
-				return ret;
-			}
+			pr_err("open faceid mode!!!!!\n");
+
 			ret = sprd_faceid_secboot_init(xvp);
 			if (ret < 0) {
-				mutex_unlock(&xvp->xvp_lock);
-				return ret;
+				goto err_unlock;
 			}
 			opentype = 1;
 		}else {
 			pr_err("open faceid mode but refused by curr opentype:%u\n",
 				xvp->cur_opentype);
-			mutex_unlock(&xvp->xvp_lock);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto err_unlock;
 		}
 	}else {
 		if ((xvp->cur_opentype != 0xffffffff) && (xvp->cur_opentype != 0)) {
 			pr_err("open failed refused by curr opentype:%u\n",
 				xvp->cur_opentype);
-			mutex_unlock(&xvp->xvp_lock);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto err_unlock;
 		}
 		opentype = 0;
 	}
 	xvp_file = devm_kzalloc(xvp->dev, sizeof(*xvp_file), GFP_KERNEL);
 	if (!xvp_file) {
 		pr_err("devm_kzalloc failed\n");
-		mutex_unlock(&xvp->xvp_lock);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_unlock;
 	}
 	tv1 = ktime_to_us(ktime_get());
 	if (!xvp->open_count) {
@@ -1810,7 +1858,11 @@ enable_fault:
 	xvp_disable_dsp(xvp);
 devmalloc_fault:
 	devm_kfree(xvp->dev, xvp_file);
+err_unlock:
 	pr_err("[ERROR]ret = %ld\n", ret);
+	if(opentype == 1) {
+		sprd_faceid_secboot_deinit(xvp);
+	}
 	mutex_unlock(&xvp->xvp_lock);
 	return ret;
 }

@@ -69,7 +69,9 @@ int get_iommu_status(enum cam_iommudev_type type);
 
 int cambuf_get_ionbuf(struct camera_buf *buf_info);
 int cambuf_put_ionbuf(struct camera_buf *buf_info);
-
+int cambuf_iommu_map_single_page(
+			struct camera_buf *buf_info,
+			enum cam_iommudev_type type);
 int cambuf_iommu_map(
 			struct camera_buf *buf_info,
 			enum cam_iommudev_type type);

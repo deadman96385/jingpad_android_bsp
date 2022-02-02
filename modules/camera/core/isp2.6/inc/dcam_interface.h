@@ -122,7 +122,6 @@ dcam_if_cal_compressed_addr(uint32_t width,
 		return;
 
 	tile_col = (width + FBC_TILE_WIDTH - 1) / FBC_TILE_WIDTH;
-	tile_col = (tile_col + 2 -1) / 2 * 2;
 	tile_row =(height + FBC_TILE_HEIGHT - 1) / FBC_TILE_HEIGHT;
 	header_size = (tile_col * tile_row + 1) / 2;
 	header_bytes = header_size + FBC_HEADER_REDUNDANT;
@@ -145,7 +144,6 @@ dcam_if_cal_compressed_size(uint32_t width,
 	int32_t tile_col = 0, tile_row = 0, header_size = 0;
 
 	tile_col = (width + FBC_TILE_WIDTH - 1) / FBC_TILE_WIDTH;
-	tile_col = (tile_col + 2 -1) / 2 * 2;
 	tile_row =(height + FBC_TILE_HEIGHT - 1) / FBC_TILE_HEIGHT;
 	header_size = (tile_col * tile_row + 1) / 2;
 	pixel_count = tile_col * tile_row * FBC_TILE_ADDR_ALIGN;
@@ -161,7 +159,6 @@ dcam_if_cal_compressed_size(uint32_t width,
 enum dcam_ioctrl_cmd {
 	DCAM_IOCTL_CFG_CAP,
 	DCAM_IOCTL_CFG_STATIS_BUF,
-	DCAM_IOCTL_CFG_RESERV_STATSBUF,
 	DCAM_IOCTL_CFG_START,
 	DCAM_IOCTL_CFG_STOP,
 	DCAM_IOCTL_INIT_STATIS_Q,
@@ -173,6 +170,7 @@ enum dcam_ioctrl_cmd {
 	DCAM_IOCTL_CFG_REPLACER,
 	DCAM_IOCTL_GET_PATH_RECT,
 	DCAM_IOCTL_CFG_STATIS_BUF_SKIP,
+	DCAM_IOCTL_CFG_GTM_UPDATE,
 };
 
 

@@ -1,5 +1,5 @@
 /*************************************************************************/ /*!
-@File		
+@File
 @Title          System Description Header
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @Description    This header provides system-specific declarations and macros
@@ -62,9 +62,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * would result in a core speed of 60MHz xMultiplier.
  *
  *
- * The memory clock is unmultiplied and can be adjusted using a module parameter called 
+ * The memory clock is unmultiplied and can be adjusted using a module parameter called
  * "sys_mem_clk_speed", this should be the number in Hz for the memory clock speed.
- * 
+ *
  * As an example:
  *
  * PVR_SRVKM_PARAMS="sys_mem_clk_speed=100000000" /etc/init.d/rc.pvr start

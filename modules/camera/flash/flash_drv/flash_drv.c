@@ -29,7 +29,7 @@
 #ifdef pr_fmt
 #undef pr_fmt
 #endif
-#define pr_fmt(fmt) "FLASH_DRV: %d: %d " fmt, current->pid, __LINE__
+#define pr_fmt(fmt) "FLASH_DRV:: %d %d %s : " fmt, current->pid, __LINE__, __func__
 
 #define FLASH_TEST
 #define FLASH_DEVICE_NAME       "sprd_flash"

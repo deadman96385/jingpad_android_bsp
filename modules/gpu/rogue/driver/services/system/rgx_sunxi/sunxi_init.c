@@ -146,11 +146,11 @@ IMG_UINT32 AwClockFreqGet(IMG_HANDLE hSysData)
 
 static void AssertGpuResetSignal(void)
 {
-	if(sunxi_periph_reset_assert(gpu_core_clk))
+	if (sunxi_periph_reset_assert(gpu_core_clk))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to pull down gpu reset!"));
 	}
-	if(sunxi_periph_reset_assert(gpu_ctrl_clk))
+	if (sunxi_periph_reset_assert(gpu_ctrl_clk))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to pull down gpu control reset!"));
 	}
@@ -158,11 +158,11 @@ static void AssertGpuResetSignal(void)
 
 static void DeAssertGpuResetSignal(void)
 {
-	if(sunxi_periph_reset_deassert(gpu_ctrl_clk))
+	if (sunxi_periph_reset_deassert(gpu_ctrl_clk))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to release gpu control reset!"));
 	}
-	if(sunxi_periph_reset_deassert(gpu_core_clk))
+	if (sunxi_periph_reset_deassert(gpu_core_clk))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to release gpu reset!"));
 	}
@@ -170,25 +170,25 @@ static void DeAssertGpuResetSignal(void)
 
 static void RgxEnableClock(void)
 {
-	if(gpu_core_clk->enable_count == 0)
+	if (gpu_core_clk->enable_count == 0)
 	{
-		if(clk_prepare_enable(gpu_pll_clk))
+		if (clk_prepare_enable(gpu_pll_clk))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to enable pll9 clock!"));
 		}
-		if(clk_prepare_enable(gpu_core_clk))
+		if (clk_prepare_enable(gpu_core_clk))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to enable core clock!"));
 		}
-		if(clk_prepare_enable(gpu_mem_clk))
+		if (clk_prepare_enable(gpu_mem_clk))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to enable mem clock!"));
 		}
-		if(clk_prepare_enable(gpu_axi_clk))
+		if (clk_prepare_enable(gpu_axi_clk))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to enable axi clock!"));
 		}
-		if(clk_prepare_enable(gpu_ctrl_clk))
+		if (clk_prepare_enable(gpu_ctrl_clk))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Failed to enable ctrl clock!"));
 		}
@@ -197,7 +197,7 @@ static void RgxEnableClock(void)
 
 static void RgxDisableClock(void)
 {
-	if(gpu_core_clk->enable_count == 1)
+	if (gpu_core_clk->enable_count == 1)
 	{
 		clk_disable_unprepare(gpu_ctrl_clk);
 		clk_disable_unprepare(gpu_axi_clk);
@@ -209,7 +209,7 @@ static void RgxDisableClock(void)
 
 static void RgxEnablePower(void)
 {
-	if(!regulator_is_enabled(rgx_regulator))
+	if (!regulator_is_enabled(rgx_regulator))
 	{
 		regulator_enable(rgx_regulator);
 	}
@@ -217,7 +217,7 @@ static void RgxEnablePower(void)
 
 static void RgxDisablePower(void)
 {
-	if(regulator_is_enabled(rgx_regulator))
+	if (regulator_is_enabled(rgx_regulator))
 	{
 		regulator_disable(rgx_regulator);
 	}
@@ -225,7 +225,7 @@ static void RgxDisablePower(void)
 
 static void SetVoltage(IMG_UINT32 ui32Volt)
 {
-	if(regulator_set_voltage(rgx_regulator, ui32Volt*1000, ui32Volt*1000) != 0)
+	if (regulator_set_voltage(rgx_regulator, ui32Volt*1000, ui32Volt*1000) != 0)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "Failed to set gpu power voltage!"));
 	}
@@ -234,16 +234,16 @@ static void SetVoltage(IMG_UINT32 ui32Volt)
 static void SetClkVal(const char clk_name[], int freq)
 {
 	struct clk *clk = NULL;
-	
-	if(!strcmp(clk_name, "pll"))
+
+	if (!strcmp(clk_name, "pll"))
 	{
 		clk = gpu_pll_clk;
 	}
-	else if(!strcmp(clk_name, "core"))
+	else if (!strcmp(clk_name, "core"))
 	{
 		clk = gpu_core_clk;
 	}
-	else if(!strcmp(clk_name, "mem"))
+	else if (!strcmp(clk_name, "mem"))
 	{
 		clk = gpu_mem_clk;
 	}
@@ -251,19 +251,19 @@ static void SetClkVal(const char clk_name[], int freq)
 	{
 		clk = gpu_axi_clk;
 	}
-	
-	if(clk_set_rate(clk, freq))
+
+	if (clk_set_rate(clk, freq))
 	{
 		clk = NULL;
 		return;
 	}
 
-	if(clk == gpu_pll_clk)
+	if (clk == gpu_pll_clk)
 	{
 		/* delay for gpu pll stability */
 		udelay(100);
 	}
-	
+
 	clk = NULL;
 }
 
@@ -277,14 +277,14 @@ static void SetFrequency(IMG_UINT32 ui32Frequency)
 static void ParseFexPara(void)
 {
 	script_item_u regulator_id_fex, min_vf_level, max_vf_level;
-	if(SCIRPT_ITEM_VALUE_TYPE_STR == script_get_item("rgx_para", "regulator_id", &regulator_id_fex))
+	if (SCIRPT_ITEM_VALUE_TYPE_STR == script_get_item("rgx_para", "regulator_id", &regulator_id_fex))
 	{
 		regulator_id = regulator_id_fex.str;
 	}
-	
-	if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "min_vf_level", &min_vf_level))
+
+	if (SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "min_vf_level", &min_vf_level))
 	{
-		if((min_vf_level.val >= 0 && min_vf_level.val < LEVEL_COUNT))
+		if ((min_vf_level.val >= 0 && min_vf_level.val < LEVEL_COUNT))
 		{
 			min_vf_level_val = min_vf_level.val;
 		}
@@ -293,10 +293,10 @@ static void ParseFexPara(void)
 	{
 		goto err_out2;
 	}
-	
-	if(SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "max_vf_level", &max_vf_level))
+
+	if (SCIRPT_ITEM_VALUE_TYPE_INT == script_get_item("rgx_para", "max_vf_level", &max_vf_level))
 	{
-		if(max_vf_level.val >= min_vf_level_val && max_vf_level.val < LEVEL_COUNT)
+		if (max_vf_level.val >= min_vf_level_val && max_vf_level.val < LEVEL_COUNT)
 		{
 			max_vf_level_val = max_vf_level.val;
 		}
@@ -305,7 +305,7 @@ static void ParseFexPara(void)
 	{
 		goto err_out1;
 	}
-	
+
 	return;
 
 err_out1:
@@ -323,20 +323,20 @@ PVRSRV_ERROR AwPrePowerState(IMG_HANDLE hSysData,
 	if (eNewPowerState == PVRSRV_DEV_POWER_STATE_ON)
 	{
 		RgxEnablePower();
-	
+
 		mdelay(2);
-	
+
 		/* set external isolation invalid */
 		writel(0, SUNXI_R_PRCM_VBASE + GPU_PWROFF_GATING);
-	
+
 		DeAssertGpuResetSignal();
-		
+
 		RgxEnableClock();
-		
+
 		/* set delay for internal power stability */
 		writel(0x100, SUNXI_GPU_CTRL_VBASE + 0x18);
 	}
-	
+
 	return PVRSRV_OK;
 }
 
@@ -348,15 +348,15 @@ PVRSRV_ERROR AwPostPowerState(IMG_HANDLE hSysData,
 	if (eNewPowerState == PVRSRV_DEV_POWER_STATE_OFF)
 	{
 		RgxDisableClock();
-		
+
 		AssertGpuResetSignal();
-	
+
 		/* set external isolation valid */
 		writel(1, SUNXI_R_PRCM_VBASE + GPU_PWROFF_GATING);
-	
+
 		RgxDisablePower();
 	}
-	
+
 	return PVRSRV_OK;
 }
 
@@ -366,9 +366,9 @@ static void RgxDvfsChange(int vf_level, int up_flag)
 #if !defined (PVR_DVFS)
 	PVRSRV_ERROR err;
 	err = PVRSRVDevicePreClockSpeedChange(gpsDevConfig->psDevNode, IMG_TRUE, NULL);
-	if(err == PVRSRV_OK)
+	if (err == PVRSRV_OK)
 	{
-		if(up_flag == 1)
+		if (up_flag == 1)
 		{
 			SetVoltage(asOPPTable[vf_level].ui32Volt);
 			SetClkVal("pll", asOPPTable[vf_level].ui32Freq);
@@ -402,25 +402,25 @@ static void RgxDvfsChange(int vf_level, int up_flag)
 static int rgx_throttle_notifier_call(struct notifier_block *nfb, unsigned long mode, void *cmd)
 {
 	int retval = NOTIFY_DONE;
-	if(mode == BUDGET_GPU_THROTTLE && Is_powernow)
+	if (mode == BUDGET_GPU_THROTTLE && Is_powernow)
 	{
 		RgxDvfsChange(min_vf_level_val, 0);
 		Is_powernow = 0;
 	}
 	else
 	{
-		if(cmd && (*(int *)cmd) == 1 && !Is_powernow)
+		if (cmd && (*(int *)cmd) == 1 && !Is_powernow)
 		{
 			RgxDvfsChange(max_vf_level_val, 0);
 			Is_powernow = 1;
 		}
-		else if(cmd && (*(int *)cmd) == 0 && Is_powernow)
+		else if (cmd && (*(int *)cmd) == 0 && Is_powernow)
 		{
 			RgxDvfsChange(min_vf_level_val, 0);
 			Is_powernow = 0;
 		}
 	}
-	
+
 	return retval;
 }
 
@@ -451,7 +451,7 @@ void RgxSunxiInit(PVRSRV_DEVICE_CONFIG* psDevConfig)
 		rgx_regulator = NULL;
 		return;
 	}
-	
+
 	gpu_core_clk = clk_get(NULL, GPUCORE_CLK);
 	gpu_mem_clk  = clk_get(NULL, GPUMEM_CLK);
 	gpu_axi_clk  = clk_get(NULL, GPUAXI_CLK);
@@ -470,7 +470,7 @@ void RgxSunxiInit(PVRSRV_DEVICE_CONFIG* psDevConfig)
 	vf_level_val = min_vf_level_val;
 
 	SetVoltage(asOPPTable[vf_level_val].ui32Volt);
-	
+
 	SetClkVal("pll", asOPPTable[vf_level_val].ui32Freq);
 	SetClkVal("core", asOPPTable[vf_level_val].ui32Freq);
 	SetClkVal("mem", asOPPTable[vf_level_val].ui32Freq);

@@ -185,7 +185,7 @@ void SysVzDestroyDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig);
 ******************************************************************************
  @Function			SysVzRegisterFwPhysHeap
 
- @Description 		Maps VM relative physically contiguous memory into the 
+ @Description 		Maps VM relative physically contiguous memory into the
  	 	 	 	 	firmware kernel memory context
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
@@ -197,7 +197,7 @@ PVRSRV_ERROR SysVzRegisterFwPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig);
 ******************************************************************************
  @Function			SysVzUnregisterFwPhysHeap
 
- @Description 		Unmaps VM relative physically contiguous memory from the 
+ @Description 		Unmaps VM relative physically contiguous memory from the
  	 	 	 	 	firmware kernel memory context
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_

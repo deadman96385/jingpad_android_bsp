@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for pdumpmm
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_PDUMPMM_BRIDGE_H
 #define COMMON_PDUMPMM_BRIDGE_H
@@ -55,7 +55,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_memallocflags.h"
 #include "devicemem_typedefs.h"
 
-
 #define PVRSRV_BRIDGE_PDUMPMM_CMD_FIRST			0
 #define PVRSRV_BRIDGE_PDUMPMM_PMRPDUMPLOADMEM			PVRSRV_BRIDGE_PDUMPMM_CMD_FIRST+0
 #define PVRSRV_BRIDGE_PDUMPMM_PMRPDUMPLOADMEMVALUE32			PVRSRV_BRIDGE_PDUMPMM_CMD_FIRST+1
@@ -67,9 +66,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_PDUMPMM_DEVMEMINTPDUMPSAVETOFILEVIRTUAL			PVRSRV_BRIDGE_PDUMPMM_CMD_FIRST+7
 #define PVRSRV_BRIDGE_PDUMPMM_CMD_LAST			(PVRSRV_BRIDGE_PDUMPMM_CMD_FIRST+7)
 
-
 /*******************************************
-            PMRPDumpLoadMem          
+            PMRPDumpLoadMem
  *******************************************/
 
 /* Bridge in structure for PMRPDumpLoadMem */
@@ -80,17 +78,16 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEM_TAG
 	IMG_DEVMEM_SIZE_T uiSize;
 	IMG_UINT32 ui32PDumpFlags;
 	IMG_BOOL bbZero;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEM;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEM;
 
 /* Bridge out structure for PMRPDumpLoadMem */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEM_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEM;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEM;
 
 /*******************************************
-            PMRPDumpLoadMemValue32          
+            PMRPDumpLoadMemValue32
  *******************************************/
 
 /* Bridge in structure for PMRPDumpLoadMemValue32 */
@@ -100,17 +97,16 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEMVALUE32_TAG
 	IMG_DEVMEM_OFFSET_T uiOffset;
 	IMG_UINT32 ui32Value;
 	IMG_UINT32 ui32PDumpFlags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEMVALUE32;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEMVALUE32;
 
 /* Bridge out structure for PMRPDumpLoadMemValue32 */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEMVALUE32_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEMVALUE32;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEMVALUE32;
 
 /*******************************************
-            PMRPDumpLoadMemValue64          
+            PMRPDumpLoadMemValue64
  *******************************************/
 
 /* Bridge in structure for PMRPDumpLoadMemValue64 */
@@ -120,17 +116,16 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEMVALUE64_TAG
 	IMG_DEVMEM_OFFSET_T uiOffset;
 	IMG_UINT64 ui64Value;
 	IMG_UINT32 ui32PDumpFlags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEMVALUE64;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPLOADMEMVALUE64;
 
 /* Bridge out structure for PMRPDumpLoadMemValue64 */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEMVALUE64_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEMVALUE64;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPLOADMEMVALUE64;
 
 /*******************************************
-            PMRPDumpSaveToFile          
+            PMRPDumpSaveToFile
  *******************************************/
 
 /* Bridge in structure for PMRPDumpSaveToFile */
@@ -140,19 +135,18 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPSAVETOFILE_TAG
 	IMG_DEVMEM_OFFSET_T uiOffset;
 	IMG_DEVMEM_SIZE_T uiSize;
 	IMG_UINT32 ui32ArraySize;
-	const IMG_CHAR * puiFileName;
+	const IMG_CHAR *puiFileName;
 	IMG_UINT32 ui32uiFileOffset;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPSAVETOFILE;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPSAVETOFILE;
 
 /* Bridge out structure for PMRPDumpSaveToFile */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPSAVETOFILE_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPSAVETOFILE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPSAVETOFILE;
 
 /*******************************************
-            PMRPDumpSymbolicAddr          
+            PMRPDumpSymbolicAddr
  *******************************************/
 
 /* Bridge in structure for PMRPDumpSymbolicAddr */
@@ -163,24 +157,23 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPSYMBOLICADDR_TAG
 	IMG_UINT32 ui32MemspaceNameLen;
 	IMG_UINT32 ui32SymbolicAddrLen;
 	/* Output pointer puiMemspaceName is also an implied input */
-	IMG_CHAR * puiMemspaceName;
+	IMG_CHAR *puiMemspaceName;
 	/* Output pointer puiSymbolicAddr is also an implied input */
-	IMG_CHAR * puiSymbolicAddr;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPSYMBOLICADDR;
+	IMG_CHAR *puiSymbolicAddr;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPSYMBOLICADDR;
 
 /* Bridge out structure for PMRPDumpSymbolicAddr */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPSYMBOLICADDR_TAG
 {
-	IMG_CHAR * puiMemspaceName;
-	IMG_CHAR * puiSymbolicAddr;
+	IMG_CHAR *puiMemspaceName;
+	IMG_CHAR *puiSymbolicAddr;
 	IMG_DEVMEM_OFFSET_T uiNewOffset;
 	IMG_DEVMEM_OFFSET_T uiNextSymName;
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPSYMBOLICADDR;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPSYMBOLICADDR;
 
 /*******************************************
-            PMRPDumpPol32          
+            PMRPDumpPol32
  *******************************************/
 
 /* Bridge in structure for PMRPDumpPol32 */
@@ -192,17 +185,16 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPPOL32_TAG
 	IMG_UINT32 ui32Mask;
 	PDUMP_POLL_OPERATOR eOperator;
 	IMG_UINT32 ui32PDumpFlags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPPOL32;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPPOL32;
 
 /* Bridge out structure for PMRPDumpPol32 */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPPOL32_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPPOL32;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPPOL32;
 
 /*******************************************
-            PMRPDumpCBP          
+            PMRPDumpCBP
  *******************************************/
 
 /* Bridge in structure for PMRPDumpCBP */
@@ -213,17 +205,16 @@ typedef struct PVRSRV_BRIDGE_IN_PMRPDUMPCBP_TAG
 	IMG_DEVMEM_OFFSET_T uiWriteOffset;
 	IMG_DEVMEM_SIZE_T uiPacketSize;
 	IMG_DEVMEM_SIZE_T uiBufferSize;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPCBP;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_PMRPDUMPCBP;
 
 /* Bridge out structure for PMRPDumpCBP */
 typedef struct PVRSRV_BRIDGE_OUT_PMRPDUMPCBP_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPCBP;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRPDUMPCBP;
 
 /*******************************************
-            DevmemIntPDumpSaveToFileVirtual          
+            DevmemIntPDumpSaveToFileVirtual
  *******************************************/
 
 /* Bridge in structure for DevmemIntPDumpSaveToFileVirtual */
@@ -233,16 +224,15 @@ typedef struct PVRSRV_BRIDGE_IN_DEVMEMINTPDUMPSAVETOFILEVIRTUAL_TAG
 	IMG_DEV_VIRTADDR sAddress;
 	IMG_DEVMEM_SIZE_T uiSize;
 	IMG_UINT32 ui32ArraySize;
-	const IMG_CHAR * puiFileName;
+	const IMG_CHAR *puiFileName;
 	IMG_UINT32 ui32FileOffset;
 	IMG_UINT32 ui32PDumpFlags;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTPDUMPSAVETOFILEVIRTUAL;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTPDUMPSAVETOFILEVIRTUAL;
 
 /* Bridge out structure for DevmemIntPDumpSaveToFileVirtual */
 typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTPDUMPSAVETOFILEVIRTUAL_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTPDUMPSAVETOFILEVIRTUAL;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTPDUMPSAVETOFILEVIRTUAL;
 
 #endif /* COMMON_PDUMPMM_BRIDGE_H */

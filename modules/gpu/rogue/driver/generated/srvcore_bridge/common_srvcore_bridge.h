@@ -73,7 +73,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_SRVCORE_CMD_LAST			(PVRSRV_BRIDGE_SRVCORE_CMD_FIRST+15)
 
 /*******************************************
-            Connect          
+            Connect
  *******************************************/
 
 /* Bridge in structure for Connect */
@@ -96,7 +96,7 @@ typedef struct PVRSRV_BRIDGE_OUT_CONNECT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CONNECT;
 
 /*******************************************
-            Disconnect          
+            Disconnect
  *******************************************/
 
 /* Bridge in structure for Disconnect */
@@ -112,7 +112,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DISCONNECT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DISCONNECT;
 
 /*******************************************
-            AcquireGlobalEventObject          
+            AcquireGlobalEventObject
  *******************************************/
 
 /* Bridge in structure for AcquireGlobalEventObject */
@@ -129,7 +129,7 @@ typedef struct PVRSRV_BRIDGE_OUT_ACQUIREGLOBALEVENTOBJECT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_ACQUIREGLOBALEVENTOBJECT;
 
 /*******************************************
-            ReleaseGlobalEventObject          
+            ReleaseGlobalEventObject
  *******************************************/
 
 /* Bridge in structure for ReleaseGlobalEventObject */
@@ -145,7 +145,7 @@ typedef struct PVRSRV_BRIDGE_OUT_RELEASEGLOBALEVENTOBJECT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_RELEASEGLOBALEVENTOBJECT;
 
 /*******************************************
-            EventObjectOpen          
+            EventObjectOpen
  *******************************************/
 
 /* Bridge in structure for EventObjectOpen */
@@ -162,7 +162,7 @@ typedef struct PVRSRV_BRIDGE_OUT_EVENTOBJECTOPEN_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_EVENTOBJECTOPEN;
 
 /*******************************************
-            EventObjectWait          
+            EventObjectWait
  *******************************************/
 
 /* Bridge in structure for EventObjectWait */
@@ -178,7 +178,7 @@ typedef struct PVRSRV_BRIDGE_OUT_EVENTOBJECTWAIT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_EVENTOBJECTWAIT;
 
 /*******************************************
-            EventObjectClose          
+            EventObjectClose
  *******************************************/
 
 /* Bridge in structure for EventObjectClose */
@@ -194,7 +194,7 @@ typedef struct PVRSRV_BRIDGE_OUT_EVENTOBJECTCLOSE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_EVENTOBJECTCLOSE;
 
 /*******************************************
-            DumpDebugInfo          
+            DumpDebugInfo
  *******************************************/
 
 /* Bridge in structure for DumpDebugInfo */
@@ -210,7 +210,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DUMPDEBUGINFO_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DUMPDEBUGINFO;
 
 /*******************************************
-            GetDevClockSpeed          
+            GetDevClockSpeed
  *******************************************/
 
 /* Bridge in structure for GetDevClockSpeed */
@@ -227,7 +227,7 @@ typedef struct PVRSRV_BRIDGE_OUT_GETDEVCLOCKSPEED_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_GETDEVCLOCKSPEED;
 
 /*******************************************
-            HWOpTimeout          
+            HWOpTimeout
  *******************************************/
 
 /* Bridge in structure for HWOpTimeout */
@@ -243,7 +243,7 @@ typedef struct PVRSRV_BRIDGE_OUT_HWOPTIMEOUT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_HWOPTIMEOUT;
 
 /*******************************************
-            AlignmentCheck          
+            AlignmentCheck
  *******************************************/
 
 /* Bridge in structure for AlignmentCheck */
@@ -260,7 +260,7 @@ typedef struct PVRSRV_BRIDGE_OUT_ALIGNMENTCHECK_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_ALIGNMENTCHECK;
 
 /*******************************************
-            GetDeviceStatus          
+            GetDeviceStatus
  *******************************************/
 
 /* Bridge in structure for GetDeviceStatus */
@@ -277,7 +277,7 @@ typedef struct PVRSRV_BRIDGE_OUT_GETDEVICESTATUS_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_GETDEVICESTATUS;
 
 /*******************************************
-            EventObjectWaitTimeout          
+            EventObjectWaitTimeout
  *******************************************/
 
 /* Bridge in structure for EventObjectWaitTimeout */
@@ -294,7 +294,7 @@ typedef struct PVRSRV_BRIDGE_OUT_EVENTOBJECTWAITTIMEOUT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_EVENTOBJECTWAITTIMEOUT;
 
 /*******************************************
-            FindProcessMemStats          
+            FindProcessMemStats
  *******************************************/
 
 /* Bridge in structure for FindProcessMemStats */
@@ -315,7 +315,7 @@ typedef struct PVRSRV_BRIDGE_OUT_FINDPROCESSMEMSTATS_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_FINDPROCESSMEMSTATS;
 
 /*******************************************
-            AcquireInfoPage          
+            AcquireInfoPage
  *******************************************/
 
 /* Bridge in structure for AcquireInfoPage */
@@ -332,7 +332,7 @@ typedef struct PVRSRV_BRIDGE_OUT_ACQUIREINFOPAGE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_ACQUIREINFOPAGE;
 
 /*******************************************
-            ReleaseInfoPage          
+            ReleaseInfoPage
  *******************************************/
 
 /* Bridge in structure for ReleaseInfoPage */

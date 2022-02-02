@@ -65,7 +65,7 @@ void _DebugSyncValues(IMG_UINT32 *pui32UpdateValues,
 	IMG_UINT32 iii;
 	IMG_UINT32 *pui32Tmp = (IMG_UINT32*)pui32UpdateValues;
 
-	for (iii=0; iii<ui32Count; iii++)
+	for (iii = 0; iii < ui32Count; iii++)
 	{
 		CHKPT_DBG((PVR_DBG_ERROR, "%s: pui32IntAllocatedUpdateValues[%d](<%p>) = 0x%x", __func__, iii, (void*)pui32Tmp, *pui32Tmp));
 		pui32Tmp++;

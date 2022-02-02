@@ -920,6 +920,7 @@ static void CacheOpConfigUpdate(IMG_UINT32 ui32Config)
 			/* Set UM/KM threshold, all request sizes above this goes to server for GF maintenance _only_
 			   because UM flushes already have VA acquired, no cost is incurred in per-page (re)mapping
 			   of the to-be maintained PMR/page(s) as it the case with KM flushing so disallow KDF */
+
 			/* Assume an average UM flush performance, anything above should be promoted to GF.
 			   For x86 UMA/LMA, we avoid KDF because remapping PMR/pages in KM might fail due to exhausted
 			   or fragmented VMALLOC kernel VA space */

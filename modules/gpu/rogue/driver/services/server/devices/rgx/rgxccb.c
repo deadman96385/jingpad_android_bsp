@@ -110,7 +110,6 @@ struct _RGX_CLIENT_CCB_ {
 	IMG_UINT32					ui32HostWriteOffset;			/*!< CCB write offset from the driver side */
 	IMG_UINT32					ui32LastPDumpWriteOffset;		/*!< CCB write offset from the last time we submitted a command in capture range */
 	IMG_UINT32					ui32FinishedPDumpWriteOffset;	/*!< Trails LastPDumpWriteOffset for last finished command, used for HW CB driven DMs */
-	IMG_BOOL					bStateOpen;						/*!< Commands will be appended to a non finished CCB */
 	IMG_UINT32					ui32LastROff;					/*!< Last CCB Read offset to help detect any CCB wedge */
 	IMG_UINT32					ui32LastWOff;					/*!< Last CCB Write offset to help detect any CCB wedge */
 	IMG_UINT32					ui32ByteCount;					/*!< Count of the number of bytes written to CCCB */
@@ -133,6 +132,7 @@ struct _RGX_CLIENT_CCB_ {
 	IMG_UINT32					ui32UpdateEntries;				/*!< Number of Fence Updates in asFenceUpdateList */
 	RGXFWIF_UFO					asFenceUpdateList[RGX_CCCB_FENCE_UPDATE_LIST_SIZE];  /*!< List of recent updates written in this CCB */
 #endif
+    IMG_UINT32                  ui32CCBFlags;                   /*!< Bitmask for various flags relating to CCB. Bit defines in rgxccb.h */
 };
 
 /* Forms a table, with array of strings for each requestor type (listed in RGX_CCB_REQUESTORS X macro), to be used for
@@ -155,7 +155,7 @@ PVRSRV_ERROR RGXCCBPDumpDrainCCB(RGX_CLIENT_CCB *psClientCCB,
 
 	IMG_UINT32 ui32PollOffset;
 
-	if (psClientCCB->bStateOpen)
+	if (BIT_ISSET(psClientCCB->ui32CCBFlags, CCB_FLAGS_CCB_STATE_OPEN))
 	{
 		/* Draining CCB on a command that hasn't finished, and FW isn't expected
 		 * to have updated Roff up to Woff. Only drain to the first
@@ -589,6 +589,14 @@ PVRSRV_ERROR RGXCreateCCB(PVRSRV_RGXDEV_INFO	*psDevInfo,
 								PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC |
 								PVRSRV_MEMALLOCFLAG_KERNEL_CPU_MAPPABLE;
 
+	/* If connection data indicates Sync Lockup Recovery (SLR) should be disabled,
+	 * indicate this in ui32CCBFlags.
+	 */
+	if (psConnectionData->ui32ClientFlags & SRV_FLAGS_CLIENT_SLR_DISABLED)
+	{
+		BIT_SET(psClientCCB->ui32CCBFlags, CCB_FLAGS_SLR_DISABLED);
+	}
+
 	PDUMPCOMMENT("Allocate RGXFW cCCB");
 #if defined(PVRSRV_ENABLE_CCCB_GROW)
 	psClientCCB->ui32VirtualAllocSize = ui32VirtualAllocSize;
@@ -706,7 +714,7 @@ PVRSRV_ERROR RGXCreateCCB(PVRSRV_RGXDEV_INFO	*psDevInfo,
 	psClientCCB->ui32LastROff = ui32AllocSize - 1;
 	psClientCCB->ui32ByteCount = 0;
 	psClientCCB->ui32LastByteCount = 0;
-	psClientCCB->bStateOpen = IMG_FALSE;
+	BIT_UNSET(psClientCCB->ui32CCBFlags, CCB_FLAGS_CCB_STATE_OPEN);
 
 #if defined(DEBUG)
 	psClientCCB->ui32UpdateEntries = 0;
@@ -1287,7 +1295,7 @@ void RGXReleaseCCB(RGX_CLIENT_CCB *psClientCCB,
 
 	if (bPdumpEnabled)
 	{
-		if (!psClientCCB->bStateOpen)
+		if (!BIT_ISSET(psClientCCB->ui32CCBFlags, CCB_FLAGS_CCB_STATE_OPEN))
 		{
 			/* Store offset to last finished CCB command. This offset can
 			 * be needed when appending commands to a non finished CCB.
@@ -1456,7 +1464,14 @@ PVRSRV_ERROR RGXCmdHelperInitCmdCCB(RGX_CLIENT_CCB            *psClientCCB,
 	psCmdHelperData->ui32PDumpFlags = ui32PDumpFlags;
 #endif
 	psCmdHelperData->pszCommandName = pszCommandName;
-	psCmdHelperData->psClientCCB->bStateOpen = bCCBStateOpen;
+	if (bCCBStateOpen)
+	{
+		BIT_SET(psCmdHelperData->psClientCCB->ui32CCBFlags, CCB_FLAGS_CCB_STATE_OPEN);
+	}
+	else
+	{
+		BIT_UNSET(psCmdHelperData->psClientCCB->ui32CCBFlags, CCB_FLAGS_CCB_STATE_OPEN);
+	}
 
 	/* Client sync data */
 	psCmdHelperData->ui32ClientFenceCount = ui32ClientFenceCount;
@@ -2057,7 +2072,7 @@ void RGXCmdHelperReleaseCmdCCB(IMG_UINT32 ui32CmdCount,
 				  ui32AllocSize,
 				  asCmdHelperData[0].ui32PDumpFlags);
 
-	asCmdHelperData[0].psClientCCB->bStateOpen = IMG_FALSE;
+	BIT_UNSET(asCmdHelperData[0].psClientCCB->ui32CCBFlags, CCB_FLAGS_CCB_STATE_OPEN);
 }
 
 IMG_UINT32 RGXCmdHelperGetCommandSize(IMG_UINT32              ui32CmdCount,
@@ -2170,7 +2185,8 @@ PVRSRV_ERROR CheckForStalledCCB(PVRSRV_DEVICE_NODE *psDevNode, RGX_CLIENT_CCB *p
 		PVRSRV_RGXDEV_INFO *psDevInfo = (PVRSRV_RGXDEV_INFO*)psDevNode->pvDevice;
 
 		/* Only log a stalled CCB if GPU is idle (any state other than POW_ON is considered idle) */
-		if (psDevInfo->psRGXFWIfTraceBuf->ePowState != RGXFWIF_POW_ON)
+		if ((psDevInfo->psRGXFWIfTraceBuf->ePowState != RGXFWIF_POW_ON) &&
+			psDevInfo->ui32SLRHoldoffCounter == 0)
 		{
 			static __maybe_unused const char *pszStalledAction =
 #if defined(PVRSRV_STALLED_CCB_ACTION)
@@ -2193,18 +2209,30 @@ PVRSRV_ERROR CheckForStalledCCB(PVRSRV_DEVICE_NODE *psDevNode, RGX_CLIENT_CCB *p
 				RGXFWIF_CCB_CMD_HEADER	*psCommandHeader = (RGXFWIF_CCB_CMD_HEADER *)(pui8ClientCCBBuff + ui32SampledRdOff);
 				PVRSRV_RGXDEV_INFO		*psDevInfo = FWCommonContextGetRGXDevInfo(psCurrentClientCCB->psServerCommonContext);
 
+				/* Special case - if readOffset is on a PADDING packet, CCB has wrapped.
+				 * In this case, skip over the PADDING packet.
+				 */
+				if (psCommandHeader->eCmdType == RGXFWIF_CCB_CMD_TYPE_PADDING)
+				{
+					psCommandHeader = (RGXFWIF_CCB_CMD_HEADER *)(pui8ClientCCBBuff +
+					                                             ((ui32SampledRdOff +
+					                                               psCommandHeader->ui32CmdSize +
+					                                               sizeof(RGXFWIF_CCB_CMD_HEADER))
+					                                              & psCurrentClientCCB->psClientCCBCtrl->ui32WrapMask));
+				}
+
 				/* Only try to recover a 'stalled' context (ie one waiting on a fence), as some work (eg compute) could
 				 * take a long time to complete, during which time the CCB ptrs would not advance.
 				 */
-				if ((psCommandHeader->eCmdType == RGXFWIF_CCB_CMD_TYPE_FENCE) ||
-				    (psCommandHeader->eCmdType == RGXFWIF_CCB_CMD_TYPE_FENCE_PR))
+				if (((psCommandHeader->eCmdType == RGXFWIF_CCB_CMD_TYPE_FENCE) ||
+				     (psCommandHeader->eCmdType == RGXFWIF_CCB_CMD_TYPE_FENCE_PR)) &&
+				    (psCommandHeader != (RGXFWIF_CCB_CMD_HEADER *)(pui8ClientCCBBuff + ui32SampledWrOff)))
 				{
 					/* Acquire the cCCB recovery lock */
 					OSLockAcquire(psDevInfo->hCCBRecoveryLock);
 
 					if (!psDevInfo->pvEarliestStalledClientCCB)
 					{
-
 						psDevInfo->pvEarliestStalledClientCCB = (void*)psCurrentClientCCB;
 						psDevInfo->ui32OldestSubmissionOrdinal = psCommandHeader->ui32IntJobRef;
 					}
@@ -2215,7 +2243,7 @@ PVRSRV_ERROR CheckForStalledCCB(PVRSRV_DEVICE_NODE *psDevNode, RGX_CLIENT_CCB *p
 						 * our preferred fence to be unblocked/
 						 */
 						if ((psCommandHeader->ui32IntJobRef < psDevInfo->ui32OldestSubmissionOrdinal) &&
-							((psDevInfo->ui32OldestSubmissionOrdinal - psCommandHeader->ui32IntJobRef) < 0x8000000))
+						    ((psDevInfo->ui32OldestSubmissionOrdinal - psCommandHeader->ui32IntJobRef) < 0x8000000))
 						{
 							psDevInfo->pvEarliestStalledClientCCB = (void*)psCurrentClientCCB;
 							psDevInfo->ui32OldestSubmissionOrdinal = psCommandHeader->ui32IntJobRef;
@@ -2435,8 +2463,8 @@ void DumpStalledContextInfo(PVRSRV_RGXDEV_INFO *psDevInfo)
 	if (psStalledClientCCB)
 	{
 		volatile RGXFWIF_CCCB_CTL *psClientCCBCtrl = psStalledClientCCB->psClientCCBCtrl;
-		IMG_UINT32 ui32SampledReadOffset = psClientCCBCtrl->ui32ReadOffset;
-		IMG_UINT8                 *pui8Ptr = (psStalledClientCCB->pui8ClientCCB + ui32SampledReadOffset);
+		IMG_UINT32 ui32SampledDepOffset = psClientCCBCtrl->ui32DepOffset;
+		IMG_UINT8                 *pui8Ptr = (psStalledClientCCB->pui8ClientCCB + ui32SampledDepOffset);
 		RGXFWIF_CCB_CMD_HEADER    *psCommandHeader = (RGXFWIF_CCB_CMD_HEADER *)(pui8Ptr);
 		RGXFWIF_CCB_CMD_TYPE      eCommandType = psCommandHeader->eCmdType;
 
@@ -2473,9 +2501,9 @@ void DumpStalledContextInfo(PVRSRV_RGXDEV_INFO *psDevInfo)
 				psDevInfo->psRGXFWIfTraceBuf->ui32ForcedUpdatesRequested++;
 			}
 #endif
-			PVR_LOG(("Fence found on context 0x%x '%s' has %d UFOs",
+			PVR_LOG(("Fence found on context 0x%x '%s' @ %d has %d UFOs",
 			         FWCommonContextGetFWAddress(psStalledClientCCB->psServerCommonContext).ui32Addr,
-			         psStalledClientCCB->szName,
+					 psStalledClientCCB->szName, ui32SampledDepOffset,
 			         (IMG_UINT32)(psCommandHeader->ui32CmdSize/sizeof(RGXFWIF_UFO))));
 
 			for (jj=0; jj<psCommandHeader->ui32CmdSize/sizeof(RGXFWIF_UFO); jj++)
@@ -2515,22 +2543,31 @@ void DumpStalledContextInfo(PVRSRV_RGXDEV_INFO *psDevInfo)
 			}
 #endif
 #if defined(PVRSRV_STALLED_CCB_ACTION)
-			if (ui32NumUnsignalledUFOs > 0)
+			if (BIT_ISSET(psStalledClientCCB->ui32CCBFlags, CCB_FLAGS_SLR_DISABLED))
 			{
-				RGXFWIF_KCCB_CMD sSignalFencesCmd;
+				PRGXFWIF_FWCOMMONCONTEXT psContext = FWCommonContextGetFWAddress(psStalledClientCCB->psServerCommonContext);
+
+				PVR_LOG(("SLR disabled for FWCtx 0x%08X", psContext.ui32Addr));
+			}
+			else
+			{
+				if (ui32NumUnsignalledUFOs > 0)
+				{
+					RGXFWIF_KCCB_CMD sSignalFencesCmd;
 
 				sSignalFencesCmd.eCmdType = RGXFWIF_KCCB_CMD_FORCE_UPDATE;
 				sSignalFencesCmd.eDM = RGXFWIF_DM_GP;
 				sSignalFencesCmd.uCmdData.sForceUpdateData.psContext = FWCommonContextGetFWAddress(psStalledClientCCB->psServerCommonContext);
-				sSignalFencesCmd.uCmdData.sForceUpdateData.ui32CCBFenceOffset = ui32SampledReadOffset;
+				sSignalFencesCmd.uCmdData.sForceUpdateData.ui32CCBFenceOffset = ui32SampledDepOffset;
 
-				PVR_LOG(("Forced update command issued for FWCtx 0x%08X", sSignalFencesCmd.uCmdData.sForceUpdateData.psContext.ui32Addr));
+					PVR_LOG(("Forced update command issued for FWCtx 0x%08X", sSignalFencesCmd.uCmdData.sForceUpdateData.psContext.ui32Addr));
 
-				RGXScheduleCommand(FWCommonContextGetRGXDevInfo(psStalledClientCCB->psServerCommonContext),
-								   RGXFWIF_DM_GP,
-								   &sSignalFencesCmd,
-								   0,
-								   PDUMP_FLAGS_CONTINUOUS);
+					RGXScheduleCommand(FWCommonContextGetRGXDevInfo(psStalledClientCCB->psServerCommonContext),
+									   RGXFWIF_DM_GP,
+									   &sSignalFencesCmd,
+									   0,
+									   PDUMP_FLAGS_CONTINUOUS);
+				}
 			}
 #endif
 		}

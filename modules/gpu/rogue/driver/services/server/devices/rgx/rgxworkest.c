@@ -50,6 +50,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "device.h"
 #include "pvr_debug.h"
 
+#include <linux/delay.h>
+
 #define ROUND_DOWN_TO_NEAREST_1024(number) (((number) >> 10) << 10)
 
 static inline IMG_BOOL _WorkEstEnabled(void)
@@ -162,7 +164,9 @@ void WorkEstCheckFirmwareCCB(PVRSRV_RGXDEV_INFO *psDevInfo)
 		PVR_LOG_IF_ERROR(eError, "WorkEstCheckFirmwareCCB: WorkEstRetire failed");
 
 		/* Update read offset */
+		OSLockAcquire(psDevInfo->hWorkEstDestroyLock);
 		psFWCCBCtl->ui32ReadOffset = (psFWCCBCtl->ui32ReadOffset + 1) & psFWCCBCtl->ui32WrapMask;
+		OSLockRelease(psDevInfo->hWorkEstDestroyLock);
 	}
 }
 
@@ -212,6 +216,8 @@ PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
 	psDevInfo->psDeviceNode->psDevConfig->sDVFS.sPDVFSData.bWorkInFrame = IMG_TRUE;
 #endif
 
+	OSLockAcquire(psDevInfo->hWorkEstDestroyLock);
+
 	/* Select the next index for the return data and update it (is this thread safe?) */
 	ui32ReturnDataWO = psDevInfo->ui32ReturnDataWO;
 	psDevInfo->ui32ReturnDataWO = (ui32ReturnDataWO + 1) & RETURN_DATA_ARRAY_WRAP_MASK;
@@ -239,6 +245,8 @@ PVRSRV_ERROR WorkEstPrepare(PVRSRV_RGXDEV_INFO        *psDevInfo,
 	psReturnData = &psDevInfo->asReturnData[ui32ReturnDataWO];
 	psReturnData->psWorkloadMatchingData = psWorkloadMatchingData;
 	psReturnData->psWorkEstHostData = psWorkEstHostData;
+
+	OSLockRelease(psDevInfo->hWorkEstDestroyLock);
 
 	/* The workload characteristic is needed in the return data for the matching
 	   of future workloads via the hash. */
@@ -356,6 +364,9 @@ hasherror:
 	   the workloads connected to a render context are finished. */
 	psWorkEstHostData->ui32WorkEstCCBReceived++;
 
+	psReturnData->psWorkEstHostData = NULL;
+	psReturnData->psWorkloadMatchingData = NULL;
+
 	return eError;
 }
 
@@ -385,6 +396,8 @@ void WorkEstInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstData
 	psWorkEstData->sWorkloadMatchingData3D.psHashTable = psWorkloadHashTable;
 }
 
+#define DESTROY_THRESHOLD 10000
+
 void WorkEstDeInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstData)
 {
 	HASH_TABLE        *psWorkloadHashTable;
@@ -392,6 +405,38 @@ void WorkEstDeInit(PVRSRV_RGXDEV_INFO *psDevInfo, WORKEST_HOST_DATA *psWorkEstDa
 	RGX_WORKLOAD_TA3D *psWorkloadHashKey;
 	IMG_UINT64        *paui64WorkloadCycleData;
 	IMG_UINT32        ui32Itr;
+	IMG_UINT32        loopCount = 0;;
+	IMG_UINT32	  ui32ReadOffset = 0;
+	IMG_UINT32	  ui32WriteOffset = 0;
+
+	RGXFWIF_CCB_CTL *psFWCCBCtl = psDevInfo->psWorkEstFirmwareCCBCtl;
+
+	if (psFWCCBCtl)
+	{
+		do
+		{
+			OSLockAcquire(psDevInfo->hWorkEstDestroyLock);
+			ui32ReadOffset  = psFWCCBCtl->ui32ReadOffset;
+			ui32WriteOffset = psFWCCBCtl->ui32WriteOffset;
+			OSLockRelease(psDevInfo->hWorkEstDestroyLock);
+
+			if (ui32ReadOffset != ui32WriteOffset)
+			{
+				/* wait for some pending interrupts task */
+				udelay(100);
+			}
+			else
+			{
+				break;
+			}
+		} while (loopCount++ < DESTROY_THRESHOLD);
+	}
+
+	if (loopCount > DESTROY_THRESHOLD)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s wait interr task timeout, r: %d, w: %d, may has some risk",
+			 __func__, psFWCCBCtl->ui32ReadOffset, psFWCCBCtl->ui32WriteOffset));
+	}
 
 	/* Tear down TA hash */
 	pasWorkloadHashKeys = psWorkEstData->sWorkloadMatchingDataTA.asHashKeys;

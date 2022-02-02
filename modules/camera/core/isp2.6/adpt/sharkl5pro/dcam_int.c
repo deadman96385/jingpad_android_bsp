@@ -109,7 +109,7 @@ static struct camera_frame *dcam_prepare_frame(struct dcam_pipe_dev *dev,
 
 	atomic_dec(&path->set_frm_cnt);
 	if (unlikely(frame->is_reserved)) {
-		pr_debug("DCAM%u %s use reserved buffer, out %u, result %u\n",
+		pr_warn("DCAM%u %s use reserved buffer, out %u, result %u\n",
 			dev->idx, to_path_name(path_id),
 			camera_queue_cnt(&path->out_buf_queue),
 			camera_queue_cnt(&path->result_queue));
@@ -481,15 +481,21 @@ static void dcam_cap_sof(void *param)
 			path->frm_deci_cnt = 0;
 			if (path->path_id == DCAM_PATH_FULL) {
 				spin_lock_irqsave(&path->state_lock, flag);
-				if (path->state == DCAM_PATH_PAUSE) {
+				if (path->state == DCAM_PATH_PAUSE
+					&& path->state_update) {
+					atomic_inc(&path->set_frm_cnt);
 					hw->hw_ops.core_ops.path_pause(dev->idx,
 						path->path_id);
 					dev->auto_cpy_id |= DCAM_CTRL_FULL;
-					spin_unlock_irqrestore(&path->state_lock, flag);
-					continue;
-				} else if (path->state == DCAM_PATH_RESUME) {
+				} else if (path->state == DCAM_PATH_RESUME
+					&& path->state_update) {
 					hw->hw_ops.core_ops.path_resume(dev->idx,
 						path->path_id);
+				}
+				path->state_update = 0;
+				if (path->state == DCAM_PATH_PAUSE) {
+					spin_unlock_irqrestore(&path->state_lock, flag);
+					continue;
 				}
 				spin_unlock_irqrestore(&path->state_lock, flag);
 			}

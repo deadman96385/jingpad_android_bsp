@@ -1,0 +1,36 @@
+#
+# npu_img_vha.ko
+#
+# Kbuild: for kernel building external module
+#
+# Note:
+# - Please refer to modules/sample/Kbuild to find out what should be
+#   done is this Kbuild file
+#
+
+#
+# Source List
+#
+KO_MODULE_NAME := npu_img_vha
+KO_MODULE_PATH := $(src)
+KO_MODULE_SRC  :=
+
+KO_MODULE_SRC += \
+	$(shell find $(KO_MODULE_PATH) -name "*.c")
+
+#
+# Build Options
+#
+subdir-ccflags-y         += -I$(KO_MODULE_PATH)/../include
+ccflags-y                += -I$(KO_MODULE_PATH)/platform
+subdir-ccflags-y         += -I$(KO_MODULE_PATH)
+ccflags-y                += -DCFG_SYS_MIRAGE
+ccflags-y		 += -DHW_AX2
+ccflags-y                += -DDEFAULT_SYMBOL_NAMESPACE=VHA_CORE
+
+#
+# Final Objects
+#
+obj-m := $(KO_MODULE_NAME).o
+# Comment it if the only object file has the same name with module
+$(KO_MODULE_NAME)-y := $(patsubst $(src)/%.c,%.o,$(KO_MODULE_SRC))

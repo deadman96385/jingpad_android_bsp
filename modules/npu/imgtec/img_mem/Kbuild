@@ -1,0 +1,39 @@
+#
+# npu_img_mem.ko
+#
+# Kbuild: for kernel building external module
+#
+# Note:
+# - Please refer to modules/sample/Kbuild to find out what should be
+#   done is this Kbuild file
+#
+
+#
+# Source List
+#
+KO_MODULE_NAME := npu_img_mem
+KO_MODULE_PATH := $(src)
+
+#
+# Build Options
+#
+ccflags-y += -I$(KO_MODULE_PATH)/imgmmu/mmulib
+subdir-ccflags-y += -I$(KO_MODULE_PATH)/../include
+ccflags-y +=-DDEFAULT_SYMBOL_NAMESPACE=IMG_MEM
+
+#
+# Final Objects
+#
+obj-m := $(KO_MODULE_NAME).o
+# Comment it if the only object file has the same name with module
+$(KO_MODULE_NAME)-y                           := img_mem_man.o
+$(KO_MODULE_NAME)-$(CONFIG_GENERIC_ALLOCATOR) += img_mem_carveout.o
+$(KO_MODULE_NAME)-$(CONFIG_DMA_SHARED_BUFFER) += img_mem_dmabuf.o
+$(KO_MODULE_NAME)-y                           += img_mem_unified.o 
+$(KO_MODULE_NAME)-y                           += img_mem_coherent.o
+$(KO_MODULE_NAME)-y                           += img_mem_anonymous.o
+$(KO_MODULE_NAME)-y                           += img_mem_ocm.o
+$(KO_MODULE_NAME)-y                           += img_pdump.o
+$(KO_MODULE_NAME)-y                           += imgmmu/imgmmu.o
+$(KO_MODULE_NAME)-y                           += imgmmu/kernel_heap.o
+

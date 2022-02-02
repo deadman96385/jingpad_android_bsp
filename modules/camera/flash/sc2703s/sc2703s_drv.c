@@ -28,6 +28,11 @@
 #include "flash_drv.h"
 #include "sc2703s_reg.h"
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "FLASH_SC2703s: %d %d %s : " fmt, current->pid, __LINE__, __func__
+
 #define FLASH_GPIO_MAX 3
 
 /* Structure Definitions */
@@ -152,7 +157,7 @@ static int sc2703_flash_led_enable(void *drvd,
 
 	if (enable)
 		regmap_write(drv_data->reg_map, SC2703_FLASH_EVENT, 0xff);
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
 			SC2703_FLASH_DRIVER_ACTIVE,
@@ -200,7 +205,7 @@ static int sprd_flash_sc2703s_open_torch(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	sc2703_torch_mode_ac_charge_switch(drvd, 1);
 	sc2703_flash_set_mode(drvd, LED_TORCH);
@@ -215,7 +220,7 @@ static int sprd_flash_sc2703s_close_torch(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	sc2703_flash_led_enable(drvd, idx, 0);
 	sc2703_torch_mode_ac_charge_switch(drvd, 0);
@@ -229,7 +234,7 @@ static int sprd_flash_sc2703s_open_preflash(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	sc2703_flash_set_mode(drvd, LED_TORCH);
 	sc2703_flash_led_enable(drvd, idx, 1);
 
@@ -242,7 +247,7 @@ static int sprd_flash_sc2703s_close_preflash(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	sc2703_flash_led_enable(drvd, idx, 0);
 
 	return 0;
@@ -254,7 +259,7 @@ static int sprd_flash_sc2703s_open_highlight(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	sc2703_flash_set_mode(drvd, LED_FLASH);
 	sc2703_flash_led_enable(drvd, idx, 1);
 
@@ -267,7 +272,7 @@ static int sprd_flash_sc2703s_close_highlight(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	sc2703_flash_led_enable(drvd, idx, 0);
 
 	return 0;
@@ -280,7 +285,7 @@ static int sprd_flash_sc2703s_cfg_value_preflash(void *drvd, uint8_t idx,
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("element->index:%d, torch_led_index:%d, idx:%d\n", element->index, drv_data->torch_led_index, idx);
 	regmap_write(drv_data->reg_map,
 			SC2703_FLASH_FD_CONFIG5 + idx/2 * 2, element->index);
 
@@ -294,7 +299,7 @@ static int sprd_flash_sc2703s_cfg_value_highlight(void *drvd, uint8_t idx,
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("element->index:%d, torch_led_index:%d, idx:%d\n", element->index, drv_data->torch_led_index, idx);
 	regmap_write(drv_data->reg_map,
 			SC2703_FLASH_FD_CONFIG6 + idx/2 * 2, element->index);
 
@@ -308,7 +313,7 @@ static int sprd_flash_sc2703s_cfg_value_torch(void *drvd, uint8_t idx,
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("element->index:%d, torch_led_index:%d, idx:%d\n", element->index, drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	regmap_write(drv_data->reg_map,
 			SC2703_FLASH_FD_CONFIG5 + idx/2 * 2, element->index);

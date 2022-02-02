@@ -79,7 +79,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_SYNC_CMD_LAST			(PVRSRV_BRIDGE_SYNC_CMD_FIRST+19)
 
 /*******************************************
-            AllocSyncPrimitiveBlock          
+            AllocSyncPrimitiveBlock
  *******************************************/
 
 /* Bridge in structure for AllocSyncPrimitiveBlock */
@@ -99,7 +99,7 @@ typedef struct PVRSRV_BRIDGE_OUT_ALLOCSYNCPRIMITIVEBLOCK_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_ALLOCSYNCPRIMITIVEBLOCK;
 
 /*******************************************
-            FreeSyncPrimitiveBlock          
+            FreeSyncPrimitiveBlock
  *******************************************/
 
 /* Bridge in structure for FreeSyncPrimitiveBlock */
@@ -115,7 +115,7 @@ typedef struct PVRSRV_BRIDGE_OUT_FREESYNCPRIMITIVEBLOCK_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_FREESYNCPRIMITIVEBLOCK;
 
 /*******************************************
-            SyncPrimSet          
+            SyncPrimSet
  *******************************************/
 
 /* Bridge in structure for SyncPrimSet */
@@ -133,7 +133,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMSET_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMSET;
 
 /*******************************************
-            ServerSyncPrimSet          
+            ServerSyncPrimSet
  *******************************************/
 
 /* Bridge in structure for ServerSyncPrimSet */
@@ -150,7 +150,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SERVERSYNCPRIMSET_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SERVERSYNCPRIMSET;
 
 /*******************************************
-            ServerSyncAlloc          
+            ServerSyncAlloc
  *******************************************/
 
 /* Bridge in structure for ServerSyncAlloc */
@@ -169,7 +169,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SERVERSYNCALLOC_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SERVERSYNCALLOC;
 
 /*******************************************
-            ServerSyncFree          
+            ServerSyncFree
  *******************************************/
 
 /* Bridge in structure for ServerSyncFree */
@@ -185,7 +185,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SERVERSYNCFREE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SERVERSYNCFREE;
 
 /*******************************************
-            ServerSyncQueueHWOp          
+            ServerSyncQueueHWOp
  *******************************************/
 
 /* Bridge in structure for ServerSyncQueueHWOp */
@@ -204,7 +204,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SERVERSYNCQUEUEHWOP_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SERVERSYNCQUEUEHWOP;
 
 /*******************************************
-            ServerSyncGetStatus          
+            ServerSyncGetStatus
  *******************************************/
 
 /* Bridge in structure for ServerSyncGetStatus */
@@ -233,7 +233,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SERVERSYNCGETSTATUS_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SERVERSYNCGETSTATUS;
 
 /*******************************************
-            SyncPrimOpCreate          
+            SyncPrimOpCreate
  *******************************************/
 
 /* Bridge in structure for SyncPrimOpCreate */
@@ -256,7 +256,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMOPCREATE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMOPCREATE;
 
 /*******************************************
-            SyncPrimOpTake          
+            SyncPrimOpTake
  *******************************************/
 
 /* Bridge in structure for SyncPrimOpTake */
@@ -278,7 +278,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMOPTAKE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMOPTAKE;
 
 /*******************************************
-            SyncPrimOpReady          
+            SyncPrimOpReady
  *******************************************/
 
 /* Bridge in structure for SyncPrimOpReady */
@@ -295,7 +295,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMOPREADY_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMOPREADY;
 
 /*******************************************
-            SyncPrimOpComplete          
+            SyncPrimOpComplete
  *******************************************/
 
 /* Bridge in structure for SyncPrimOpComplete */
@@ -311,7 +311,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMOPCOMPLETE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMOPCOMPLETE;
 
 /*******************************************
-            SyncPrimOpDestroy          
+            SyncPrimOpDestroy
  *******************************************/
 
 /* Bridge in structure for SyncPrimOpDestroy */
@@ -327,7 +327,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMOPDESTROY_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMOPDESTROY;
 
 /*******************************************
-            SyncPrimPDump          
+            SyncPrimPDump
  *******************************************/
 
 /* Bridge in structure for SyncPrimPDump */
@@ -344,7 +344,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMP_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMP;
 
 /*******************************************
-            SyncPrimPDumpValue          
+            SyncPrimPDumpValue
  *******************************************/
 
 /* Bridge in structure for SyncPrimPDumpValue */
@@ -362,7 +362,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPVALUE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPVALUE;
 
 /*******************************************
-            SyncPrimPDumpPol          
+            SyncPrimPDumpPol
  *******************************************/
 
 /* Bridge in structure for SyncPrimPDumpPol */
@@ -383,7 +383,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPPOL_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPPOL;
 
 /*******************************************
-            SyncPrimOpPDumpPol          
+            SyncPrimOpPDumpPol
  *******************************************/
 
 /* Bridge in structure for SyncPrimOpPDumpPol */
@@ -401,7 +401,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMOPPDUMPPOL_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMOPPDUMPPOL;
 
 /*******************************************
-            SyncPrimPDumpCBP          
+            SyncPrimPDumpCBP
  *******************************************/
 
 /* Bridge in structure for SyncPrimPDumpCBP */
@@ -421,7 +421,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPCBP_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCPRIMPDUMPCBP;
 
 /*******************************************
-            SyncAllocEvent          
+            SyncAllocEvent
  *******************************************/
 
 /* Bridge in structure for SyncAllocEvent */
@@ -440,7 +440,7 @@ typedef struct PVRSRV_BRIDGE_OUT_SYNCALLOCEVENT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCALLOCEVENT;
 
 /*******************************************
-            SyncFreeEvent          
+            SyncFreeEvent
  *******************************************/
 
 /* Bridge in structure for SyncFreeEvent */

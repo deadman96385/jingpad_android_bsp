@@ -327,6 +327,13 @@ struct sprdwl_cmd_del_station {
 	__le16 reason_code;
 } __packed;
 
+struct sprdwl_rate_info {
+	u8 flags;
+	u8 mcs;
+	u16 legacy;
+	u8 nss;
+} __packed;
+
 /* WIFI_CMD_GET_STATION */
 struct sprdwl_cmd_get_station {
 	u8 txrate;
@@ -334,6 +341,8 @@ struct sprdwl_cmd_get_station {
 	u8 noise;
 	u8 reserved;
 	__le32 txfailed;
+	struct sprdwl_rate_info tx_rate;
+	struct sprdwl_rate_info rx_rate;
 } __packed;
 
 /* WIFI_CMD_SET_CHANNEL */
@@ -775,7 +784,7 @@ int sprdwl_handle_cmd(struct net_device *ndev, struct ifreq *ifr);
 int sprdwl_set_max_sta(struct sprdwl_priv *priv,
 			u8 vif_mode, unsigned char max_sta);
 int sprdwl_get_station(struct sprdwl_priv *priv, u8 vif_mode,
-		       u8 *signal, u8 *noise, u8 *rate, u32 *failed);
+		       struct sprdwl_cmd_get_station *sta);
 int sprdwl_set_def_key(struct sprdwl_priv *priv, u8 vif_mode, u8 key_index);
 
 int sprdwl_npi_send_recv(struct sprdwl_priv *priv, u8 vif_mode, u8 *s_buf,

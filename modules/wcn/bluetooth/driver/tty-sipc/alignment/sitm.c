@@ -89,6 +89,11 @@ void parse_frame(data_ready_cb data_ready, frame_complete_cb frame_complete)
 					: byte;
 				buffer_size = rd->index
 					+ rd->bytes_remaining;
+				if (buffer_size > HCI_HAL_SERIAL_BUFFER_SIZE) {
+					pr_err("%s error getting buffer size %zd\n", __func__, buffer_size);
+					rd->state = BRAND_NEW;
+					break;
+				}
 				memcpy(rd->buffer,
 					rd->preamble,
 					rd->index);

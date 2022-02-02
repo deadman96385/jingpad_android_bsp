@@ -20,6 +20,7 @@
 
 extern struct cam_hw_info sharkl3_hw_info;
 extern struct cam_hw_info sharkl5pro_hw_info;
+extern struct cam_hw_info roc1_hw_info;
 
 /*
  * Supported dcam_if index. Number 0&1 for dcam_if and 2 for dcam_if_lite.
@@ -31,12 +32,15 @@ enum dcam_id {
 	DCAM_ID_MAX,
 };
 
+/* The project id must keep same with the DT cfg
+ * new added project should always added in the end */
 enum cam_prj_id {
 	SHARKL3,
 	SHARKL5,
 	ROC1,
-	QOGIRN6pro,
 	SHARKL5pro,
+	QOGIRN6pro,
+	QOGIRL6,
 	PROJECT_MAX
 };
 
@@ -78,6 +82,13 @@ enum dcam_fbc_mode_type {
 	DCAM_FBC_BIN_14_BIT = 0x7,
 };
 
+enum isp_yuv_block_ctrl_type {
+	ISP_YUV_BLOCK_CFG,
+	ISP_YUV_BLOCK_DISABLE,
+	ISP_YUV_BLOCK_ENABLE,
+	ISP_YUV_BLOCK_MAX
+};
+
 struct glb_syscon {
 	uint32_t rst;
 	uint32_t rst_mask;
@@ -107,6 +118,7 @@ struct cam_hw_ip_info {
 	uint32_t *path_ctrl_id_tab;
 	uint32_t afl_gbuf_size;
 	unsigned long pdaf_type3_reg_addr;
+	uint32_t rds_en;
 
 	/* For isp support info */
 	uint32_t slm_cfg_support;
@@ -145,6 +157,7 @@ struct cam_hw_soc_ops {
 	void (*axi_init)(void *arg);
 	void (*qos_set)(struct cam_hw_soc_info *hw);
 	int (*reset)(struct cam_hw_info *hw, void *arg);
+	int (*sram_reset)(struct cam_hw_info *hw, void *arg);
 };
 
 struct cam_hw_irq_ops {
@@ -184,14 +197,21 @@ struct cam_hw_core_ops {
 	int (*dcam_gtm_status_get)(uint32_t idx);
 	void (*cam_gtm_ltm_eb)(uint32_t dcam_idx, uint32_t isp_idx);
 	void (*cam_gtm_ltm_dis)(uint32_t dcam_idx, uint32_t isp_idx);
+	int (*cam_gtm_update)(uint32_t gtm_idx, void *arg);
 	void (*isp_fetch_set)(void *arg);
 	void (*isp_afbc_addr_set)(uint32_t idx, uint32_t spath_id,
 		unsigned long *yuv_addr);
 	int (*isp_afbc_path_set)(void *arg);
+	void (*isp_ifbc_addr_set)(uint32_t idx, uint32_t spath_id,
+		unsigned long *out_addr);
+	int (*isp_ifbc_path_set)(void *arg);
 	int (*isp_fbd_slice_set)(void *fmcu_handle, void *arg);
 	void (*isp_fbd_addr_set)(int idx, void *arg1, void *arg2);
 	void (*isp_afbc_fmcu_addr_set)(void *fmcu_handle, void *arg, int index);
 	int (*isp_afbc_path_slice_set)(void *fmcu_handle, uint32_t path_en,
+		uint32_t ctx_idx, uint32_t spath_id, void *arg);
+	void (*isp_ifbc_fmcu_addr_set)(void *fmcu_handle, void *arg, int index);
+	int (*isp_ifbc_path_slice_set)(void *fmcu_handle, uint32_t path_en,
 		uint32_t ctx_idx, uint32_t spath_id, void *arg);
 	int (*isp_ltm_slice_set)(void *fmcu_handle, void *arg, uint32_t ltm_id);
 	int (*isp_nr3_fbc_slice_set)(void *fmcu_handle, void *arg);
@@ -206,6 +226,8 @@ struct cam_hw_core_ops {
 	void* (*block_func_get)(uint32_t index, enum cam_block_type type);
 	void (*reg_trace)(uint32_t idx, enum cam_reg_trace_type type);
 	void (*isp_cfg_subblock)(void *ctx);
+	void (*isp_yuv_block_ctrl)(uint32_t index, void *arg,
+		enum isp_yuv_block_ctrl_type type);
 };
 
 struct cam_hw_ops {

@@ -15,7 +15,9 @@
 
 static int ret;
 static unsigned int int_gpio;
-static struct device_node *node;
+static unsigned int reset_gpio;
+
+//static struct device_node *node;
 static int en_gpio;
 
 
@@ -72,7 +74,27 @@ int mas_remove_platform(void)
 
 int mas_finger_get_gpio_info(struct platform_device *pdev)
 {
-	node = of_find_compatible_node(NULL, NULL, MA_DTS_NAME);
+//	node = of_find_compatible_node(NULL, NULL, MA_DTS_NAME);
+	int ret = 0;
+	struct device *dev = &pdev->dev;
+	struct device_node *np = dev->of_node;
+
+	reset_gpio = of_get_named_gpio(np, "fpreset-gpios", 0);
+	if (reset_gpio < 0) {
+		MALOGD("en gpio not exist");
+		return 0;
+	}
+	ret = gpio_request(reset_gpio, "microarray_reset");
+	if (ret < 0) {
+		MALOGE("en gpio request error! ");
+		return ret;
+	}
+	ret = gpio_direction_output(reset_gpio, 1);
+	if (ret < 0) {
+		MALOGE("en gpio set output error! ");
+		gpio_free(reset_gpio);
+		return ret;
+	}
 	return 0;
 }
 
@@ -186,3 +208,19 @@ int mas_set_enable_gpio(struct platform_device *pdev)
 	return 0;
 }
 
+void mas_finger_set_reset(int count)
+{
+	gpio_direction_output(reset_gpio, 0);
+	mdelay(count);
+	gpio_direction_output(reset_gpio, 1);
+	
+}
+
+int mas_finger_get_reset(void)
+{
+	int ret;
+
+	ret = gpio_get_value(reset_gpio);
+	pr_debug("MAFP guq int %d\n", ret);
+	return ret;
+}

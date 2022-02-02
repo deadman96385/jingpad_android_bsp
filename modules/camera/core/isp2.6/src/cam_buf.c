@@ -53,9 +53,10 @@ int mdbg_check(void)
 	val[4] = atomic_read(&g_mem_dbg->iommu_map_cnt[0]);
 	val[5] = atomic_read(&g_mem_dbg->iommu_map_cnt[1]);
 	val[6] = atomic_read(&g_mem_dbg->iommu_map_cnt[2]);
+	val[7] = atomic_read(&g_mem_dbg->empty_state_cnt);
 
-	pr_info("mdbg info: %d, %d, %d, %d, %d, %d, %d\n",
-			val[0], val[1], val[2], val[3], val[4], val[5], val[6]);
+	pr_info("mdbg info: %d, %d, %d, %d, %d, %d, %d, %d\n",
+			val[0], val[1], val[2], val[3], val[4], val[5], val[6], val[7]);
 	return 0;
 }
 EXPORT_SYMBOL(mdbg_check);
@@ -227,6 +228,7 @@ int cambuf_get_ionbuf(struct camera_buf *buf_info)
 			if (IS_ERR_OR_NULL(buf_info->dmabuf_p[i])) {
 				pr_err("fail to get dma buf %p\n",
 						buf_info->dmabuf_p[i]);
+				ret = -EINVAL;
 				goto failed;
 			}
 			if (g_mem_dbg)
@@ -241,7 +243,7 @@ failed:
 	for (i = 0; i < 3; i++) {
 		if (buf_info->mfd[i] <= 0)
 			continue;
-		if (buf_info->dmabuf_p[i]) {
+		if (!IS_ERR_OR_NULL(buf_info->dmabuf_p[i])) {
 			dma_buf_put(buf_info->dmabuf_p[i]);
 			buf_info->dmabuf_p[i] = NULL;
 			if (g_mem_dbg)
@@ -271,8 +273,10 @@ int cambuf_put_ionbuf(struct camera_buf *buf_info)
 	for (i = 0; i < 3; i++) {
 		if (buf_info->mfd[i] <= 0)
 			continue;
-		if (buf_info->dmabuf_p[i]) {
-			dma_buf_put(buf_info->dmabuf_p[i]);
+		if (!IS_ERR_OR_NULL(buf_info->dmabuf_p[i])) {
+			if (!IS_ERR_OR_NULL(buf_info->dmabuf_p[i]->file) &&
+				virt_addr_valid(buf_info->dmabuf_p[i]->file))
+				dma_buf_put(buf_info->dmabuf_p[i]);
 			buf_info->dmabuf_p[i] = NULL;
 			if (g_mem_dbg)
 				atomic_dec(&g_mem_dbg->ion_dma_cnt);
@@ -282,6 +286,104 @@ int cambuf_put_ionbuf(struct camera_buf *buf_info)
 	return ret;
 }
 EXPORT_SYMBOL(cambuf_put_ionbuf);
+
+int cambuf_iommu_map_single_page(
+			struct camera_buf *buf_info,
+			enum cam_iommudev_type type)
+{
+	int i;
+	int ret = 0;
+	void *ionbuf[3];
+	struct iommudev_info *dev_info;
+	struct sprd_iommu_map_data iommu_data;
+
+	dev_info = get_iommu_dev(type, NULL);
+	if (!buf_info || !dev_info) {
+		pr_err("fail to get valid param %p %p\n", buf_info, dev_info);
+		return -EFAULT;
+	}
+
+	pr_debug("enter.\n");
+	for (i = 0; i < 3; i++) {
+		if (buf_info->ionbuf[i] == NULL)
+			continue;
+
+		ionbuf[i] = buf_info->ionbuf[i];
+
+		if (dev_info->iommu_en && !buf_info->buf_sec) {
+			memset(&iommu_data, 0,
+				sizeof(struct sprd_iommu_map_data));
+			iommu_data.buf = ionbuf[i];
+			iommu_data.iova_size = buf_info->size[i];
+			iommu_data.ch_type = SPRD_IOMMU_FM_CH_RW;
+			pr_debug("start map buf: %p, size: %d\n",
+					ionbuf[i], (int)iommu_data.iova_size);
+			ret = sprd_iommu_map_single_page(dev_info->dev, &iommu_data);
+			if (ret) {
+				pr_err("fail to get iommu kaddr %d\n", i);
+				ret = -EFAULT;
+				goto failed;
+			}
+
+			if (g_mem_dbg)
+				atomic_inc(&g_mem_dbg->iommu_map_cnt[type]);
+			buf_info->iova[i] = iommu_data.iova_addr;
+			buf_info->iova[i] += buf_info->offset[i];
+			pr_debug("mfd %d, kaddr %p, iova: 0x%08x, off 0x%x, size 0x%x\n",
+					buf_info->mfd[i],
+					(void *)buf_info->addr_k[i],
+					(uint32_t)buf_info->iova[i],
+					(uint32_t)buf_info->offset[i],
+					(uint32_t)buf_info->size[i]);
+		} else {
+			ret = sprd_ion_get_phys_addr(-1,
+					buf_info->dmabuf_p[i],
+					&buf_info->iova[i],
+					&buf_info->size[i]);
+			if (ret) {
+				pr_err("fail to get iommu kaddr %d\n", i);
+				ret = -EFAULT;
+				goto failed;
+			}
+			buf_info->iova[i] += buf_info->offset[i];
+			pr_debug("mfd %d, kaddr %p, iova: 0x%08x, off 0x%x, size 0x%x\n",
+					buf_info->mfd[i],
+					(void *)buf_info->addr_k[i],
+					(uint32_t)buf_info->iova[i],
+					(uint32_t)buf_info->offset[i],
+					(uint32_t)buf_info->size[i]);
+		}
+	}
+	buf_info->dev = dev_info->dev;
+	buf_info->mapping_state |= CAM_BUF_MAPPING_DEV;
+	return 0;
+
+failed:
+	for (i = 0; i < 3; i++) {
+		if (buf_info->size[i] <= 0 || buf_info->iova[i] == 0)
+			continue;
+
+		if (dev_info->iommu_en) {
+			struct sprd_iommu_unmap_data unmap_data;
+
+			unmap_data.iova_addr = buf_info->iova[i] - buf_info->offset[i];
+			unmap_data.iova_size = buf_info->size[i];
+			unmap_data.ch_type = SPRD_IOMMU_FM_CH_RW;
+			unmap_data.table = NULL;
+			unmap_data.buf = NULL;
+			ret = sprd_iommu_unmap(dev_info->dev, &unmap_data);
+			if (ret)
+				pr_err("fail to free iommu %d\n", i);
+			if (g_mem_dbg)
+				atomic_dec(&g_mem_dbg->iommu_map_cnt[type]);
+		}
+		buf_info->iova[i] = 0;
+	}
+
+	return ret;
+}
+
+EXPORT_SYMBOL(cambuf_iommu_map_single_page);
 
 int cambuf_iommu_map(
 			struct camera_buf *buf_info,

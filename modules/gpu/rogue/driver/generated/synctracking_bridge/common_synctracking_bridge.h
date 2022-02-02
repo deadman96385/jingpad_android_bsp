@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for synctracking
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_SYNCTRACKING_BRIDGE_H
 #define COMMON_SYNCTRACKING_BRIDGE_H
@@ -50,33 +50,29 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "img_types.h"
 #include "pvrsrv_error.h"
 
-
-
 #define PVRSRV_BRIDGE_SYNCTRACKING_CMD_FIRST			0
 #define PVRSRV_BRIDGE_SYNCTRACKING_SYNCRECORDREMOVEBYHANDLE			PVRSRV_BRIDGE_SYNCTRACKING_CMD_FIRST+0
 #define PVRSRV_BRIDGE_SYNCTRACKING_SYNCRECORDADD			PVRSRV_BRIDGE_SYNCTRACKING_CMD_FIRST+1
 #define PVRSRV_BRIDGE_SYNCTRACKING_CMD_LAST			(PVRSRV_BRIDGE_SYNCTRACKING_CMD_FIRST+1)
 
-
 /*******************************************
-            SyncRecordRemoveByHandle          
+            SyncRecordRemoveByHandle
  *******************************************/
 
 /* Bridge in structure for SyncRecordRemoveByHandle */
 typedef struct PVRSRV_BRIDGE_IN_SYNCRECORDREMOVEBYHANDLE_TAG
 {
 	IMG_HANDLE hhRecord;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_SYNCRECORDREMOVEBYHANDLE;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_SYNCRECORDREMOVEBYHANDLE;
 
 /* Bridge out structure for SyncRecordRemoveByHandle */
 typedef struct PVRSRV_BRIDGE_OUT_SYNCRECORDREMOVEBYHANDLE_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_SYNCRECORDREMOVEBYHANDLE;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCRECORDREMOVEBYHANDLE;
 
 /*******************************************
-            SyncRecordAdd          
+            SyncRecordAdd
  *******************************************/
 
 /* Bridge in structure for SyncRecordAdd */
@@ -87,15 +83,14 @@ typedef struct PVRSRV_BRIDGE_IN_SYNCRECORDADD_TAG
 	IMG_UINT32 ui32ui32SyncOffset;
 	IMG_BOOL bbServerSync;
 	IMG_UINT32 ui32ClassNameSize;
-	const IMG_CHAR * puiClassName;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_SYNCRECORDADD;
+	const IMG_CHAR *puiClassName;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_SYNCRECORDADD;
 
 /* Bridge out structure for SyncRecordAdd */
 typedef struct PVRSRV_BRIDGE_OUT_SYNCRECORDADD_TAG
 {
 	IMG_HANDLE hhRecord;
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_SYNCRECORDADD;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_SYNCRECORDADD;
 
 #endif /* COMMON_SYNCTRACKING_BRIDGE_H */

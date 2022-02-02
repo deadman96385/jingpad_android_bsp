@@ -10,105 +10,117 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define pr_fmt(fmt) "%s:%d " fmt, __func__, __LINE__
-
 #include <linux/device.h>
 #include <linux/errno.h>
-#include <linux/file.h>
-#include <linux/fs.h>
 #include <linux/kernel.h>
-#include <linux/miscdevice.h>
-#include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
-#include <linux/regmap.h>
 #include <linux/vmalloc.h>
-#include <linux/module.h>
-#include <linux/init.h>
 #include <linux/slab.h>
-#include <linux/i2c.h>
-#include <linux/interrupt.h>
-#include <linux/pm_runtime.h>
-#include <linux/mutex.h>
 #include <linux/delay.h>
-
+#include <linux/module.h>
 #include "sprd_img.h"
 #include "flash_drv.h"
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "FLASH_AW3641: %d %d %s : " fmt, current->pid, __LINE__, __func__
 
-#define I2C_SLAVEADDR	0x63
-#define FLASH_IC_DRIVER_NAME	"sprd_aw3641"
-#define FLASH_IC_GPIO_MAX 2
+#define FLASH_DRIVER_NAME "flash-aw3641"
+#define FLASH_GPIO_MAX 2
+#define FLASH_MAX_PWM 16
+#define FLASH_MAX_LEVEL 5
+#define FLASH_MIN_LEVEL 0
 
-struct flash_ic_cfg {
-	unsigned int lvfm_enable;
-	unsigned int torch_level;
-	unsigned int preflash_level;
-	unsigned int highlight_level;
-	unsigned int cfg_factor; /*factor for isp level(32) to real level(128)*/
+enum {
+	GPIO_FLASH_TORCH_MODE,	// 132
+	GPIO_CHIP_EN,		// 133
 };
 
 struct flash_driver_data {
-	struct i2c_client *i2c_info;
-	struct mutex i2c_lock;
-	int gpio_tab[FLASH_IC_GPIO_MAX];
-	void *priv;
-	struct flash_ic_cfg flash_cfg;
+	int gpio_tab[FLASH_GPIO_MAX];
 	u32 torch_led_index;
 };
 
-static const char *const flash_ic_gpio_names[FLASH_IC_GPIO_MAX] = {
-	"flash-torch-en-gpios", /* for torch/flash mode */
-	"flash-en-gpios", /* for enable ic pin */
+static const char *const flash_gpio_names[FLASH_GPIO_MAX] = {
+	"flash-torch-en-gpios",	/* 132  for torch/flash mode */
+	"flash-en-gpios",	/* 133  for enable ic pin */
 };
 
+static int g_high_level = 0;
+static int highlight_opened = 0;
+spinlock_t flash_lock;
 
-static int sprd_flash_ic_init(void *drvd)
+static int sprd_flash_aw3641_open_pwm(void *drvd, uint8_t idx, int level)
 {
 	int ret = 0;
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
-
-	if (!drv_data)
-		return -EFAULT;
-
-	return ret;
-}
-
-static int sprd_flash_ic_open_torch(void *drvd, uint8_t idx)
-{
-	int ret = 0;
+	int i = 0;
 	int gpio_id = 0;
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+	unsigned long flags;
 
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
 	if (!drv_data)
 		return -EFAULT;
+
+	if (level > FLASH_MAX_LEVEL)
+		level = FLASH_MAX_LEVEL;
+
+	if (level < FLASH_MIN_LEVEL)
+		level = FLASH_MIN_LEVEL;
 
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
 		if (gpio_is_valid(gpio_id)) {
 			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
-			if (ret)
-				goto exit;
 		}
 	}
 
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
 		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
-			if (ret)
-				goto exit;
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			udelay(550);
+			spin_lock_irqsave(&flash_lock, flags);
+			for (i = 0; i < FLASH_MAX_PWM - level; i++) {
+				pr_info("open_pwm:%d\n", i);
+				ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+				udelay(2);
+				ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
+				udelay(2);
+			}
+			spin_unlock_irqrestore(&flash_lock, flags);
 		}
 	}
-
-exit:
 	return ret;
 }
 
-static int sprd_flash_ic_close_torch(void *drvd, uint8_t idx)
+static int sprd_flash_aw3641_init(void *drvd)
+{
+	int ret = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+
+	if (!drv_data)
+		return -EFAULT;
+
+	return ret;
+}
+
+static int sprd_flash_aw3641_deinit(void *drvd)
+{
+	int ret = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+
+	if (!drv_data)
+		return -EFAULT;
+
+	return ret;
+}
+
+static int sprd_flash_aw3641_open_torch(void *drvd, uint8_t idx)
 {
 	int ret = 0;
 	int gpio_id = 0;
@@ -117,61 +129,23 @@ static int sprd_flash_ic_close_torch(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
-
-
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
-
-exit:
-	return 0;
-}
-
-static int sprd_flash_ic_open_preflash(void *drvd, uint8_t idx)
-{
-	int ret = 0;
-	int gpio_id = 0;
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
-
-	if (!drv_data)
-		return -EFAULT;
-
-	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
 		if (gpio_is_valid(gpio_id)) {
 			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
-			if (ret)
+			if (ret) {
 				goto exit;
+			}
 		}
 	}
 
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
-			if (ret)
-				goto exit;
-		}
-	}
 exit:
 	return ret;
 }
 
-static int sprd_flash_ic_close_preflash(void *drvd, uint8_t idx)
+static int sprd_flash_aw3641_close_torch(void *drvd, uint8_t idx)
 {
 	int ret = 0;
 	int gpio_id = 0;
@@ -179,109 +153,19 @@ static int sprd_flash_ic_close_preflash(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
-	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
-
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
-exit:
-	return ret;
-}
-
-static int sprd_flash_ic_open_highlight(void *drvd, uint8_t idx)
-{
-	int ret = 0;
-	int gpio_id = 0;
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
-
-	if (!drv_data)
-		return -EFAULT;
-
-	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[1];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
-			if (ret)
-				goto exit;
-		}
-	}
-
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[1];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
-			if (ret)
-				goto exit;
-		}
-	}
-exit:
-	return ret;
-}
-
-static int sprd_flash_ic_close_highlight(void *drvd, uint8_t idx)
-{
-	int ret = 0;
-	int gpio_id = 0;
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
-
-	if (!drv_data)
-		return -EFAULT;
-
-	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[1];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
-
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[1];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
-exit:
-	return ret;
-}
-
-static int sprd_flash_ic_cfg_value_torch(void *drvd, uint8_t idx,
-					  struct sprd_flash_element *element)
-{
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
-	int gpio_id = 0;
-	int ret = 0;
-
-	if (!drv_data)
-		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
 		if (gpio_is_valid(gpio_id)) {
 			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
 			if (ret)
 				goto exit;
 		}
 	}
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
 		if (gpio_is_valid(gpio_id)) {
 			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
 			if (ret)
@@ -292,60 +176,53 @@ exit:
 	return ret;
 }
 
-static int sprd_flash_ic_cfg_value_preflash(void *drvd, uint8_t idx,
-					  struct sprd_flash_element *element)
+static int sprd_flash_aw3641_open_preflash(void *drvd, uint8_t idx)
 {
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
 	int ret = 0;
 	int gpio_id = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
+	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
 		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
+			if (ret) {
 				goto exit;
+			}
 		}
 	}
 
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
-		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
-			if (ret)
-				goto exit;
-		}
-	}
 exit:
 	return ret;
 }
 
-static int sprd_flash_ic_cfg_value_highlight(void *drvd, uint8_t idx,
-					   struct sprd_flash_element *element)
+static int sprd_flash_aw3641_close_preflash(void *drvd, uint8_t idx)
 {
-	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
 	int ret = 0;
 	int gpio_id = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
+	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
 		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
 			if (ret)
 				goto exit;
 		}
 	}
 
-	if (SPRD_FLASH_LED1 & idx) {
-		gpio_id = drv_data->gpio_tab[0];
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
 		if (gpio_is_valid(gpio_id)) {
-			ret = gpio_direction_output(gpio_id, SPRD_FLASH_ON);
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
 			if (ret)
 				goto exit;
 		}
@@ -354,161 +231,219 @@ exit:
 	return ret;
 }
 
-static const struct of_device_id sprd_flash_ic_of_match_table[] = {
+static int sprd_flash_aw3641_open_highlight(void *drvd, uint8_t idx)
+{
+	int ret = 0;
+	int gpio_id = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+	if (!drv_data)
+			return -EFAULT;
+
+	pr_info("highlight_opened:%d\n", highlight_opened);
+	if(1 ==  highlight_opened) {
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
+		if (gpio_is_valid(gpio_id)) {
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			if (ret)
+				goto exit;
+		}
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
+		if (gpio_is_valid(gpio_id)) {
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			if (ret)
+				goto exit;
+		}
+		udelay(550);
+	}
+	idx = drv_data->torch_led_index;
+	ret = sprd_flash_aw3641_open_pwm(drv_data, idx, g_high_level);
+	if (ret)
+		goto exit;
+	highlight_opened = 1;
+exit:
+	return ret;
+}
+
+static int sprd_flash_aw3641_close_highlight(void *drvd, uint8_t idx)
+{
+	int ret = 0;
+	int gpio_id = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+
+	if (!drv_data)
+		return -EFAULT;
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
+	idx = drv_data->torch_led_index;
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_CHIP_EN];
+		if (gpio_is_valid(gpio_id)) {
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			if (ret)
+				goto exit;
+		}
+	}
+
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
+		if (gpio_is_valid(gpio_id)) {
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			if (ret)
+				goto exit;
+		}
+	}
+	highlight_opened = 0;
+exit:
+	return ret;
+}
+
+static int sprd_flash_aw3641_cfg_value_torch(void *drvd, uint8_t idx,
+					     struct sprd_flash_element *element)
+{
+	int ret = 0;
+	int gpio_id = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
+	idx = drv_data->torch_led_index;
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
+		if (gpio_is_valid(gpio_id)) {
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			if (ret)
+				goto exit;
+		}
+	}
+exit:
+	return ret;
+}
+
+static int sprd_flash_aw3641_cfg_value_preflash(void *drvd, uint8_t idx, struct sprd_flash_element
+						*element)
+{
+	int ret = 0;
+	int gpio_id = 0;
+	struct flash_driver_data *drv_data = (struct flash_driver_data *)drvd;
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
+	idx = drv_data->torch_led_index;
+	if (SPRD_FLASH_LED0 & idx) {
+		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_MODE];
+		if (gpio_is_valid(gpio_id)) {
+			ret = gpio_direction_output(gpio_id, SPRD_FLASH_OFF);
+			if (ret)
+				goto exit;
+		}
+	}
+exit:
+	return ret;
+}
+
+static int sprd_flash_aw3641_cfg_value_highlight(void *drvd, uint8_t idx, struct sprd_flash_element
+						 *element)
+{
+	int ret = 0;
+	pr_info("element->index:%d\n", element->index);
+	g_high_level = element->index;
+	return ret;
+}
+
+static const struct of_device_id aw3641_flash_of_match_table[] = {
 	{.compatible = "sprd,flash-aw3641"},
 };
 
-static const struct i2c_device_id sprd_flash_ic_ids[] = {
-	{}
-};
-static const struct sprd_flash_driver_ops flash_ic_ops = {
-	.open_torch = sprd_flash_ic_open_torch,
-	.close_torch = sprd_flash_ic_close_torch,
-	.open_preflash = sprd_flash_ic_open_preflash,
-	.close_preflash = sprd_flash_ic_close_preflash,
-	.open_highlight = sprd_flash_ic_open_highlight,
-	.close_highlight = sprd_flash_ic_close_highlight,
-	.cfg_value_torch = sprd_flash_ic_cfg_value_torch,
-	.cfg_value_preflash = sprd_flash_ic_cfg_value_preflash,
-	.cfg_value_highlight = sprd_flash_ic_cfg_value_highlight,
-
+static const struct sprd_flash_driver_ops flash_gpio_ops = {
+	.open_torch = sprd_flash_aw3641_open_torch,
+	.close_torch = sprd_flash_aw3641_close_torch,
+	.open_preflash = sprd_flash_aw3641_open_preflash,
+	.close_preflash = sprd_flash_aw3641_close_preflash,
+	.open_highlight = sprd_flash_aw3641_open_highlight,
+	.close_highlight = sprd_flash_aw3641_close_highlight,
+	.cfg_value_torch = sprd_flash_aw3641_cfg_value_torch,
+	.cfg_value_preflash = sprd_flash_aw3641_cfg_value_preflash,
+	.cfg_value_highlight = sprd_flash_aw3641_cfg_value_highlight,
 };
 
-static int sprd_flash_ic_driver_probe(struct i2c_client *client,
-				const struct i2c_device_id *id)
+static int sprd_flash_aw3641_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-	struct device *dev = &client->dev;
-	struct flash_driver_data *pdata = NULL;
-	unsigned int j;
+	u32 gpio_node = 0;
+	struct flash_driver_data *drv_data = NULL;
+	int gpio[FLASH_GPIO_MAX];
+	int j;
 
-	int gpio[FLASH_IC_GPIO_MAX];
-	unsigned int torch = 0, preflash = 0, highlight = 0;
+	if (IS_ERR_OR_NULL(pdev))
+		return -EINVAL;
 
-	if (!dev->of_node) {
+	if (!pdev->dev.of_node) {
 		pr_err("no device node %s", __func__);
 		return -ENODEV;
 	}
-	pr_info("flash-ic-driver probe\n");
-	ret = of_property_read_u32(dev->of_node, "sprd,flash-ic", &j);
-	if (ret || j != 3641)
+	pr_info("flash-aw3641 probe\n");
+
+	ret = of_property_read_u32(pdev->dev.of_node, "flash-ic", &gpio_node);
+	if (ret) {
+		pr_err("no gpio flash\n");
 		return -ENODEV;
+	}
 
-	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
-	if (!pdata)
+	drv_data = devm_kzalloc(&pdev->dev, sizeof(*drv_data), GFP_KERNEL);
+	if (!drv_data)
 		return -ENOMEM;
-	client->dev.platform_data = (void *)pdata;
-	pdata->i2c_info = client;
-	mutex_init(&pdata->i2c_lock);
-	ret = of_property_read_u32(dev->of_node, "sprd,torch", &torch);
-	if (ret)
-		goto exit;
 
-	ret = of_property_read_u32(dev->of_node,
-				   "sprd,preflash", &preflash);
-	if (ret)
-		goto exit;
+	pdev->dev.platform_data = (void *)drv_data;
 
-	ret = of_property_read_u32(dev->of_node,
-				   "sprd,highlight", &highlight);
+	ret = of_property_read_u32(pdev->dev.of_node,
+				   "torch-led-idx", &drv_data->torch_led_index);
+	if (ret)
+		drv_data->torch_led_index = SPRD_FLASH_LED0;
 
-	ret = of_property_read_u32(dev->of_node,
-			"sprd,torch-level", &pdata->flash_cfg.torch_level);
-	if (ret)
-		pr_info("torch-level no cfg\n");
-
-	ret = of_property_read_u32(dev->of_node,
-		"sprd,preflash-level", &pdata->flash_cfg.preflash_level);
-	if (ret)
-		pr_info("preflash-level no cfg\n");
-
-	ret = of_property_read_u32(dev->of_node,
-		"sprd,highlight-level", &pdata->flash_cfg.highlight_level);
-	if (ret)
-		pr_info("highlight-level no cfg\n");
-	ret = of_property_read_u32(dev->of_node,
-			 "sprd,lvfm-enable", &pdata->flash_cfg.lvfm_enable);
-	if (ret)
-		pr_info("lvfm-enable no cfg\n");
-	ret = of_property_read_u32(dev->of_node,
-				"torch-led-idx", &pdata->torch_led_index);
-	if (ret)
-		pdata->torch_led_index = SPRD_FLASH_LED0;
-
-	for (j = 0; j < FLASH_IC_GPIO_MAX; j++) {
-		gpio[j] = of_get_named_gpio(dev->of_node,
-					       flash_ic_gpio_names[j], 0);
+	for (j = 0; j < FLASH_GPIO_MAX; j++) {
+		gpio[j] = of_get_named_gpio(pdev->dev.of_node,
+					    flash_gpio_names[j], 0);
 		if (gpio_is_valid(gpio[j])) {
-			ret = devm_gpio_request(dev,
-						gpio[j],
-						flash_ic_gpio_names[j]);
-			if (ret)
-				pr_info("flash gpio err\n");
+			ret = devm_gpio_request(&pdev->dev,
+						gpio[j], flash_gpio_names[j]);
+
+			if (ret) {
+				pr_err("flash gpio err\n");
+				goto exit;
+			}
+
+			ret = gpio_direction_output(gpio[j], SPRD_FLASH_OFF);
+
+			if (ret) {
+				pr_err("flash gpio output err\n");
+				goto exit;
+			}
 		}
 	}
 
-	memcpy((void *)pdata->gpio_tab, (void *)gpio, sizeof(gpio));
+	memcpy((void *)drv_data->gpio_tab, (void *)gpio, sizeof(gpio));
 
-	ret = sprd_flash_ic_init(pdata);
-
-	ret = sprd_flash_register(&flash_ic_ops, pdata, SPRD_FLASH_REAR);
+	ret = sprd_flash_aw3641_init(drv_data);
+	if (ret)
+		goto exit;
+	ret = sprd_flash_register(&flash_gpio_ops, drv_data, SPRD_FLASH_REAR);
 
 exit:
 	return ret;
 }
-static int sprd_flash_ic_driver_remove(struct i2c_client *client)
+
+static int sprd_flash_aw3641_remove(struct platform_device *pdev)
 {
-	struct flash_driver_data *pdata = NULL;
+	int ret = 0;
 
-	pdata = (struct flash_driver_data *)client->dev.platform_data;
-	if (pdata)
-		devm_kfree(&client->dev, pdata);
+	ret = sprd_flash_aw3641_deinit(pdev->dev.platform_data);
 
-	pdata = NULL;
-	client->dev.platform_data = NULL;
-
-	return 0;
+	return ret;
 }
 
-static struct i2c_driver sprd_flash_ic_driver = {
+static struct platform_driver sprd_flash_aw3641_driver = {
+	.probe = sprd_flash_aw3641_probe,
+	.remove = sprd_flash_aw3641_remove,
 	.driver = {
-		.of_match_table = of_match_ptr(sprd_flash_ic_of_match_table),
-		.name = FLASH_IC_DRIVER_NAME,
-		},
-	.probe = sprd_flash_ic_driver_probe,
-	.remove = sprd_flash_ic_driver_remove,
-	.id_table = sprd_flash_ic_ids,
+		   .name = FLASH_DRIVER_NAME,
+		   .of_match_table = of_match_ptr(aw3641_flash_of_match_table),
+		   },
 };
 
-static int sprd_flash_ic_register_driver(void)
-{
-	int ret = 0;
-
-	ret = i2c_add_driver(&sprd_flash_ic_driver);
-	pr_info("register sprd_flash_ic_driver:%d\n", ret);
-
-	return ret;
-}
-
-static void sprd_flash_ic_unregister_driver(void)
-{
-	i2c_del_driver(&sprd_flash_ic_driver);
-}
-
-static int sprd_flash_ic_driver_init(void)
-{
-	int ret = 0;
-
-	ret = sprd_flash_ic_register_driver();
-	return ret;
-}
-
-static void sprd_flash_ic_driver_deinit(void)
-{
-	sprd_flash_ic_unregister_driver();
-}
-
-module_init(sprd_flash_ic_driver_init);
-module_exit(sprd_flash_ic_driver_deinit);
-MODULE_DESCRIPTION("Sprd aw3641 Flash Driver");
+module_platform_driver(sprd_flash_aw3641_driver);
 MODULE_LICENSE("GPL");

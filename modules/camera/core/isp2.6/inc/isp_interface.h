@@ -61,8 +61,6 @@ enum isp_path_cfg_cmd {
 	ISP_PATH_CFG_CTX_UFRAME_SYNC,
 	ISP_PATH_CFG_PATH_BASE,
 	ISP_PATH_CFG_PATH_SIZE,
-	ISP_PATH_CFG_PATH_DST,
-	ISP_PATH_CFG_CTX_SUPERZOOM,
 	ISP_PATH_CFG_PATH_COMPRESSION,
 	ISP_PATH_CFG_PATH_UFRAME_SYNC,
 	ISP_PATH_CFG_OUTPUT_BUF,
@@ -70,14 +68,8 @@ enum isp_path_cfg_cmd {
 	ISP_PATH_CFG_3DNR_BUF,
 	ISP_PATH_CFG_RGB_LTM_BUF,
 	ISP_PATH_CFG_YUV_LTM_BUF,
-	ISP_PATH_CFG_SUPERZOOM_BUF,
+	ISP_PATH_CFG_POSTPROC_BUF,
 	ISP_PATH_CFG_3DNR_MODE,
-};
-
-enum isp_superzoom_status {
-	NONE_CAP_SUPERZOOM = 0x1,
-	TO_DO_CAP_SUPERZOOM,
-	DOING_CAP_SUPERZOOM,
 };
 
 enum isp_3dnr_mode {
@@ -100,10 +92,10 @@ enum isp_ltm_region {
 	LTM_MAX
 };
 
-enum isp_afbc_path {
-	AFBC_PATH_PRE = 0,
-	AFBC_PATH_VID,
-	AFBC_PATH_NUM,
+enum isp_fbc_path {
+	FBC_PATH_PRE = 0,
+	FBC_PATH_VID,
+	FBC_PATH_NUM,
 };
 
 enum isp_path_binding_type {
@@ -124,11 +116,35 @@ enum isp_ioctrl_cmd {
 	ISP_IOCTL_CFG_SEC,
 };
 
+enum isp_stream_state {
+	ISP_STREAM_NORMAL_PROC,
+	ISP_STREAM_POST_PROC,
+	ISP_STREAM_MAX,
+};
+
+enum isp_stream_buf_type {
+	ISP_STREAM_BUF_OUT,
+	ISP_STREAM_BUF_RESERVED,
+	ISP_STREAM_BUF_POSTPROC,
+	ISP_STREAM_BUF_RESULT,
+	ISP_STREAM_BUF_MAX,
+};
+
+enum isp_stream_data_src {
+	ISP_STREAM_SRC_DCAM,
+	ISP_STREAM_SRC_ISP,
+	ISP_STREAM_SRC_MAX,
+};
+
+enum isp_stream_frame_type {
+	ISP_STREAM_SIGNLE,
+	ISP_STREAM_MULTI,
+	ISP_STRESM_MAX,
+};
 
 struct isp_init_param {
 	uint32_t is_high_fps;
 	uint32_t cam_id;
-	uint32_t is_superzoom;
 };
 
 struct isp_ctx_base_desc {
@@ -166,13 +182,36 @@ struct isp_path_base_desc {
 };
 
 struct isp_path_compression_desc {
-	uint32_t store_fbc;
+	uint32_t store_ifbc;
+	uint32_t store_afbc;
 };
 
 #define ISP_FBC_3DNR_PAD_WIDTH 256
 #define ISP_FBC_3DNR_PAD_HEIGHT 4
 #define ISP_FBC_STORE_TILE_WIDTH 32
 #define ISP_FBC_STORE_TILE_HEIGHT 8
+
+static inline void
+isp_cal_compressed_addr(uint32_t width, uint32_t height, addr_t in,
+			     struct compressed_addr *out)
+{
+	uint32_t pixel_count, header_bytes_y, header_bytes_c;
+
+	if (unlikely(!out))
+		return;
+
+	pixel_count = roundup(width, ISP_FBC_STORE_TILE_WIDTH) * height;
+	/* add some redundant space for fbc output */
+	header_bytes_y = pixel_count >> 9;
+	header_bytes_y += FBC_HEADER_REDUNDANT;
+	header_bytes_c = pixel_count >> 10;
+	header_bytes_c += FBC_HEADER_REDUNDANT;
+
+	out->addr0 = in;
+	out->addr1 = ALIGN(out->addr0 + header_bytes_y, FBC_TILE_ADDR_ALIGN);
+	out->addr2 = ALIGN(out->addr1 + header_bytes_c + pixel_count,
+			   FBC_TILE_ADDR_ALIGN);
+}
 
 static inline void
 isp_3dnr_cal_compressed_addr(uint32_t width, uint32_t height, addr_t in,
@@ -240,7 +279,7 @@ struct isp_pipe_ops {
 	int (*set_callback)(void *isp_handle, int ctx_id,
 			isp_dev_callback cb, void *priv_data);
 	int (*update_clk)(void *isp_handle, void *arg);
-	int (*get_3dnr_cnt)(void *isp_handle, int ctx_id, void *param);
+	int (*clear_stream_ctrl)(void *isp_handle, int ctx_id);
 };
 
 struct isp_pipe_ops *get_isp_ops(void);
@@ -255,5 +294,4 @@ int isp_hw_stop(struct cam_hw_info *hw, void *arg);
 int sprd_isp_parse_dt(struct device_node *dn,
 		struct cam_hw_info *hw_info,
 		uint32_t *isp_count);
-void isp_hwsim_extra(uint32_t idx);
 #endif

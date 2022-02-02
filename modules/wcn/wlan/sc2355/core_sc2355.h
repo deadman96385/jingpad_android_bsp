@@ -191,6 +191,8 @@ struct sprdwl_intf {
 	u8 cp_asserted;
 	/*wifi bt coex mode, 1:BT is on, 0:BT is off*/
 	u8 coex_bt_on;
+	unsigned int tcpack_delay_th_in_mb;
+	unsigned int tcpack_time_in_ms;
 };
 
 /* HashTable */

@@ -54,13 +54,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ******************************************************************************
  @Function			PvzClientCreateDevConfig
 
- @Description 		The guest front-end to initiate a pfnCreateDevConfig PVZ 
+ @Description 		The guest front-end to initiate a pfnCreateDevConfig PVZ
 					call to the host.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzClientCreateDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig,
 						 IMG_UINT32 ui32DevID);
 
@@ -68,13 +68,13 @@ PvzClientCreateDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig,
 ******************************************************************************
  @Function			PvzClientDestroyDevConfig
 
- @Description 		The guest front-end to initiate a pfnDestroyDevConfig PVZ 
+ @Description 		The guest front-end to initiate a pfnDestroyDevConfig PVZ
 					call to the host.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzClientDestroyDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig,
 						  IMG_UINT32 ui32DevID);
 
@@ -82,13 +82,13 @@ PvzClientDestroyDevConfig(PVRSRV_DEVICE_CONFIG *psDevConfig,
 ******************************************************************************
  @Function			PvzClientCreateDevPhysHeaps
 
- @Description 		The guest front-end to initiate a pfnCreateDevPhysHeaps PVZ 
+ @Description 		The guest front-end to initiate a pfnCreateDevPhysHeaps PVZ
 					call to the host.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzClientCreateDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig,
 							IMG_UINT32 ui32DevID);
 
@@ -96,13 +96,13 @@ PvzClientCreateDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig,
 ******************************************************************************
  @Function			PvzClientDestroyDevPhysHeaps
 
- @Description 		The guest front-end to initiate a pfnDestroyDevPhysHeaps PVZ 
+ @Description 		The guest front-end to initiate a pfnDestroyDevPhysHeaps PVZ
 					call to the host.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
 									ERROR code
  ******************************************************************************/
-PVRSRV_ERROR 
+PVRSRV_ERROR
 PvzClientDestroyDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig,
 							 IMG_UINT32 ui32DevID);
 
@@ -110,7 +110,7 @@ PvzClientDestroyDevPhysHeaps(PVRSRV_DEVICE_CONFIG *psDevConfig,
 ******************************************************************************
  @Function			PvzClientMapDevPhysHeap
 
- @Description 		The guest front-end to initiate a pfnMapDevPhysHeap PVZ 
+ @Description 		The guest front-end to initiate a pfnMapDevPhysHeap PVZ
 					call to the host.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_
@@ -126,7 +126,7 @@ PvzClientMapDevPhysHeap(PVRSRV_DEVICE_CONFIG *psDevConfig,
 ******************************************************************************
  @Function			PvzClientUnmapDevPhysHeap
 
- @Description 		The guest front-end to initiate a pfnUnmapDevPhysHeap PVZ 
+ @Description 		The guest front-end to initiate a pfnUnmapDevPhysHeap PVZ
 					call to the host.
 
  @Return			PVRSRV_ERROR	PVRSRV_OK on success. Otherwise, a PVRSRV_

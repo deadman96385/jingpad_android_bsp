@@ -48,6 +48,11 @@
 #define ADD_LUT_INDEX 1
 #define UPD_LUT_INDEX 2
 
+/*will not drop TCP ACK if TCPRX tp under this Mb level*/
+#define DROPACK_TP_TH_IN_M	70
+/*count RX TP timer in ms*/
+#define RX_TP_COUNT_IN_MS	400
+
 #ifdef SPRDWL_TX_SELF
 #include <linux/wakelock.h>
 struct sprdwl_tx_buf {
@@ -294,4 +299,5 @@ void sprdwl_handle_pop_list(void *data);
 int sprdwl_add_topop_list(int chn, struct mbuf_t *head,
                           struct mbuf_t *tail, int num);
 void set_coex_bt_on_off(u8 action);
+void sprdwl_count_rx_tp(struct sprdwl_intf *intf, u32 len);
 #endif /* __SPRDWL_INTF_SDIO_SC2355_H__ */

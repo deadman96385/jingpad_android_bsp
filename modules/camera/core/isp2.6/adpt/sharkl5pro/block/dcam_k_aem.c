@@ -238,7 +238,7 @@ int dcam_k_cfg_aem(struct isp_io_param *param, struct dcam_dev_param *p)
 			return -EPERM;
 		}
 
-		pr_info("re-config aem win (%d %d %d %d %d %d)\n",
+		pr_debug("dcam%d, re-config aem win (%d %d %d %d %d %d)\n", dev->idx,
 			cur.offset_x, cur.offset_y,
 			cur.blk_num_x, cur.blk_num_y,
 			cur.blk_width, cur.blk_height);

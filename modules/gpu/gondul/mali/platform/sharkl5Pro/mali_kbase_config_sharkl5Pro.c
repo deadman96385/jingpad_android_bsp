@@ -475,7 +475,8 @@ struct kbase_platform_funcs_conf platform_sharkl5pro_funcs = {
 static void mali_power_mode_change(struct kbase_device *kbdev, int power_mode)
 {
 	down(gpu_dvfs_ctx.sem);
-	dev_info(kbdev->dev, "mali_power_mode_change: %d, gpu_power_on=%d gpu_clock_on=%d",power_mode,gpu_dvfs_ctx.gpu_power_on,gpu_dvfs_ctx.gpu_clock_on);
+//	dev_info(kbdev->dev, "mali_power_mode_change: %d, gpu_power_on=%d gpu_clock_on=%d",power_mode,gpu_dvfs_ctx.gpu_power_on,gpu_dvfs_ctx.gpu_clock_on);
+        KBASE_DEBUG_PRINT(3, "mali_power_mode_change: %d, gpu_power_on=%d gpu_clock_on=%d",power_mode,gpu_dvfs_ctx.gpu_power_on,gpu_dvfs_ctx.gpu_clock_on);
 	switch (power_mode)
 	{
 		case 0://power on

@@ -1,23 +1,23 @@
 ########################################################################### ###
 #@Copyright     Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 #@License       Dual MIT/GPLv2
-# 
+#
 # The contents of this file are subject to the MIT license as set out below.
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # Alternatively, the contents of this file may be used under the terms of
 # the GNU General Public License Version 2 ("GPL") in which case the provisions
 # of GPL are applicable instead of those above.
-# 
+#
 # If you wish to allow use of your version of this file only under the terms of
 # GPL, and not to allow others to use your version of this file under the terms
 # of the MIT license, indicate your decision by deleting the provisions above
@@ -25,10 +25,10 @@
 # out in the file called "GPL-COPYING" included in this distribution. If you do
 # not delete the provisions above, a recipient may use your version of this file
 # under the terms of either the MIT license or GPL.
-# 
+#
 # This License is also included in this distribution in the file called
 # "MIT-COPYING".
-# 
+#
 # EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
 # PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
 # BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
@@ -50,7 +50,7 @@ HAL_VARIANT ?= $(TARGET_DEVICE)
 
 # Always print debugging after 5 seconds of no activity
 #
-CLIENT_DRIVER_DEFAULT_WAIT_RETRIES := 50
+CLIENT_DRIVER_DEFAULT_WAIT_RETRIES ?= 50
 
 # Android WSEGL is always the same
 #
@@ -71,7 +71,7 @@ PVR_LINUX_PHYSMEM_ZERO_ALL_PAGES ?= 1
 #
 ifeq ($(VNDK_ROOT),)
  ifeq ($(wildcard $(TARGET_ROOT)/product/$(TARGET_DEVICE)/vendor),)
-   PVRSRV_MODULE_BASEDIR := /lib/modules/
+  PVRSRV_MODULE_BASEDIR := /system/vendor/modules/
   APP_DESTDIR := /data/app
   BIN_DESTDIR := /system/vendor/bin
   FW_DESTDIR := /system/vendor/firmware
@@ -129,11 +129,11 @@ PVRSRV_ENABLE_MEMTRACK_STATS_FILE := 1
 PVR_ANDROID_SYSTEM_WINDOW_HAS_BUFFER_HANDLE_T := 1
 # Enable PVR DVFS
 #
-FEATURE_PVR_DVFS ?= 0
+FEATURE_PVR_DVFS ?= 1
 
 # Enable PVR HW DVFS
 #
-PVR_HW_DVFS ?= 0
+PVR_HW_DVFS ?= 1
 
 # Enable PVR PDVFS
 #
@@ -382,10 +382,10 @@ endif
 # the same one used in the NDK, and we should control where the sources come
 # from. Unfortunately, the upstream build doesn't create a 'glslc' standalone,
 # and it's not a standardised tool for most Linux distros yet, so we build one
-# in the IMG customisation of Android. If the tool isn't present in the build's
-# host output bin directory, we'll fall back to a system copy, and if that does
-# not exist either, we'll make it the empty string, so the affected tests can be
-# disabled..
+# in the IMG customisation of Android. If the tool isn't present in the
+# build's host output bin directory, we'll fall back to a system copy, and if
+# that does not exist either, we'll make it the empty string, so the affected
+# tests can be disabled..
 #
 ifeq ($(is_at_least_nougat),1)
  ifeq ($(GLSLC),)
@@ -571,9 +571,9 @@ PVR_ANDROID_HAS_HAL_DATASPACE_DISPLAY_P3 ?= 1
 PVR_ANDROID_HAS_HAL_DATASPACE_BT2020 ?= 1
 endif
 
-# On Android Pie, a new native window query has been added to test a window
-# for max buffer counts so that we can know if a window has only one buffer
-# or not.
+# In Android Pie, a new native window query has been added to test a window
+# for maximum buffer counts so that we can know if a window has only one
+# buffer or not.
 #
 ifeq ($(is_at_least_pie),1)
 PVR_ANDROID_HAS_NATIVE_WINDOW_MAX_BUFFER_COUNT := 1
@@ -590,6 +590,69 @@ endif
 #
 ifeq ($(is_at_least_pie),1)
 PVR_ANDROID_HAS_HWCOMPOSER_2_2 ?= 1
+endif
+
+ifeq ($(is_at_least_q), 1)
+# Expose EGL_EXT_client_extensions
+#
+EGL_EXTENSION_CLIENT_EXTENSIONS := 1
+
+# Expose EGL_EXT_platform_base
+#
+EGL_EXTENSION_PLATFORM_BASE := 1
+
+# Expose EGL_KHR_platform_android
+#
+EGL_EXTENSION_KHR_PLATFORM_ANDROID := 1
+
+# Expose EGL_EXT_gl_colorspace_display_p3_passthrough
+#
+EGL_EXTENSION_KHR_GL_COLORSPACE_DISPLAY_P3_PASSTHROUGH := 1
+
+# sync_fence_info_data and sync_pt_info are deprecated. Use modern sync APIS
+# e.g: sync_file_info
+#
+override PVR_USE_LEGACY_SYNC_H := 0
+
+# The compiler search paths are out-of-order for finding stddef.h in the new
+# toolchain. The built-in header directory is invoked before searching
+# $(LIBCXX_INCLUDE_PATH) so that including the next stddef.h is unsuccessful.
+# Workaround the issue with including build-in headers directory after
+# $(LIBCXX_INCLUDE_PATH).
+#
+BUILDIN_HEADERS := $(shell $(CC) -E - -v 2>&1 < /dev/null | grep clang | \
+                     tail -1)
+SYS_CXXFLAGS += -isystem $(BUILDIN_HEADERS)
+
+# Atrace hal has been supported from Q.
+#
+PVR_ANDROID_HAS_ATRACE_HAL := 1
+
+# Support Mapper 3.0 hal since Q
+#
+PVR_ANDROID_HAS_MAPPER_3 := 1
+
+# Support Common 1.2 hal since Q
+#
+PVR_ANDROID_HAS_COMMON_1_2 := 1
+
+# Support Safe Union 1.0 hal since Q
+#
+PVR_ANDROID_HAS_SAFE_UNION_1_0 := 1
+
+# Enable support of metadata feature in graphicshal for Android Q (10.0).
+# This feature serves Vulkan extensions at the moment.
+#
+PVR_ANDROID_HAS_GRALLOC_METADATA ?= 1
+
+# Replace the legacy data spaces with modern data spaces that will be
+# expected in surfaceflinger and hardware composer in Android Q (10.0).
+#
+PVR_ANDROID_HAS_HAL_DATASPACE_V0 := 1
+
+# Use LLVM linker in Android Q (10.0).
+#
+USE_LLD := 1
 endif
 
 # Placeholder for future version handling

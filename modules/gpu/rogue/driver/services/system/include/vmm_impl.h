@@ -106,7 +106,7 @@ typedef struct _VMM_PVZ_CONNECTION_
 	struct {
 		/*
 		   This pair must be implemented if the device configuration is
-		   not provided during guest build or if the device interrupt 
+		   not provided during guest build or if the device interrupt
 		   is dynamically mapped into the VM virtual interrupt line.
 		   If not implemented, return PVRSRV_ERROR_NOT_IMPLEMENTED.
 		 */
@@ -206,7 +206,7 @@ typedef struct _VMM_PVZ_CONNECTION_
 	struct {
 		/*
 		   This configuration interface specifies which driver host/guest is
-		   responsible for allocating the physical memory backing the guest 
+		   responsible for allocating the physical memory backing the guest
 		   driver(s) physical heap. Both the host and guest(s) must agree to
 		   use the same policy. It must be implemented and should return
 		   PVRSRV_OK.
@@ -252,7 +252,7 @@ typedef struct _VMM_PVZ_CONNECTION_
 	struct {
 		/*
 		   This is used by the VM manager to report pertinent runtime guest VM
-		   information to the host; these events may in turn be forwarded to 
+		   information to the host; these events may in turn be forwarded to
 		   the firmware
 		 */
 		PVRSRV_ERROR (*pfnOnVmOnline)(IMG_UINT32 ui32OSID, IMG_UINT32 ui32Priority);

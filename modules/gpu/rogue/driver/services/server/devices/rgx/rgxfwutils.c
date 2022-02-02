@@ -748,7 +748,7 @@ RGXVzFreeFirmware(PVRSRV_DEVICE_NODE *psDeviceNode)
 #endif
 }
 
-void RGXSetFirmwareAddress(RGXFWIF_DEV_VIRTADDR	*ppDest,
+PVRSRV_ERROR RGXSetFirmwareAddress(RGXFWIF_DEV_VIRTADDR	*ppDest,
 		DEVMEM_MEMDESC		*psSrc,
 		IMG_UINT32			uiExtraOffset,
 		IMG_UINT32			ui32Flags)
@@ -804,17 +804,38 @@ void RGXSetFirmwareAddress(RGXFWIF_DEV_VIRTADDR	*ppDest,
 			ui32Offset |= RGXFW_SEGMMU_DATA_VIVT_SLC_UNCACHED;
 		}
 		ppDest->ui32Addr = ui32Offset;
-	}else
+	}
+	else
 	{
 		eError = DevmemAcquireDevVirtAddr(psSrc, &psDevVirtAddr);
 		PVR_ASSERT(eError == PVRSRV_OK);
 		ppDest->ui32Addr = (IMG_UINT32)((psDevVirtAddr.uiAddr + uiExtraOffset) & 0xFFFFFFFF);
 	}
 
+	if ((ppDest->ui32Addr & 0x3U) != 0)
+	{
+		IMG_CHAR *pszAnnotation;
+
+		if (PVRSRV_OK == DevmemGetAnnotation(psSrc, &pszAnnotation))
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: %s @ 0x%x is not aligned to 32 bit",
+					 __func__, pszAnnotation, ppDest->ui32Addr));
+		}
+		else
+		{
+			PVR_DPF((PVR_DBG_ERROR, "%s: 0x%x is not aligned to 32 bit",
+					 __func__, ppDest->ui32Addr));
+		}
+
+		return PVRSRV_ERROR_INVALID_ALIGNMENT;
+	}
+
 	if (ui32Flags & RFW_FWADDR_NOREF_FLAG)
 	{
 		DevmemReleaseDevVirtAddr(psSrc);
 	}
+
+	return PVRSRV_OK;
 }
 
 void RGXSetMetaDMAAddress(RGXFWIF_DMA_ADDR		*psDest,
@@ -1418,7 +1439,7 @@ static PVRSRV_ERROR RGXSetupFaultReadRegister(PVRSRV_DEVICE_NODE	*psDeviceNode, 
 
 	for (i = 0; i < ui32PageSize/sizeof(IMG_UINT32); i++)
 	{
-		*(pui32MemoryVirtAddr + i) = 0xDEADBEEF;
+		*(pui32MemoryVirtAddr + i) = 0xDEADBEE0;
 	}
 
 	eError = DevmemServerGetImportHandle(psDevInfo->psRGXFaultAddressMemDesc,(void **)&psPMR);
@@ -2824,8 +2845,9 @@ PVRSRV_ERROR RGXSetupFirmware(PVRSRV_DEVICE_NODE       *psDeviceNode,
 				sizeof(RGXFWIF_SIGBUF_CTL)*(RGXFWIF_DM_MAX),
 				PDUMP_FLAGS_CONTINUOUS);
 #endif
-		psRGXFWInitScratch->asSigBufCtl[RGXFWIF_DM_3D].sBuffer.ui32Addr = 0x0;
+		psRGXFWInitScratch->asSigBufCtl[RGXFWIF_DM_TDM].sBuffer.ui32Addr = 0x0;
 		psRGXFWInitScratch->asSigBufCtl[RGXFWIF_DM_TA].sBuffer.ui32Addr = 0x0;
+		psRGXFWInitScratch->asSigBufCtl[RGXFWIF_DM_3D].sBuffer.ui32Addr = 0x0;
 	}
 
 	for (dm = 0; dm < (RGXFWIF_DM_MAX); dm++)
@@ -4451,7 +4473,8 @@ void RGXCheckFirmwareCCB(PVRSRV_RGXDEV_INFO *psDevInfo)
 		{
 #if defined(SUPPORT_PDVFS)
 			PDVFS_PROCESS_CORE_CLK_RATE_CHANGE(psDevInfo,
-					psFwCCBCmd->uCmdData.sCmdCoreClkRateChange.ui32CoreClkRate);
+					psFwCCBCmd->uCmdData.sCmdCoreClkRateChange.ui32CoreClkRate,
+					psFwCCBCmd->uCmdData.sCmdCoreClkRateChange.ui32Flags);
 #endif
 			break;
 		}
@@ -4990,6 +5013,8 @@ PVRSRV_ERROR RGXFWRequestCommonContextCleanUp(PVRSRV_DEVICE_NODE *psDeviceNode,
 	 * as part of the stalled CCB debug */
 	if (psDevInfo->pvEarliestStalledClientCCB == (void*)psServerCommonContext->psClientCCB)
 	{
+		PVR_DPF((PVR_DBG_WARNING,"%s: Forcing retry as psDevInfo->pvEarliestStalledClientCCB = psServerCommonContext->psClientCCB <%p>",
+				 __func__, (void*)psServerCommonContext->psClientCCB));
 		return PVRSRV_ERROR_RETRY;
 	}
 
@@ -5509,6 +5534,7 @@ void RGXCheckForStalledClientContexts(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_BOOL bI
 			}
 		}
 		psDevInfo->ui32StalledClientMask = ui32StalledClientMask;
+		psDevInfo->pvEarliestStalledClientCCB = NULL;
 	}
 	OSLockRelease(psDevInfo->hCCBStallCheckLock);
 }
@@ -5545,6 +5571,12 @@ PVRSRV_ERROR RGXUpdateHealthStatus(PVRSRV_DEVICE_NODE* psDevNode,
 	{
 		eNewStatus = OSAtomicRead(&psDevNode->eHealthStatus);
 		eNewReason = OSAtomicRead(&psDevNode->eHealthReason);
+	}
+
+	/* Decrement the SLR holdoff counter (if non-zero) */
+	if (psDevInfo->ui32SLRHoldoffCounter > 0)
+	{
+		psDevInfo->ui32SLRHoldoffCounter--;
 	}
 
 	/* If Rogue is not powered on, just skip ahead and check for stalled client CCBs */

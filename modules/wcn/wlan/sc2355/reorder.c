@@ -625,6 +625,8 @@ static void wlan_filter_event(struct sprdwl_rx_ba_entry *ba_entry,
 		msdu_desc.pn_l = 0;
 		msdu_desc.pn_h = 0;
 		msdu_desc.cipher_type = 0;
+		msdu_desc.tid = ba_event->tid;
+		msdu_desc.sta_lut_index = ba_event->sta_lut_index;
 		reorder_msdu_process(ba_entry, &msdu_desc, NULL, ba_node);
 	}
 }

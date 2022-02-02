@@ -40,7 +40,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 /* Example for how to clear FBCDC compressed surfaces to black in kernel mode.
- * 
+ *
  * 1. Initialize ion with a custom ioctl callback
  * 2. Call ion_custom_fbcdc_alloc when ION_IOC_FBCDC_ALLOC is requested
  * 3. Use the ion_fbcdc_alloc helper function in usermode to allocate fbcdc

@@ -1342,7 +1342,6 @@ static int sprdwl_cfg80211_scan(struct wiphy *wiphy,
 	struct api_version_t *api = (&priv->sync_api)->api_array;
 	u8 fw_ver = 0;
 #endif
-
 	netdev_info(vif->ndev, "%s n_channels %u\n", __func__,
 		    request->n_channels);
 
@@ -3522,7 +3521,8 @@ void sprdwl_setup_wiphy(struct wiphy *wiphy, struct sprdwl_priv *priv)
 	wiphy_ext_feature_set(wiphy,
 		NL80211_EXT_FEATURE_SCHED_SCAN_RELATIVE_RSSI);
 #endif
-	wiphy->features |= NL80211_FEATURE_SAE;
+	if(priv->extend_feature & SPRDWL_EXTEND_FEATURE_SAE)
+		wiphy->features |= NL80211_FEATURE_SAE;
 }
 
 static void sprdwl_check_intf_ops(struct sprdwl_if_ops *ops)
@@ -3553,7 +3553,7 @@ struct sprdwl_priv *sprdwl_core_create(enum sprdwl_hw_type type,
 	priv->wiphy = wiphy;
 	g_sprdwl_priv = priv;
 	priv->hw_type = type;
-
+	atomic_set(&priv->monitor_mode, 0);
 	priv->skb_head_len = sizeof(struct sprdwl_data_hdr) + NET_IP_ALIGN +
 	    SPRDWL_SKB_HEAD_RESERV_LEN;
 

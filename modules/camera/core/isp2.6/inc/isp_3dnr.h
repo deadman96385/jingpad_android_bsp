@@ -34,6 +34,8 @@ extern "C" {
 #define FBD_NR3_BASE_ALIGN 256
 #define FBD_BAYER_HEIGHT 4
 
+#define NR3_BLEND_CNT 5
+
 enum nr3_func_type {
 	NR3_FUNC_OFF,
 	NR3_FUNC_PRE,
@@ -94,6 +96,7 @@ struct isp_3dnr_mem_ctrl {
 	uint32_t pipe_flush_line_num;
 	uint32_t pipe_nfull_num;
 	uint32_t ft_fifo_nfull_num;
+	struct img_addr frame_addr;
 };
 
 struct isp_3dnr_store {
@@ -248,6 +251,7 @@ struct isp_3dnr_ctx_desc {
 	uint32_t bypass;
 	uint32_t type;
 	uint32_t blending_cnt;
+	uint32_t mode;
 
 	uint32_t width;
 	uint32_t height;

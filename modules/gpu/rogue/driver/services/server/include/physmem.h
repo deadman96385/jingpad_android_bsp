@@ -234,6 +234,6 @@ extern PVRSRV_ERROR
 PVRSRVGetMaxDevMemSizeKM( CONNECTION_DATA * psConnection,
 		                   PVRSRV_DEVICE_NODE *psDevNode,
 		                   IMG_DEVMEM_SIZE_T *puiLMASize,
-		                   IMG_DEVMEM_SIZE_T *puiUMASize );
+		                   IMG_DEVMEM_SIZE_T *puiUMASize);
 
 #endif /* _SRVSRV_PHYSMEM_H_ */

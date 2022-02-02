@@ -365,7 +365,44 @@ void sprd_faceid_release_weights(struct xvp *xvp)
 	sprd_faceid_release_algo_mem(xvp);
 	//sprd_faceid_release_result_mem(xvp);
 }
+int sprd_alloc_faceid_combuffer(struct xvp *xvp)
+{
+	int ret;
 
+	ret = xvp->vdsp_mem_desc->ops->mem_alloc(xvp->vdsp_mem_desc,
+		&xvp->ion_faceid_comm,
+		ION_HEAP_ID_MASK_VDSP,
+		PAGE_SIZE);
+	if(0 != ret) {
+		pr_err("alloc faceid com buffer failed,ret %d\n",ret);
+		return -ENOMEM;
+	}
+	ret = xvp->vdsp_mem_desc->ops->mem_kmap(xvp->vdsp_mem_desc,
+			&xvp->ion_faceid_comm);
+	if(0 != ret) {
+		xvp->vdsp_mem_desc->ops->mem_free(xvp->vdsp_mem_desc,
+				&xvp->ion_faceid_comm);
+		pr_err("kmap faceid com buffer failed,ret %d\n",ret);
+		return -EFAULT;
+	}
+	xvp->ion_faceid_comm.dev = xvp->dev;
+	xvp->faceid_comm = (void*)xvp->ion_faceid_comm.addr_k[0];
+
+	pr_debug("faceid com vaddr:%p phyaddr %llX\n",
+		xvp->faceid_comm,xvp->ion_faceid_comm.addr_p[0]);
+	return 0;
+}
+int sprd_free_faceid_combuffer(struct xvp *xvp)
+{
+	if(xvp->faceid_comm)
+	{
+		xvp->vdsp_mem_desc->ops->mem_kunmap(xvp->vdsp_mem_desc,
+			&xvp->ion_faceid_comm);
+		xvp->vdsp_mem_desc->ops->mem_free(xvp->vdsp_mem_desc,
+			&xvp->ion_faceid_comm);
+	}
+	return 0;
+}
 static int sprd_alloc_faceid_fwbuffer(struct xvp *xvp)
 {
 	int ret;
@@ -566,18 +603,13 @@ int sprd_kernel_unmap_faceid_ion(struct xvp *xvp,struct ion_buf *ion_buf)
 	}
 	return 0;
 }
+
 int sprd_faceid_sec_sign(struct xvp *xvp)
 {
 	bool ret;
 	KBC_LOAD_TABLE_V  table;
 	unsigned long mem_addr_p;
 	size_t img_len;
-
-	/*copy fw to continuous physical address*/
-	memcpy((void*)xvp->ion_faceid_fw_sign.addr_k[0],(void*)xvp->firmware2_sign->data,xvp->firmware2_sign->size);
-
-	xvp->firmware2.data = (void*)xvp->ion_faceid_fw_sign.addr_k[0] + SIGN_HEAD_SIZE;
-	xvp->firmware2.size = xvp->firmware2_sign->size - SIGN_HEAD_SIZE - SIGN_TAIL_SIZE;
 
 	ret = trusty_kernelbootcp_connect();
 	if(!ret)
@@ -612,12 +644,17 @@ int sprd_faceid_sec_sign(struct xvp *xvp)
 	}
 #endif
 	trusty_kernelbootcp_disconnect();
+
 	return 0;
 }
 
 int sprd_faceid_secboot_entry(struct xvp *xvp)
 {
 	bool ret;
+
+	/*copy fw to continuous physical address*/
+	memcpy((void*)xvp->ion_faceid_fw_sign.addr_k[0],(void*)xvp->firmware2_sign->data,
+				xvp->firmware2_sign->size);
 
 	if(xvp->tee_con)
 	{
@@ -661,15 +698,168 @@ int sprd_faceid_secboot_exit(struct xvp *xvp)
 	}
 	return 0;
 }
+int sprd_faceid_load_firmware(struct xvp *xvp)
+{
+	bool ret;
+
+	if(xvp->tee_con)
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_LOAD_FW;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("load fw fail\n");
+			return -EACCES;
+		}
+	}
+	else
+	{
+		pr_err("vdsp tee connect fail\n");
+		return -EACCES;
+	}
+	return 0;
+}
+int sprd_faceid_halt_vdsp(struct xvp *xvp)
+{
+	bool ret;
+
+	if(xvp->tee_con)
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_HALT_VDSP;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("halt vdsp fail\n");
+			return -EACCES;
+		}
+	}
+	else
+	{
+		pr_err("vdsp tee connect fail\n");
+		return -EACCES;
+	}
+	return 0;
+}
+int sprd_faceid_reset_vdsp(struct xvp *xvp)
+{
+	bool ret;
+
+	if(xvp->tee_con)
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_RESET_VDSP;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("reset vdsp fail\n");
+			return -EACCES;
+		}
+	}
+	else
+	{
+		pr_err("vdsp tee connect fail\n");
+		return -EACCES;
+	}
+	return 0;
+}
+int sprd_faceid_release_vdsp(struct xvp *xvp)
+{
+	bool ret;
+
+	if(xvp->tee_con)
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_RELEASE_VDSP;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("release vdsp fail\n");
+			return -EACCES;
+		}
+	}
+	else
+	{
+		pr_err("vdsp tee connect fail\n");
+		return -EACCES;
+	}
+	return 0;
+}
+int sprd_faceid_enable_vdsp(struct xvp *xvp)
+{
+	bool ret;
+
+	if(xvp->tee_con)
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_ENABLE_VDSP;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("enable vdsp fail\n");
+			return -EACCES;
+		}
+	}
+	else
+	{
+		pr_err("vdsp tee connect fail\n");
+		return -EACCES;
+	}
+	return 0;
+}
+int sprd_faceid_disable_vdsp(struct xvp *xvp)
+{
+	bool ret;
+
+	if(xvp->tee_con)
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_DISABLE_VDSP;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("disable vdsp fail\n");
+			return -EACCES;
+		}
+	}
+	else
+	{
+		pr_err("vdsp tee connect fail\n");
+		return -EACCES;
+	}
+	return 0;
+}
+
 int sprd_faceid_secboot_init(struct xvp *xvp)
 {
-	xvp->secmode = true;
+	bool ret;
+
 	xvp->tee_con = vdsp_ca_connect();
 	if(!xvp->tee_con)
 	{
 		pr_err("vdsp_ca_connect fail\n");
 		return -EACCES;
 	}
+	else
+	{
+		struct vdsp_msg msg;
+		msg.vdsp_type = TA_CADENCE_VQ6;
+		msg.msg_cmd = TA_FACEID_INIT;
+		ret = vdsp_set_sec_mode(&msg);
+		if(!ret)
+		{
+			pr_err("faceid init fail\n");
+			return -EACCES;
+		}
+	}
+	xvp->secmode = true;
 	return 0;
 }
 int sprd_faceid_secboot_deinit(struct xvp *xvp)
@@ -698,10 +888,14 @@ int sprd_faceid_secboot_deinit(struct xvp *xvp)
 int sprd_faceid_init(struct xvp *xvp)
 {
 	int ret = 0;
+	sprd_alloc_faceid_combuffer(xvp);
+	if(ret < 0)
+		return ret;
 
 	ret = sprd_alloc_faceid_fwbuffer(xvp);
 	if(ret < 0)
 		return ret;
+
 	ret = sprd_request_faceid_firmware(xvp);
 	if(ret < 0)
 	{
@@ -716,6 +910,7 @@ int sprd_faceid_deinit(struct xvp *xvp)
 {
 	sprd_release_faceid_firmware(xvp);
 	sprd_free_faceid_fwbuffer(xvp);
+	sprd_free_faceid_combuffer(xvp);
 	sprd_faceid_release_weights(xvp);
 	return 0;
 }

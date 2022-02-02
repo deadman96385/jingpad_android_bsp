@@ -1,0 +1,3 @@
+on post-fs
+	insmod /mnt/vendor/socko/focaltech_spi_19b_ts.ko
+

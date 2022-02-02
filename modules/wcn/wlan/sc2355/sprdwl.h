@@ -265,6 +265,10 @@ struct sprdwl_priv {
 	unsigned char ott_supt;
 	__le32 extend_feature;
 	int is_suspending;
+
+	atomic_t monitor_mode;
+	int monitor_data_cnt;
+	int monitor_mgmt_cnt;
 };
 
 struct sprdwl_eap_hdr {

@@ -78,6 +78,39 @@ int dcam_k_bayerhist_block(struct dcam_dev_param *param)
 	return ret;
 }
 
+int dcam_k_bayerhist_roi(struct dcam_dev_param *param)
+{
+	int ret = 0;
+	uint32_t idx = param->idx;
+	struct dcam_dev_hist_info *p;
+
+
+	if (param == NULL)
+		return -1;
+	/* update ? */
+	if (!(param->hist.update & _UPDATE_INFO))
+		return 0;
+	param->hist.update &= (~(_UPDATE_INFO));
+	p = &(param->hist.bayerHist_info);
+	DCAM_REG_MWR(idx, DCAM_HIST_FRM_CTRL0, BIT_0, p->hist_bypass);
+	if (p->hist_bypass)
+		return 0;
+
+	pr_debug("dcam%d, roi (%d %d %d %d)\n", idx,
+		p->bayer_hist_stx, p->bayer_hist_sty,
+		p->bayer_hist_endx, p->bayer_hist_endy);
+
+	DCAM_REG_MWR(idx, DCAM_BAYER_HIST_START, 0xffffffff,
+			((p->bayer_hist_sty & 0x1fff) << 16) |
+			(p->bayer_hist_stx & 0x1fff));
+
+	DCAM_REG_MWR(idx, DCAM_BAYER_HIST_END, 0xffffffff,
+			((p->bayer_hist_endy & 0x1fff) << 16) |
+			(p->bayer_hist_endx & 0x1fff));
+
+	return ret;
+}
+
 int dcam_k_bayerhist_bypass(struct dcam_dev_param *p)
 {
 	int ret = 0;
@@ -107,33 +140,42 @@ int dcam_k_cfg_bayerhist(struct isp_io_param *param,
 		}
 		dcam_k_bayerhist_bypass(p);
 		break;
-	case DCAM_PRO_BAYERHIST_BLOCK:
-		if (DCAM_ONLINE_MODE) {
-			ret = copy_from_user((void *)&(p->hist.bayerHist_info),
+	case DCAM_PRO_BAYERHIST_BLOCK: {
+		struct dcam_pipe_dev *dev;
+		unsigned long flags = 0;
+		struct dcam_dev_hist_info cur;
+		struct dcam_path_desc *path;
+
+		ret = copy_from_user((void *)&cur,
 				param->property_param,
-				sizeof(p->hist.bayerHist_info));
-			if (ret) {
-				pr_err("fail to copy from user, ret=0x%x\n",
-					(unsigned int)ret);
-				return -EPERM;
-			}
-			p->hist.update |= _UPDATE_INFO;
-			ret = dcam_k_bayerhist_block(p);
-		} else {
-			mutex_lock(&p->param_lock);
-			ret = copy_from_user((void *)&(p->hist.bayerHist_info),
-				param->property_param,
-				sizeof(p->hist.bayerHist_info));
-			if (ret) {
-				mutex_unlock(&p->param_lock);
-				pr_err("fail to copy from user, ret=0x%x\n",
-					(unsigned int)ret);
-				return -EPERM;
-			}
-			p->hist.update |= _UPDATE_INFO;
-			mutex_unlock(&p->param_lock);
+				sizeof(struct dcam_dev_hist_info));
+		if (ret) {
+			pr_err("fail to copy from user, ret=0x%x\n",
+				(unsigned int)ret);
+			return -EPERM;
 		}
+
+		dev = (struct dcam_pipe_dev *)p->dev;
+		path = &dev->path[DCAM_PATH_HIST];
+
+		spin_lock_irqsave(&path->size_lock, flags);
+		p->hist.bayerHist_info = cur;
+		p->hist.update |= _UPDATE_INFO;
+		spin_unlock_irqrestore(&path->size_lock, flags);
+
+		if (atomic_read(&dev->state) != STATE_RUNNING) {
+			ret = dcam_k_bayerhist_block(p);
+			pr_debug("dcam%d config hist %d, win (%d %d %d %d)\n", dev->idx,
+				cur.hist_bypass, cur.bayer_hist_stx, cur.bayer_hist_sty,
+				cur.bayer_hist_endx, cur.bayer_hist_endy);
+		} else {
+			pr_debug("dcam%d re-config hist %d, win (%d %d %d %d)\n", dev->idx,
+				cur.hist_bypass, cur.bayer_hist_stx, cur.bayer_hist_sty,
+				cur.bayer_hist_endx, cur.bayer_hist_endy);
+		}
+
 		break;
+	}
 	default:
 		pr_err("fail to support property %d\n",
 			param->property);

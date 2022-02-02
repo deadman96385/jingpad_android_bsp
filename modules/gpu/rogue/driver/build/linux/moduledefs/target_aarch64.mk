@@ -65,7 +65,12 @@ ifeq ($(NDK_ROOT),)
 
 # Android prebuilts for AARCH64 defaults to bfd linker. x86 and ARM use gold linker.
 # Use gold linker for AARCH64. BFD linker gives unexpected results.
-MODULE_LDFLAGS += -fuse-ld=gold
+
+ifeq ($(USE_LLD),1)
+ MODULE_LDFLAGS += -fuse-ld=lld
+else
+ MODULE_LDFLAGS += -fuse-ld=gold
+endif
 
 _obj := $(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj
 _lib := lib64
@@ -108,7 +113,9 @@ endif
 
 # CLDNN needs libneuralnetworks_common.a
 MODULE_LIBRARY_FLAGS_SUBST += \
- neuralnetworks_common:$(_obj)/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a
+ neuralnetworks_common:$(_obj)/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a \
+ BlobCache:$(_obj)/STATIC_LIBRARIES/libBlobCache_intermediates/libBlobCache.a  \
+ nnCache:$(_obj)/STATIC_LIBRARIES/lib_nnCache_intermediates/lib_nnCache.a
 
 # Gralloc and hwcomposer depend on libdrm
 MODULE_LIBRARY_FLAGS_SUBST += \
@@ -150,7 +157,9 @@ MODULE_INCLUDE_FLAGS := \
 MODULE_LIBRARY_FLAGS_SUBST := \
  art:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib64/libart.so \
  RScpp:$(NDK_ROOT)/toolchains/renderscript/prebuilt/$(HOST_OS)-$(HOST_ARCH)/platform/arm64/libRScpp_static.a \
- neuralnetworks_common:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a
+ neuralnetworks_common:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a \
+ BlobCache:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/STATIC_LIBRARIES/libBlobCache_intermediates/libBlobCache.a  \
+ nnCache:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj/STATIC_LIBRARIES/lib_nnCache_intermediates/lib_nnCache.a
 
 # Unittests dependant on libc++_static
 ifneq (,$(findstring $(THIS_MODULE),$(PVR_UNITTESTS_APK)))

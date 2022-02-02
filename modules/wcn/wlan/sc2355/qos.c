@@ -716,6 +716,26 @@ unsigned int change_priority_if(struct sprdwl_priv *priv, unsigned char *tid, un
 	int match_index = 0;
 	unsigned char priority = *tos;
 
+	priority >>= 2;
+
+	for (match_index = 0; match_index < QOS_MAP_MAX_DSCP_EXCEPTION; match_index++) {
+		if (priority == g_11u_qos_map.qos_exceptions[match_index].dscp) {
+			*tid = g_11u_qos_map.qos_exceptions[match_index].up;
+			break;
+		}
+	}
+
+	if (match_index >= QOS_MAP_MAX_DSCP_EXCEPTION) {
+		for (match_index = 0; match_index < 8; match_index++) {
+			if ((priority >= g_11u_qos_map.qos_ranges[match_index].low) &&
+			   (priority <= g_11u_qos_map.qos_ranges[match_index].high)) {
+				*tid = g_11u_qos_map.qos_ranges[match_index].up;
+				break;
+			}
+		}
+
+	}
+
 	if (1 == g_qos_enable) {
 		ac = map_priority_to_edca_ac(*tid);
 		while (ac != 0) {
@@ -740,25 +760,6 @@ unsigned int change_priority_if(struct sprdwl_priv *priv, unsigned char *tid, un
 		}
 
 		*tid = map_edca_ac_to_priority(ac);
-	}
-
-	priority >>= 2;
-
-	for (match_index = 0; match_index < QOS_MAP_MAX_DSCP_EXCEPTION; match_index++) {
-		if (priority == g_11u_qos_map.qos_exceptions[match_index].dscp) {
-			*tid = g_11u_qos_map.qos_exceptions[match_index].up;
-			break;
-		}
-	}
-
-	if (match_index >= QOS_MAP_MAX_DSCP_EXCEPTION) {
-		for (match_index = 0; match_index < 8; match_index++) {
-			if ((priority >= g_11u_qos_map.qos_ranges[match_index].low) &&
-			   (priority <= g_11u_qos_map.qos_ranges[match_index].high)) {
-				*tid = g_11u_qos_map.qos_ranges[match_index].up;
-				break;
-			}
-		}
 	}
 	switch (*tid) {
 	case prio_1:

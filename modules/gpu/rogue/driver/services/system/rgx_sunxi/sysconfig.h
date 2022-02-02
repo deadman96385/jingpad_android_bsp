@@ -64,5 +64,5 @@ static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] =
 /*****************************************************************************
  * system specific data structures
  *****************************************************************************/
- 
+
 #endif	/* __SYSCCONFIG_H__ */

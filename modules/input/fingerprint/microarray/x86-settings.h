@@ -72,4 +72,6 @@ void ma_spi_change(struct spi_device *spi, unsigned int speed, int flag);
 int mas_get_interrupt_gpio(unsigned int index);
 int mas_switch_power(unsigned int on_off);
 int mas_set_enable_gpio(struct platform_device *pdev);
+void mas_finger_set_reset(int count);
+int mas_finger_get_reset(void);
 #endif

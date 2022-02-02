@@ -71,7 +71,7 @@ else # !TARGET_PLATFORM
   -isystem $(ANDROID_ROOT)/external/zlib/src \
   -isystem $(ANDROID_ROOT)/frameworks/native/include
 
- ifeq ($(is_future_version),1)
+ ifeq ($(is_at_least_q),1)
   SYS_INCLUDES += \
    -isystem $(ANDROID_ROOT)/libnativehelper/include_jni \
    -isystem $(ANDROID_ROOT)/system/core/libion \
@@ -112,7 +112,7 @@ ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
   -isystem $(ANDROID_ROOT)/system/media/camera/include
 
  # libadf has been renamed to deprecated-adf from Q
- ifeq ($(is_future_version),1)
+ ifeq ($(is_at_least_q),1)
    SYS_INCLUDES += \
     -isystem $(ANDROID_ROOT)/system/core/deprecated-adf/libadf/include \
     -isystem $(ANDROID_ROOT)/system/core/deprecated-adf/libadfhwc/include
@@ -153,6 +153,11 @@ ifeq ($(filter-out $(NDK_ROOT)/%,$(NDK_SYSROOT)),)
     -isystem $(ANDROID_ROOT)/frameworks/native/libs/arect/include \
     -isystem $(ANDROID_ROOT)/system/core/libcutils/include_vndk \
     -isystem $(ANDROID_ROOT)/system/core/liblog/include_vndk
+   ifeq ($(is_at_least_oreo_mr1),1)
+    SYS_INCLUDES += \
+     -isystem $(ANDROID_ROOT)/frameworks/ml/nn/driver/cache/BlobCache \
+     -isystem $(ANDROID_ROOT)/frameworks/ml/nn/driver/cache/nnCache
+   endif
   endif
  else
   SYS_INCLUDES += \

@@ -17,6 +17,8 @@
 #include "dcam_blkparam.h"
 
 struct isp_k_block {
+	uint32_t src_w;
+	uint32_t src_h;
 	struct isp_dev_nlm_info_v2 nlm_info;
 	union {
 		struct isp_dev_ynr_info_v2 ynr_info_v2;
@@ -24,9 +26,27 @@ struct isp_k_block {
 	} ynr_param;
 	struct isp_dev_3dnr_info nr3_info;
 	struct isp_dev_nlm_imblance_v1 imbalance_info;
+	struct isp_dev_rgb_ltm_info rgb_ltm;
+	struct isp_dev_yuv_ltm_info yuv_ltm;
 	uint32_t seed0_for_mode1;
-	uint32_t shape_mode;
+	uint32_t yrandom_mode;
 	uint32_t *nlm_buf;
+
+	uint32_t cce_bypass;
+	uint32_t bchs_bypass;
+	uint32_t uvd_bypass;
+	uint32_t ynr_bypass;
+	uint32_t pstz_bypass;
+	uint32_t precdn_bypass;
+	uint32_t cdn_bypass;
+	uint32_t postcdn_bypass;
+	uint32_t nr3_bypass;
+	uint32_t edge_bypass;
+	uint32_t ygamma_bypass;
+	uint32_t iircnr_bypass;
+	uint32_t nf_bypass;
+	uint32_t yrandom_bypass;
+	uint32_t hist_bypass;
 };
 
 int dcam_init_lsc_slice(void *param, uint32_t online);
@@ -34,7 +54,7 @@ int dcam_init_lsc(void *param, uint32_t online);
 int dcam_update_lsc(void *param);
 int dcam_k_cfg_blc(struct isp_io_param *param,	struct dcam_dev_param *p);
 int dcam_k_cfg_raw_gtm(struct isp_io_param *param, struct dcam_dev_param *p);
-int dcam_k_raw_gtm_block(struct dcam_dev_param *param);
+int dcam_k_raw_gtm_block(uint32_t gtm_param_idx, struct dcam_dev_param *p);
 int dcam_k_raw_gtm_slice(uint32_t idx, struct dcam_dev_gtm_slice_info *gtm_slice);
 int dcam_k_cfg_rgb_gain(struct isp_io_param *param, struct dcam_dev_param *p);
 int dcam_k_cfg_rgb_dither(struct isp_io_param *param,
@@ -60,6 +80,7 @@ int dcam_k_rgb_gain_block(struct dcam_dev_param *param);
 int dcam_k_rgb_dither_random_block(struct dcam_dev_param *param);
 int dcam_k_lsc_block(struct dcam_dev_param *param);
 int dcam_k_bayerhist_block(struct dcam_dev_param *param);
+int dcam_k_bayerhist_roi(struct dcam_dev_param *param);
 
 int dcam_k_aem_bypass(struct dcam_dev_param *param);
 int dcam_k_aem_mode(struct dcam_dev_param *param);
@@ -95,35 +116,49 @@ int isp_k_cfg_ynr(struct isp_io_param *param,
 	struct isp_k_block *isp_k_param, uint32_t idx);
 int isp_k_cfg_3dnr(struct isp_io_param *param,
 	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_rgb_ltm(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_yuv_ltm(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_bchs(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_cce(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_cdn(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_cfa(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_cmc10(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_edge(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_gamma(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_grgb(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_hist2(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_hsv(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_iircnr(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_post_cdn(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_pre_cdn(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_pstrz(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_uvd(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_ygamma(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+int isp_k_cfg_yrandom(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param,  uint32_t idx);
+int isp_k_cfg_yuv_noisefilter(struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
 
-int isp_k_cfg_bchs(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_cce(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_cdn(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_cfa(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_brightness(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_contrast(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_csa(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_hue(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_cmc10(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_edge(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_gamma(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_grgb(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_hist(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_hist2(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_hsv(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_iircnr(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_rgb_ltm(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_yuv_ltm(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_post_cdn(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_pre_cdn(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_pstrz(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_uvd(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_ygamma(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_yrandom(struct isp_io_param *param, uint32_t idx);
-int isp_k_cfg_yuv_noisefilter(struct isp_io_param *param, struct isp_k_block *isp_k_param, uint32_t idx);
 void sprd_noisefilter_seeds(uint32_t image_width,
 	uint32_t seed0, uint32_t *seed1, uint32_t *seed2, uint32_t *seed3);
-
 int isp_k_update_nlm(uint32_t idx,
 	struct isp_k_block *isp_k_param,
 	uint32_t new_width, uint32_t old_width,

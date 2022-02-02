@@ -26,6 +26,12 @@
 #include "sprd_img.h"
 #include "flash_drv.h"
 #include "sc2720s_reg.h"
+
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "FLASH_SC2720s: %d %d %s : " fmt, current->pid, __LINE__, __func__
+
 #define FLASH_GPIO_MAX 3
 
 /* Structure Definitions */
@@ -109,6 +115,7 @@ static int sprd_flash_sc2720s_open_torch(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
@@ -129,6 +136,7 @@ static int sprd_flash_sc2720s_close_torch(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
@@ -160,6 +168,7 @@ static int sprd_flash_sc2720s_open_preflash(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
 			FLASH_CTRL_REG, FLASH_PON, FLASH_PON);
@@ -179,6 +188,7 @@ static int sprd_flash_sc2720s_close_preflash(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
 				   FLASH_CTRL_REG,
@@ -207,6 +217,8 @@ static int sprd_flash_sc2720s_open_highlight(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
+
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
 			FLASH_CTRL_REG, FLASH_PON, FLASH_PON);
@@ -227,6 +239,8 @@ static int sprd_flash_sc2720s_close_highlight(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
+
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		regmap_update_bits(drv_data->reg_map,
 				   FLASH_CTRL_REG,
@@ -257,6 +271,7 @@ static int sprd_flash_sc2720s_cfg_value_preflash(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("element->index:%d, torch_led_index:%d, idx:%d\n", element->index, drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx)
 		regmap_update_bits(drv_data->reg_map,
 			FLASH_CTRL_REG, FLASH_V_SW, element->index);
@@ -276,6 +291,7 @@ static int sprd_flash_sc2720s_cfg_value_highlight(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("element->index:%d, torch_led_index:%d, idx:%d\n", element->index, drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx)
 		regmap_update_bits(drv_data->reg_map,
 			FLASH_CTRL_REG, FLASH_V_SW, element->index);
@@ -294,7 +310,7 @@ static int sprd_flash_sc2720s_cfg_value_torch(void *drvd, uint8_t idx,
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("element->index:%d, torch_led_index:%d, idx:%d\n", element->index, drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx)
 		regmap_update_bits(drv_data->reg_map,

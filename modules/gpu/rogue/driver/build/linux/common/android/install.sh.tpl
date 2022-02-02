@@ -78,7 +78,6 @@ BIN_DESTDIR=[BIN_DESTDIR]
 FW_DESTDIR=[FW_DESTDIR]
 DATA_DESTDIR=[BIN_DESTDIR]
 TEST_DESTDIR=[TEST_DESTDIR]
-MOD_DESTDIR=/system/lib/modules
 
 # Exit with an error messages.
 # $1=blurb

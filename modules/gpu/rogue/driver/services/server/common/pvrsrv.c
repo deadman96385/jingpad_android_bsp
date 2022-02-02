@@ -130,6 +130,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "physmem_test.h"
 #endif
 
+#include <linux/delay.h>
+
 #if defined(PVRSRV_SERVER_THREADS_INDEFINITE_SLEEP)
 #define INFINITE_SLEEP_TIMEOUT 0ULL
 #endif
@@ -143,6 +145,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define CLEANUP_THREAD_WAIT_SLEEP_TIMEOUT INFINITE_SLEEP_TIMEOUT
 #else
 #define CLEANUP_THREAD_WAIT_SLEEP_TIMEOUT 28800000000ULL
+#endif
+
+#if !defined(EMULATOR) && !defined(VIRTUAL_PLATFORM)
+#if defined(PVRSRV_STALLED_CCB_ACTION) && (DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT > 5000)
+/* Warn if DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT is too large for SLR to be effective. */
+#warning The value defined for DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT is too large for Sync Lockup Recovery(SLR) to be effective. Please refer to the System Porting Guide.
+#endif
 #endif
 
 /*! When unloading try a few times to free everything remaining on the list */
@@ -1591,7 +1600,9 @@ static void _SysDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle,
 	/* Only dump info once */
 	PVRSRV_DEVICE_NODE *psDeviceNode = (PVRSRV_DEVICE_NODE*) hDebugRequestHandle;
 
-	switch (psDeviceNode->eCurrentSysPowerState)
+    PVR_DUMPDEBUG_LOG("------[ System Summary ]------");
+
+    switch (psDeviceNode->eCurrentSysPowerState)
 	{
 		case PVRSRV_SYS_POWER_STATE_OFF:
 			PVR_DUMPDEBUG_LOG("Device System Power State: OFF");
@@ -1605,7 +1616,10 @@ static void _SysDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle,
 			break;
 	}
 
-	SysDebugInfo(psDeviceNode->psDevConfig, pfnDumpDebugPrintf, pvDumpDebugFile);
+    PVR_DUMPDEBUG_LOG("MaxHWTOut: %dus, WtTryCt: %d, WDGTOut(on,off): (%dms,%dms)",
+                      MAX_HW_TIME_US, WAIT_TRY_COUNT, DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT, DEVICES_WATCHDOG_POWER_OFF_SLEEP_TIMEOUT);
+
+    SysDebugInfo(psDeviceNode->psDevConfig, pfnDumpDebugPrintf, pvDumpDebugFile);
 }
 
 static void _ThreadsDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDbgReqestHandle,
@@ -3227,18 +3241,11 @@ PVRSRV_ERROR IMG_CALLCONV WaitForValueKM(volatile IMG_UINT32 __iomem *pui32LinMe
 	PVRSRV_ERROR eError;
 	PVRSRV_ERROR eErrorWait;
 	IMG_UINT32 ui32ActualValue;
-
-	eError = OSEventObjectOpen(psPVRSRVData->hGlobalEventObject, &hOSEvent);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"PVRSRVWaitForValueKM: Failed to setup EventObject with error (%d)", eError));
-		goto EventObjectOpenError;
-	}
+	IMG_UINT32 LoopCount = 0;
 
 	eError = PVRSRV_ERROR_TIMEOUT;
 
-	LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
-	{
+	do {
 		ui32ActualValue = (OSReadDeviceMem32(pui32LinMemAddr) & ui32Mask);
 
 		if (ui32ActualValue == ui32Value)
@@ -3255,25 +3262,21 @@ PVRSRV_ERROR IMG_CALLCONV WaitForValueKM(volatile IMG_UINT32 __iomem *pui32LinMe
 		}
 		else
 		{
-			/* wait for event and retry */
-			eErrorWait = bHoldBridgeLock ? OSEventObjectWaitAndHoldBridgeLock(hOSEvent) : OSEventObjectWait(hOSEvent);
-			if (eErrorWait != PVRSRV_OK  &&  eErrorWait != PVRSRV_ERROR_TIMEOUT)
-			{
-				PVR_DPF((PVR_DBG_WARNING,"PVRSRVWaitForValueKM: Waiting for value failed with error %d. Expected 0x%x but found 0x%x (Mask 0x%08x). Retrying",
-							eErrorWait,
-							ui32Value,
-							ui32ActualValue,
-							ui32Mask));
-			}
+			udelay(50);
 		}
-	} END_LOOP_UNTIL_TIMEOUT();
-
-	OSEventObjectClose(hOSEvent);
+	} while(LoopCount++ < 10000);
 
 	/* One last check in case the object wait ended after the loop timeout... */
-	if (eError != PVRSRV_OK  &&  (OSReadDeviceMem32(pui32LinMemAddr) & ui32Mask) == ui32Value)
+	ui32ActualValue = (OSReadDeviceMem32(pui32LinMemAddr) & ui32Mask);
+	if (eError != PVRSRV_OK  && ui32ActualValue == ui32Value)
 	{
 		eError = PVRSRV_OK;
+	}
+	else if (eError != PVRSRV_OK && ui32ActualValue != ui32Value)
+	{
+	       PVR_DPF((PVR_DBG_ERROR, "PVRSRVWaitForValueKM: Waiting for value. Expected 0x%x but found 0x%x (Mask 0x%08x). Loop: %d, ABORT",
+	                               ui32Value, ui32ActualValue,
+	                               ui32Mask, LoopCount));
 	}
 
 	/* Provide event timeout information to aid the Device Watchdog Thread... */

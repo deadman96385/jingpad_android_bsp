@@ -823,7 +823,7 @@ static void isp_path_done(enum isp_scl_id path_id, void *isp_handle)
 				return;
 			}
 			buf_desc->output_frame_count++;
-			memset(tmp_frame, 0, sizeof(struct camera_frame));
+			tmp_frame->yaddr_vir = 0;
 		}
 
 		ret = isp_frame_dequeue(&path->frame_queue, &frame);

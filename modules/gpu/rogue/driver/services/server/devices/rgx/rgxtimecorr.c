@@ -475,7 +475,7 @@ static void _RGXGPUFreqCalibrationCalculate(PVRSRV_DEVICE_NODE *psDeviceNode,
                                             RGX_GPU_DVFS_TABLE *psGpuDVFSTable,
                                             RGXTIMECORR_EVENT   eEvent)
 {
-#if !defined(DISABLE_GPU_FREQUENCY_CALIBRATION)
+#if !defined(DISABLE_GPU_FREQUENCY_CALIBRATION) && !defined(SUPPORT_PDVFS)
 	GPU_FREQ_TRACKING_DATA *psTrackingData;
 	IMG_UINT32 ui32EstCoreClockSpeed, ui32PrevCoreClockSpeed;
 	IMG_INT32  i32Diff;

@@ -149,6 +149,18 @@ struct slice_afbc_store_info {
 	uint32_t slice_offset;
 };
 
+struct slice_ifbc_store_info {
+	uint32_t slice_mode_en;
+	uint32_t fbc_tile_number;
+	uint32_t fbc_size_in_ver;
+	uint32_t fbc_size_in_hor;
+	struct slice_border_info border;
+	uint32_t fbc_y_tile_addr_init_x256;
+	uint32_t fbc_c_tile_addr_init_x256;
+	uint32_t fbc_y_header_addr_init;
+	uint32_t fbc_c_header_addr_init;
+};
+
 struct slice_fetch_info {
 	struct img_size size;
 	struct img_addr addr;
@@ -279,7 +291,7 @@ struct slice_noisefilter_info {
 
 struct slice_noisefilter_mode_info {
 	uint32_t seed_for_mode1;
-	uint32_t shape_mode;
+	uint32_t yrandom_mode;
 };
 
 struct isp_slice_desc {
@@ -297,7 +309,8 @@ struct isp_slice_desc {
 	struct slice_fetch_info slice_fetch;
 	struct slice_fbd_raw_info slice_fbd_raw;
 	struct slice_store_info slice_store[ISP_SPATH_NUM];
-	struct slice_afbc_store_info slice_afbc_store[AFBC_PATH_NUM];
+	struct slice_afbc_store_info slice_afbc_store[FBC_PATH_NUM];
+	struct slice_ifbc_store_info slice_ifbc_store[FBC_PATH_NUM];
 	struct slice_scaler_info slice_scaler[ISP_SPATH_NUM];
 	struct slice_thumbscaler_info slice_thumbscaler;
 	struct slice_nlm_info slice_nlm;
@@ -341,6 +354,9 @@ int isp_cfg_slice_store_info(
 		void *cfg_in, struct isp_slice_context *slc_ctx);
 
 int isp_cfg_slice_afbc_store_info(
+		void *cfg_in, struct isp_slice_context *slc_ctx);
+
+int isp_cfg_slice_ifbc_store_info(
 		void *cfg_in, struct isp_slice_context *slc_ctx);
 
 int isp_cfg_slice_3dnr_info(

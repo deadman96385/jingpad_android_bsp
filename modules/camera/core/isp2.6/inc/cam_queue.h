@@ -19,6 +19,7 @@
 
 #include "cam_types.h"
 #include "cam_buf.h"
+#include "isp_interface.h"
 
 #define CAM_EMP_Q_LEN_INC		16
 #define CAM_EMP_Q_LEN_MAX		1024
@@ -61,8 +62,32 @@ struct camera_frame {
 	struct camera_buf buf;
 };
 
+/**
+ * @list: for support en/dequeue operation
+ * @state: current stream state
+ * @buf_type: isp output buffer source
+ * @data_src: isp input frame source
+ * @in @in_crop @out @out_crop: size info
+ *.@cur_cnt: current frame cout in one complete stream
+ * @max_cnt: one complete stream total frame count
+ * @in_fmt: input frame format
+*/
+struct isp_stream_ctrl {
+	struct list_head list;
+	enum isp_stream_state state;
+	enum isp_stream_buf_type buf_type[ISP_SPATH_NUM];
+	enum isp_stream_data_src data_src;
+	enum isp_stream_frame_type frame_type;
+	struct img_size in;
+	struct img_trim in_crop;
+	struct img_size out[ISP_SPATH_NUM];
+	struct img_trim out_crop[ISP_SPATH_NUM];
+	uint32_t cur_cnt;
+	uint32_t max_cnt;
+	uint32_t in_fmt;
+};
+
 struct camera_queue {
-	uint32_t type;
 	uint32_t state;
 	uint32_t max;
 	uint32_t cnt;
@@ -71,19 +96,76 @@ struct camera_queue {
 	void (*destroy)(void *param);
 };
 
-int camera_enqueue(struct camera_queue *q, struct camera_frame *pframe);
-struct camera_frame *camera_dequeue(struct camera_queue *q);
+#define camera_dequeue(queue, type, member) ({		\
+	unsigned long __flags;				\
+	struct camera_queue *__q = (queue);		\
+	type *__node = NULL;				\
+	if (__q != NULL) {					\
+		spin_lock_irqsave(&__q->lock, __flags);	\
+		if ((!list_empty(&__q->head)) && (__q->cnt)	\
+			&& (__q->state != CAM_Q_CLEAR)) {\
+			__node = list_first_entry(&__q->head, type, member);\
+			if (__node)				\
+				list_del(&__node->member);	\
+			__q->cnt--;				\
+		}						\
+		spin_unlock_irqrestore(&__q->lock, __flags);	\
+	}	\
+	__node;	\
+})
+
+#define camera_dequeue_peek(queue, type, member) ({		\
+	unsigned long __flags;				\
+	struct camera_queue *__q = (queue);		\
+	type *__node = NULL;				\
+	if (__q != NULL) {					\
+		spin_lock_irqsave(&__q->lock, __flags);	\
+		if ((!list_empty(&__q->head)) && (__q->cnt)	\
+			&& (__q->state != CAM_Q_CLEAR)) {\
+			__node = list_first_entry(&__q->head, type, member);\
+		}						\
+		spin_unlock_irqrestore(&__q->lock, __flags);	\
+	}	\
+	__node;	\
+})
+
+#define camera_queue_clear(queue, type, member) ({		\
+	unsigned long __flags;				\
+	struct camera_queue *__q = (queue);		\
+	type *__node = NULL;				\
+	if (__q != NULL) {					\
+		spin_lock_irqsave(&__q->lock, __flags);	\
+		do {	\
+			if ((list_empty(&__q->head)) || (__q->cnt == 0))	\
+				break;	\
+			__node = list_first_entry(&__q->head, type, member);\
+			if (__node == NULL)		\
+				break;			\
+			list_del(&__node->member);	\
+			__q->cnt--;			\
+			if (__q->destroy) {			\
+				spin_unlock_irqrestore(&__q->lock, __flags);	\
+				__q->destroy(__node);	\
+				spin_lock_irqsave(&__q->lock, __flags);	\
+			}				\
+		} while (1);	\
+		__q->cnt = 0;	\
+		__q->max = 0;	\
+		__q->state = CAM_Q_CLEAR;	\
+		__q->destroy = NULL;	\
+		INIT_LIST_HEAD(&__q->head);	\
+		spin_unlock_irqrestore(&__q->lock, __flags);		\
+	}	\
+})
+
+int camera_enqueue(struct camera_queue *q, struct list_head *list);
 struct camera_frame *camera_dequeue_tail(struct camera_queue *q);
 struct camera_frame *
 camera_dequeue_if(struct camera_queue *q,
 		  bool (*filter)(struct camera_frame *, void *),
 		  void *data);
-struct camera_frame *camera_dequeue_peek(struct camera_queue *q);
-
 int camera_queue_init(struct camera_queue *q,
-			uint32_t max, uint32_t type,
-			void (*cb_func)(void *));
-int camera_queue_clear(struct camera_queue *q);
+			uint32_t max, void (*cb_func)(void *));
 uint32_t camera_queue_cnt(struct camera_queue *q);
 int camera_queue_same_frame(struct camera_queue *q0, struct camera_queue *q1,
 			struct camera_frame **pf0, struct camera_frame **pf1,
@@ -92,5 +174,9 @@ int camera_queue_same_frame(struct camera_queue *q0, struct camera_queue *q1,
 struct camera_frame *get_empty_frame(void);
 int put_empty_frame(struct camera_frame *pframe);
 void free_empty_frame(void *param);
+
+struct isp_stream_ctrl *get_empty_state(void);
+void put_empty_state(void *param);
+void free_empty_state(void *param);
 
 #endif /* _CAM_QUEUE_H_ */

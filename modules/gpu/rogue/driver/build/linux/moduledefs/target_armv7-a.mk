@@ -79,6 +79,10 @@ SYSTEM_LIBRARY_LIBC  := $(strip $(call path-to-system-library,$(_lib),c))
 SYSTEM_LIBRARY_LIBM  := $(strip $(call path-to-system-library,$(_lib),m))
 SYSTEM_LIBRARY_LIBDL := $(strip $(call path-to-system-library,$(_lib),dl))
 
+ifeq ($(USE_LLD),1)
+ MODULE_LDFLAGS += -fuse-ld=lld
+endif
+
 MODULE_EXE_LDFLAGS += $(SYSTEM_LIBRARY_LIBC)
 
 ifeq ($(SUPPORT_ARC_PLATFORM),)
@@ -115,7 +119,9 @@ endif
 
 # CLDNN needs libneuralnetworks_common.a
 MODULE_LIBRARY_FLAGS_SUBST += \
- neuralnetworks_common:$(_obj)/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a
+ neuralnetworks_common:$(_obj)/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a \
+ BlobCache:$(_obj)/STATIC_LIBRARIES/libBlobCache_intermediates/libBlobCache.a  \
+ nnCache:$(_obj)/STATIC_LIBRARIES/lib_nnCache_intermediates/lib_nnCache.a
 
 # Gralloc and hwcomposer depend on libdrm
 MODULE_LIBRARY_FLAGS_SUBST += \
@@ -158,7 +164,9 @@ MODULE_INCLUDE_FLAGS := \
 MODULE_LIBRARY_FLAGS_SUBST := \
  art:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/system/lib/libart.so \
  RScpp:$(NDK_ROOT)/toolchains/renderscript/prebuilt/$(HOST_OS)-$(HOST_ARCH)/platform/arm/libRScpp_static.a \
- neuralnetworks_common:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj$(if $(MULTIARCH),_arm,)/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a
+ neuralnetworks_common:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj$(if $(MULTIARCH),_arm,)/STATIC_LIBRARIES/libneuralnetworks_common_intermediates/libneuralnetworks_common.a \
+ BlobCache:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj$(if $(MULTIARCH),_arm,)/STATIC_LIBRARIES/libBlobCache_intermediates/libBlobCache.a \
+ nnCache:$(TARGET_ROOT)/product/$(TARGET_DEVICE)/obj$(if $(MULTIARCH),_arm,)/STATIC_LIBRARIES/lib_nnCache_intermediates/lib_nnCache.a
 
 # Unittests dependant on libc++_static
 ifneq (,$(findstring $(THIS_MODULE),$(PVR_UNITTESTS_APK)))

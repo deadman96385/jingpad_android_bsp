@@ -642,11 +642,6 @@ int sprd_sensor_set_mclk(unsigned int *saved_clk, unsigned int set_mclk,
 
 	if (set_mclk == 0) {
 		if (p_dev->mclk_freq) {
-			if (p_dev->sensor_eb)
-				clk_disable_unprepare(p_dev->sensor_eb);
-			else if (p_dev->ccir_eb)
-				clk_disable_unprepare(p_dev->ccir_eb);
-
 			if (p_dev->sensor_clk) {
 				ret = clk_set_parent(p_dev->sensor_clk,
 					       p_dev->sensor_clk_default);
@@ -654,6 +649,7 @@ int sprd_sensor_set_mclk(unsigned int *saved_clk, unsigned int set_mclk,
 					pr_err("set_parent failed\n");
 					goto exit;
 				}
+				pr_err("set_mclk 0");
 				ret = clk_set_rate(p_dev->sensor_clk,
 					     p_dev->sensor_clk_default_rate);
 				if (ret) {
@@ -662,6 +658,11 @@ int sprd_sensor_set_mclk(unsigned int *saved_clk, unsigned int set_mclk,
 				}
 				clk_disable_unprepare(p_dev->sensor_clk);
 			}
+			if (p_dev->sensor_eb)
+				clk_disable_unprepare(p_dev->sensor_eb);
+			else if (p_dev->ccir_eb)
+				clk_disable_unprepare(p_dev->ccir_eb);
+
 		}
 	} else if (p_dev->mclk_freq != set_mclk) {
 		if (set_mclk > SPRD_SENSOR_MAX_MCLK)
@@ -670,7 +671,7 @@ int sprd_sensor_set_mclk(unsigned int *saved_clk, unsigned int set_mclk,
 		if (p_dev->sensor_eb && p_dev->sensor_clk) {
 			ret = select_sensor_mclk(set_mclk, &clk_src_name,
 						 &clk_div);
-			pr_debug("clk_src_name %s\n", clk_src_name);
+			pr_err("clk_src_name %s\n", clk_src_name);
 			if (ret != 0) {
 				pr_err("select sensor mclk error\n");
 				goto exit;
@@ -684,6 +685,7 @@ int sprd_sensor_set_mclk(unsigned int *saved_clk, unsigned int set_mclk,
 			}
 			pr_debug("set_mclk %d sensor_id %d\n",
 				set_mclk, sensor_id);
+			clk_prepare_enable(p_dev->sensor_eb);
 
 			ret = clk_set_parent(p_dev->sensor_clk, clk_parent);
 			if (ret) {
@@ -696,7 +698,6 @@ int sprd_sensor_set_mclk(unsigned int *saved_clk, unsigned int set_mclk,
 				pr_err("set rate failed\n");
 				goto exit;
 			}
-			clk_prepare_enable(p_dev->sensor_eb);
 		} else if (p_dev->ccir_eb && p_dev->sensor_clk) {
 			clk_prepare_enable(p_dev->ccir_eb);
 		}
@@ -997,6 +998,270 @@ int sprd_sensor_write_reg(int sensor_id, struct sensor_reg_bits_tag *pReg)
 	return ret;
 }
 
+int sprd_sensor_burst_write_samsung(struct sensor_reg_tag *p_reg_table,
+				int sensor_id, uint32_t init_table_size,
+				uint32_t reg_bits)
+{
+	int ret = 0;
+	uint32_t i = 0;
+	uint32_t written_num = 0;
+	uint32_t wr_num_once = 0;
+	uint8_t *p_reg_val_tmp = 0;
+	struct i2c_msg msg_w;
+	int cnt = 0;
+	struct sprd_sensor_mem_tag p_mem = {0};
+	struct sprd_sensor_dev_info_tag *p_dev = NULL;
+	struct sensor_reg_bits_tag reg_bit;
+
+	p_dev = sprd_sensor_get_dev_context(sensor_id);
+	if (!p_dev || !p_dev->i2c_info) {
+		pr_err("%s, error\n", __func__);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = sprd_sensor_malloc(&p_mem,
+			init_table_size * sizeof(struct sensor_reg_tag));
+	if (ret) {
+		pr_err("%s, error\n", __func__);
+		goto exit;
+	}
+	p_reg_val_tmp = (uint8_t *) (p_mem.buf_ptr);
+
+	while(written_num < init_table_size) {
+		if (0x6004 == p_reg_table[written_num].reg_addr) {
+			wr_num_once = 0;
+			//first write , burst start signal& select page & set base-addr
+			for(i = 0; i < 3; i++) {
+				reg_bit.reg_addr = p_reg_table[written_num].reg_addr;
+				reg_bit.reg_value = p_reg_table[written_num].reg_value;
+				reg_bit.reg_bits = reg_bits;
+				ret = sprd_sensor_write_reg(sensor_id, &reg_bit);
+				if (ret) {
+					pr_err("sprd_sensor_burst_write_samsung failed!\n");
+					goto exit;
+				}
+				written_num ++;
+			}
+			//second write, burst reg
+			while(p_reg_table[written_num].reg_addr != 0x6004) {
+				if(0 == wr_num_once) {
+						p_reg_val_tmp[wr_num_once++] =
+							(uint8_t) ((p_reg_table[written_num].reg_addr >> 8) & 0xff);
+						p_reg_val_tmp[wr_num_once++] =
+							(uint8_t) (p_reg_table[written_num].reg_addr & 0xff);
+						p_reg_val_tmp[wr_num_once++] =
+							(uint8_t) ((p_reg_table[written_num].reg_value >> 8) & 0xff);
+						p_reg_val_tmp[wr_num_once++] =
+							(uint8_t) (p_reg_table[written_num].reg_value & 0xff);
+				} else {
+						p_reg_val_tmp[wr_num_once++] =
+							(uint8_t) ((p_reg_table[written_num].reg_value >> 8) & 0xff);
+						p_reg_val_tmp[wr_num_once++] =
+							(uint8_t) (p_reg_table[written_num].reg_value & 0xff);
+				}
+				written_num ++;
+			}
+
+			for(i = 0; i < SPRD_SENSOR_I2C_OP_TRY_NUM; i++) {
+				msg_w.addr = p_dev->i2c_info->addr;
+				msg_w.flags = 0;
+				msg_w.buf = p_reg_val_tmp;
+				msg_w.len = wr_num_once;
+				cnt = i2c_transfer(p_dev->i2c_info->adapter, &msg_w, 1);
+				if (cnt != SPRD_SENSOR_I2C_WRITE_SUCCESS_CNT) {
+					if(i < (SPRD_SENSOR_I2C_OP_TRY_NUM - 1)) {
+						continue;
+					}
+					pr_err("sprd_sensor_burst_write_samsung failed!\n");
+					ret = -EINVAL;
+					goto exit;
+				} else {
+					break;
+				}
+			}
+
+			//last write, burst stop signal
+			reg_bit.reg_addr = p_reg_table[written_num].reg_addr;
+			reg_bit.reg_value = p_reg_table[written_num].reg_value;
+			reg_bit.reg_bits = reg_bits;
+			ret = sprd_sensor_write_reg(sensor_id, &reg_bit);
+			if (ret) {
+				pr_err("sprd_sensor_burst_write_samsung failed!\n");
+				goto exit;
+			}
+			written_num ++;
+		} else {
+			reg_bit.reg_addr = p_reg_table[written_num].reg_addr;
+			reg_bit.reg_value = p_reg_table[written_num].reg_value;
+			reg_bit.reg_bits = reg_bits;
+			ret = sprd_sensor_write_reg(sensor_id, &reg_bit);
+			if (ret) {
+				pr_err("sprd_sensor_burst_write_samsung failed!\n");
+				goto exit;
+			}
+			written_num ++;
+		}
+	}
+
+exit:
+	if (p_mem.buf_ptr)
+		sprd_sensor_free(&p_mem);
+
+	return ret;
+}
+
+int sprd_sensor_burst_write_reg16_val8(struct sensor_reg_tag *p_reg_table,
+				int sensor_id, uint32_t init_table_size,
+				uint32_t reg_bits)
+{
+	int ret = 0;
+	uint32_t i = 0;
+	uint32_t written_num = 0;
+	uint32_t wr_num_once = 0;
+	uint8_t *p_reg_val_tmp = 0;
+	struct i2c_msg msg_w;
+	int cnt = 0;
+	struct sprd_sensor_mem_tag p_mem = {0};
+	struct sprd_sensor_dev_info_tag *p_dev = NULL;
+
+	p_dev = sprd_sensor_get_dev_context(sensor_id);
+	if (!p_dev || !p_dev->i2c_info) {
+		pr_err("%s, error\n", __func__);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = sprd_sensor_malloc(&p_mem,
+			init_table_size * sizeof(struct sensor_reg_tag));
+	if (ret) {
+		pr_err("%s, error\n", __func__);
+		goto exit;
+	}
+	p_reg_val_tmp = (uint8_t *) (p_mem.buf_ptr);
+
+	while (written_num < init_table_size) {
+		wr_num_once = 0;
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) ((p_reg_table[written_num].reg_addr >> 8) & 0xff);
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) (p_reg_table[written_num].reg_addr & 0xff);
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) (p_reg_table[written_num].reg_value & 0xff);
+		written_num++;
+
+		while ((written_num < init_table_size) &&
+			(p_reg_table[written_num].reg_addr ==
+			p_reg_table[written_num - 1].reg_addr + 1)) {
+			p_reg_val_tmp[wr_num_once++] =
+				(uint8_t) (p_reg_table[written_num].reg_value & 0xff);
+			written_num++;
+		}
+
+		for(i = 0; i < SPRD_SENSOR_I2C_OP_TRY_NUM; i++) {
+			msg_w.addr = p_dev->i2c_info->addr;
+			msg_w.flags = 0;
+			msg_w.buf = p_reg_val_tmp;
+			msg_w.len = wr_num_once;
+			cnt = i2c_transfer(p_dev->i2c_info->adapter, &msg_w, 1);
+			if (cnt != SPRD_SENSOR_I2C_WRITE_SUCCESS_CNT) {
+				if(i < (SPRD_SENSOR_I2C_OP_TRY_NUM - 1)) {
+					continue;
+				}
+				pr_err("sprd_sensor_burst_write_common failed!\n");
+				ret = -EINVAL;
+				goto exit;
+			} else {
+				break;
+			}
+		}
+
+	}
+exit:
+	if (p_mem.buf_ptr)
+		sprd_sensor_free(&p_mem);
+
+	return ret;
+}
+
+int sprd_sensor_burst_write_reg16_val16(struct sensor_reg_tag *p_reg_table,
+				int sensor_id, uint32_t init_table_size,
+				uint32_t reg_bits)
+{
+	int ret = 0;
+	uint32_t i = 0;
+	uint32_t written_num = 0;
+	uint32_t wr_num_once = 0;
+	uint8_t *p_reg_val_tmp = 0;
+	struct i2c_msg msg_w;
+	int cnt = 0;
+	struct sprd_sensor_mem_tag p_mem = {0};
+	struct sprd_sensor_dev_info_tag *p_dev = NULL;
+
+	p_dev = sprd_sensor_get_dev_context(sensor_id);
+	if (!p_dev || !p_dev->i2c_info) {
+		pr_err("%s, error\n", __func__);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	ret = sprd_sensor_malloc(&p_mem,
+			init_table_size * sizeof(struct sensor_reg_tag));
+	if (ret) {
+		pr_err("%s, error\n", __func__);
+		goto exit;
+	}
+	p_reg_val_tmp = (uint8_t *) (p_mem.buf_ptr);
+
+	while (written_num < init_table_size) {
+		wr_num_once = 0;
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) ((p_reg_table[written_num].reg_addr >> 8) & 0xff);
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) (p_reg_table[written_num].reg_addr & 0xff);
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) ((p_reg_table[written_num].reg_value >> 8) & 0xff);
+		p_reg_val_tmp[wr_num_once++] =
+			(uint8_t) (p_reg_table[written_num].reg_value & 0xff);
+		written_num++;
+
+		while ((written_num < init_table_size) &&
+			(p_reg_table[written_num].reg_addr ==
+			p_reg_table[written_num - 1].reg_addr + 2)) {
+			p_reg_val_tmp[wr_num_once++] =
+				(uint8_t) ((p_reg_table[written_num].reg_value >> 8) & 0xff);
+			p_reg_val_tmp[wr_num_once++] =
+				(uint8_t) (p_reg_table[written_num].reg_value & 0xff);
+			written_num++;
+		}
+
+		for(i = 0; i < SPRD_SENSOR_I2C_OP_TRY_NUM; i++) {
+			msg_w.addr = p_dev->i2c_info->addr;
+			msg_w.flags = 0;
+			msg_w.buf = p_reg_val_tmp;
+			msg_w.len = wr_num_once;
+			cnt = i2c_transfer(p_dev->i2c_info->adapter, &msg_w, 1);
+			if (cnt != SPRD_SENSOR_I2C_WRITE_SUCCESS_CNT) {
+				if(i < (SPRD_SENSOR_I2C_OP_TRY_NUM - 1)) {
+					continue;
+				}
+				pr_err("sprd_sensor_burst_write_common failed!\n");
+				ret = -EINVAL;
+				goto exit;
+			} else {
+				break;
+			}
+		}
+
+	}
+exit:
+	if (p_mem.buf_ptr)
+		sprd_sensor_free(&p_mem);
+
+	return ret;
+}
+
+
 int sprd_sensor_write_regtab(struct sensor_reg_tab_tag *p_reg_table,
 				int sensor_id)
 {
@@ -1027,7 +1292,9 @@ int sprd_sensor_write_regtab(struct sensor_reg_tab_tag *p_reg_table,
 	sensor_reg_ptr = (struct sensor_reg_tag *)pBuff;
 
 	do_gettimeofday(&time1);
-	if (p_reg_table->burst_mode == 0) {
+
+	switch (p_reg_table->burst_mode) {
+	case SPRD_SENSOR_I2C_SINGLE_WRITE: {
 		for (i = 0; i < cnt; i++) {
 			reg_bit.reg_addr = sensor_reg_ptr[i].reg_addr;
 			reg_bit.reg_value = sensor_reg_ptr[i].reg_value;
@@ -1038,11 +1305,59 @@ int sprd_sensor_write_regtab(struct sensor_reg_tab_tag *p_reg_table,
 				goto exit;
 			}
 		}
-	} else if (p_reg_table->burst_mode == SPRD_SENSOR_I2C_BUST_NB) {
-		ret = sprd_sensor_burst_write_init(sensor_reg_ptr,
+		break;
+	}
+
+	case SPRD_SENSOR_I2C_BURST_SAMSUNG: {
+		ret = sprd_sensor_burst_write_samsung(sensor_reg_ptr,
 						sensor_id,
 						p_reg_table->reg_count,
 						p_reg_table->reg_bits);
+		if (ret) {
+			pr_err("sprd_sensor_burst_write_samsung failed\n");
+			goto exit;
+		}
+		break;
+	}
+
+	case SPRD_SENSOR_I2C_BURST_REG16_VAL8: {
+		ret = sprd_sensor_burst_write_reg16_val8(sensor_reg_ptr,
+						sensor_id,
+						p_reg_table->reg_count,
+						p_reg_table->reg_bits);
+		if (ret) {
+			pr_err("sprd_sensor_burst_write_common failed\n");
+			goto exit;
+		}
+		break;
+	}
+
+	case SPRD_SENSOR_I2C_BURST_REG16_VAL16: {
+		ret = sprd_sensor_burst_write_reg16_val16(sensor_reg_ptr,
+						sensor_id,
+						p_reg_table->reg_count,
+						p_reg_table->reg_bits);
+		if (ret) {
+			pr_err("sprd_sensor_burst_write_common failed\n");
+			goto exit;
+		}
+		break;
+	}
+
+	default: {
+		pr_err("invalid burst mode, turn to single write mode\n");
+		for (i = 0; i < cnt; i++) {
+			reg_bit.reg_addr = sensor_reg_ptr[i].reg_addr;
+			reg_bit.reg_value = sensor_reg_ptr[i].reg_value;
+			reg_bit.reg_bits = p_reg_table->reg_bits;
+			ret = sprd_sensor_write_reg(sensor_id, &reg_bit);
+			if (ret) {
+				pr_err("SENSOR WRITE REG TAB write reg fail\n");
+				goto exit;
+			}
+		}
+		break;
+	}
 	}
 exit:
 	if (p_mem.buf_ptr)
@@ -1080,7 +1395,8 @@ int sprd_sensor_k_write_regtab(struct sensor_reg_tab_tag *p_reg_table,
 
 	sensor_reg_ptr = (struct sensor_reg_tag *)pBuff;
 
-	if (p_reg_table->burst_mode == 0) {
+	switch (p_reg_table->burst_mode) {
+	case SPRD_SENSOR_I2C_SINGLE_WRITE: {
 		for (i = 0; i < cnt; i++) {
 			reg_bit.reg_addr = sensor_reg_ptr[i].reg_addr;
 			reg_bit.reg_value = sensor_reg_ptr[i].reg_value;
@@ -1091,11 +1407,59 @@ int sprd_sensor_k_write_regtab(struct sensor_reg_tab_tag *p_reg_table,
 				goto exit;
 			}
 		}
-	} else if (p_reg_table->burst_mode == SPRD_SENSOR_I2C_BUST_NB) {
-		ret = sprd_sensor_burst_write_init(sensor_reg_ptr,
+		break;
+	}
+
+	case SPRD_SENSOR_I2C_BURST_SAMSUNG: {
+		ret = sprd_sensor_burst_write_samsung(sensor_reg_ptr,
 						sensor_id,
 						p_reg_table->reg_count,
 						p_reg_table->reg_bits);
+		if (ret) {
+			pr_err("sprd_sensor_burst_write_samsung failed\n");
+			goto exit;
+		}
+		break;
+	}
+
+	case SPRD_SENSOR_I2C_BURST_REG16_VAL8: {
+		ret = sprd_sensor_burst_write_reg16_val8(sensor_reg_ptr,
+						sensor_id,
+						p_reg_table->reg_count,
+						p_reg_table->reg_bits);
+		if (ret) {
+			pr_err("sprd_sensor_burst_write_common failed\n");
+			goto exit;
+		}
+		break;
+	}
+
+	case SPRD_SENSOR_I2C_BURST_REG16_VAL16: {
+		ret = sprd_sensor_burst_write_reg16_val16(sensor_reg_ptr,
+						sensor_id,
+						p_reg_table->reg_count,
+						p_reg_table->reg_bits);
+		if (ret) {
+			pr_err("sprd_sensor_burst_write_common failed\n");
+			goto exit;
+		}
+		break;
+	}
+
+	default: {
+		pr_err("invalid burst mode, turn to single write mode\n");
+		for (i = 0; i < cnt; i++) {
+			reg_bit.reg_addr = sensor_reg_ptr[i].reg_addr;
+			reg_bit.reg_value = sensor_reg_ptr[i].reg_value;
+			reg_bit.reg_bits = p_reg_table->reg_bits;
+			ret = sprd_sensor_write_reg(sensor_id, &reg_bit);
+			if (ret) {
+				pr_err("SENSOR WRITE REG TAB write reg fail\n");
+				goto exit;
+			}
+		}
+		break;
+	}
 	}
 exit:
 	if (p_mem.buf_ptr)
@@ -1105,121 +1469,6 @@ exit:
 		ret, cnt,
 		(uint32_t) ((time2.tv_sec - time1.tv_sec) * 1000000 +
 			(time2.tv_usec - time1.tv_usec)));
-	return ret;
-}
-
-int sprd_sensor_burst_write_init(struct sensor_reg_tag *p_reg_table,
-				int sensor_id, uint32_t init_table_size,
-				uint32_t reg_bits)
-{
-	int ret = 0;
-	uint32_t i = 0;
-	uint32_t written_num = 0;
-	uint16_t wr_reg = 0;
-	uint16_t wr_val = 0;
-	uint32_t wr_num_once = 0;
-	uint8_t *p_reg_val_tmp = 0;
-	struct i2c_msg msg_w;
-	struct i2c_client *i2c_client = NULL;
-	int cnt = 0;
-	struct sprd_sensor_mem_tag p_mem = {0};
-	struct sprd_sensor_dev_info_tag *p_dev = NULL;
-	uint32_t index = 0;
-
-	p_dev = sprd_sensor_get_dev_context(sensor_id);
-	if (!p_dev) {
-		pr_err("%s, error\n", __func__);
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	i2c_client = p_dev->i2c_info;
-
-	if (i2c_client == 0) {
-		pr_err("SENSOR: burst w Init err, i2c_clnt NULL!.\n");
-		ret = -EINVAL;
-		goto exit;
-	}
-	ret = sprd_sensor_malloc(&p_mem,
-			init_table_size * 2 * sizeof(uint16_t) + 16);
-	if (ret) {
-		pr_err("_sensor_burst_write_init ERROR:\n");
-		goto exit;
-	} else {
-		p_reg_val_tmp = (uint8_t *) (p_mem.buf_ptr);
-	}
-
-	if (SPRD_SENSOR_I2C_REG_16BIT ==
-		(reg_bits & SPRD_SENSOR_I2C_REG_16BIT))
-		index += 2;
-	else
-		index++;
-
-	if (SPRD_SENSOR_I2C_VAL_16BIT ==
-		(reg_bits & SPRD_SENSOR_I2C_VAL_16BIT))
-		index += 2;
-	else
-		index++;
-
-	while (written_num < init_table_size) {
-		for (i = written_num, wr_num_once = 0;
-		     i < init_table_size; i++) {
-			wr_reg = p_reg_table[i].reg_addr;
-			wr_val = p_reg_table[i].reg_value;
-			if (wr_reg == SPRD_SENSOR_WRITE_DELAY)
-				break;
-
-			p_reg_val_tmp[wr_num_once++] = wr_reg&0xff;
-			if (SPRD_SENSOR_I2C_REG_16BIT ==
-				(reg_bits & SPRD_SENSOR_I2C_REG_16BIT))
-				p_reg_val_tmp[wr_num_once++] =
-						(wr_reg&0xff00)>>8;
-
-			p_reg_val_tmp[wr_num_once++] = wr_val&0xff;
-			if (SPRD_SENSOR_I2C_VAL_16BIT ==
-				(reg_bits & SPRD_SENSOR_I2C_VAL_16BIT))
-				p_reg_val_tmp[wr_num_once++] =
-						(wr_val&0xff00)>>8;
-		}
-
-		if (wr_num_once == 0) {
-			if (wr_val >= 20)
-				msleep(wr_val);
-			else
-				mdelay(wr_val);
-			written_num += 1;
-		} else {
-			msg_w.addr = i2c_client->addr;
-			msg_w.flags = 0;
-			msg_w.buf = p_reg_val_tmp;
-			msg_w.len = (uint32_t) (wr_num_once);
-			cnt = i2c_transfer(i2c_client->adapter, &msg_w, 1);
-			if (cnt != SPRD_SENSOR_I2C_WRITE_SUCCESS_CNT) {
-				pr_err("SENSOR: s err, val\n"
-					"{0x%x 0x%x}\n"
-					"{0x%x 0x%x}\n"
-					"{0x%x 0x%x}\n"
-					"{0x%x 0x%x}\n"
-					"{0x%x 0x%x}\n"
-					"{0x%x 0x%x}\n",
-				p_reg_val_tmp[0], p_reg_val_tmp[1],
-				p_reg_val_tmp[2], p_reg_val_tmp[3],
-				p_reg_val_tmp[4], p_reg_val_tmp[5],
-				p_reg_val_tmp[6], p_reg_val_tmp[7],
-				p_reg_val_tmp[8], p_reg_val_tmp[9],
-				p_reg_val_tmp[10], p_reg_val_tmp[11]);
-				pr_err("SENSOR: i2c w once err\n");
-				ret = -EINVAL;
-				goto exit;
-			}
-			written_num += wr_num_once/index;
-		}
-	}
-exit:
-	if (p_mem.buf_ptr)
-		sprd_sensor_free(&p_mem);
-	pr_debug("SENSOR: burst w Init ret %d\n", ret);
-
 	return ret;
 }
 

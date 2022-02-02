@@ -288,8 +288,8 @@ struct endian_field {
 };
 
 /* DCAM2 registers define, the other same as DCAM0 */
-#define DCAM2_PATH0_BASE_WADDR		(0x0080UL)
-#define DCAM2_PATH1_BASE_WADDR		(0x0084UL)
+#define DCAM2_PATH1_BASE_WADDR		(0x0010UL)
+#define DCAM2_PATH0_BASE_WADDR		(0x0020UL)
 #define DCAM2_IMAGE_CONTROL             (0x0114UL)
 #define DCAM2_MIPI_CAP_START            (0x010CUL)
 #define DCAM2_MIPI_CAP_END              (0x0110UL)

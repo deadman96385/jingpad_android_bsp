@@ -18,10 +18,10 @@
 #include "sprd_img.h"
 
 #ifndef MAX
-#define MAX(a, b) ((a > b) ? a : b)
+#define MAX(__a, __b) (((__a) > (__b)) ? (__a) : (__b))
 #endif
 #ifndef MIN
-#define MIN(a, b) ((a < b) ? a : b)
+#define MIN(__a, __b) (((__a) < (__b)) ? (__a) : (__b))
 #endif
 
 #define ZOOM_RATIO_DEFAULT     1000
@@ -63,6 +63,7 @@ struct cam_mem_dbg_info {
 	atomic_t ion_dma_cnt;
 	atomic_t iommu_map_cnt[6];
 	atomic_t empty_frm_cnt;
+	atomic_t empty_state_cnt;
 };
 extern struct cam_mem_dbg_info *g_mem_dbg;
 
@@ -150,7 +151,7 @@ enum cam_zoom_type {
 	ZOOM_TYPEMAX,
 };
 
-enum cam_raw_format{
+enum cam_raw_format {
 	CAM_RAW_PACK10 = 0x00,
 	CAM_RAW_HALF10 = 0x01,
 	CAM_RAW_HALF14 = 0x02,
@@ -226,8 +227,6 @@ enum isp_cb_type {
 	ISP_CB_DEV_ERR,
 	ISP_CB_MMU_ERR,
 	ISP_CB_STATIS_DONE,
-	ISP_CB_SET_SUPERZOOM_COMPLETE,
-	ISP_CB_GET_SUPERZOOM_DST,
 };
 
 enum dcam_cb_type {
@@ -264,6 +263,7 @@ struct compressed_addr {
 };
 
 extern struct camera_queue *g_empty_frm_q;
+extern struct camera_queue *g_empty_state_q;
 
 typedef int(*isp_dev_callback)(enum isp_cb_type type, void *param,
 				void *priv_data);

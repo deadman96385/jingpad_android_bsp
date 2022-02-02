@@ -20,9 +20,14 @@ KO_MODULE_SRC  :=
 KO_MODULE_SRC += \
 	$(KO_MODULE_PATH)/sprd_sensor_core.c \
 	$(KO_MODULE_PATH)/sprd_sensor_drv.c
-
+ifeq ($(BSP_BOARD_CAMERA_MODULE_CSI_VERSION),receiver_r2p1)
+KO_MODULE_SRC += $(KO_MODULE_PATH)/csi2/sprd/receiver_r2p1/csi_api.c
+KO_MODULE_SRC += $(KO_MODULE_PATH)/csi2/sprd/receiver_r2p1/csi_driver.c
+KO_MODULE_SRC += $(KO_MODULE_PATH)/csi2/sprd/receiver_r2p1/dphy_drv.c
+else
 KO_MODULE_SRC += \
 	$(shell find $(KO_MODULE_PATH)/csi2/sprd/$(CSI_DIR) -name "*.c")
+endif
 
 ifeq ($(CONFIG_COMPAT),y)
 KO_MODULE_SRC += $(KO_MODULE_PATH)/compat_sensor_drv.c

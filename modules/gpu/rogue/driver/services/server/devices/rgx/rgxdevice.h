@@ -445,6 +445,14 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	 * Last sampled core clk rate.
 	 */
 	volatile IMG_UINT32		ui32CoreClkRateSnapshot;
+#if 1 //defined(DEBUG)
+	/**
+	 * Number of reactive/proactive freq updates in the firmware
+	 */
+	ATOMIC_T				iNumReactiveUpdates;
+	ATOMIC_T				iNumProactiveUpdates;
+	ATOMIC_T				iNumUnprofiledUpdates;
+#endif
 #endif
 
 	/*
@@ -600,6 +608,7 @@ typedef struct _PVRSRV_RGXDEV_INFO_
 	POS_LOCK				hCCBRecoveryLock;      /* Lock to protect pvEarliestStalledClientCCB and ui32OldestSubmissionOrdinal variables*/
 	void					*pvEarliestStalledClientCCB; /* Will point to cCCB command to unblock in the event of a stall */
 	IMG_UINT32				ui32OldestSubmissionOrdinal; /* Earliest submission ordinal of CCB entry found so far */
+	IMG_UINT32				ui32SLRHoldoffCounter;   /* Decremented each time health check is called until zero. SLR only happen when zero. */
 
 	POS_LOCK				hCCBStallCheckLock; /* Lock used to guard against multiple threads simultaneously checking for stalled CCBs */
 

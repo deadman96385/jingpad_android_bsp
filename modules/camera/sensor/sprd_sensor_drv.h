@@ -40,7 +40,10 @@
 #define SPRD_SENSOR_WRITE_DELAY			0xffff
 #define SPRD_SENSOR_I2C_WRITE_SUCCESS_CNT	1
 #define SPRD_SENSOR_I2C_READ_SUCCESS_CNT	2
-#define SPRD_SENSOR_I2C_BUST_NB			7
+#define SPRD_SENSOR_I2C_SINGLE_WRITE 			0
+#define SPRD_SENSOR_I2C_BURST_SAMSUNG		1
+#define SPRD_SENSOR_I2C_BURST_REG16_VAL8	2
+#define SPRD_SENSOR_I2C_BURST_REG16_VAL16	3
 
 #define SLEEP_MS msleep
 #define SPRD_SENSOR_MAX_MCLK 96
@@ -86,7 +89,13 @@ int sprd_sensor_set_i2c_addr(int sensor_id, uint16_t i2c_addr);
 int sprd_sensor_set_i2c_clk(int sensor_id, uint32_t clock);
 int sprd_sensor_read_reg(int sensor_id, struct sensor_reg_bits_tag *pReg);
 int sprd_sensor_write_reg(int sensor_id, struct sensor_reg_bits_tag *pReg);
-int sprd_sensor_burst_write_init(struct sensor_reg_tag *p_reg_table,
+int sprd_sensor_burst_write_reg16_val8(struct sensor_reg_tag *p_reg_table,
+				 int sensor_id, uint32_t init_table_size,
+				 uint32_t reg_bits);
+int sprd_sensor_burst_write_reg16_val16(struct sensor_reg_tag *p_reg_table,
+				 int sensor_id, uint32_t init_table_size,
+				 uint32_t reg_bits);
+int sprd_sensor_burst_write_samsung(struct sensor_reg_tag *p_reg_table,
 				 int sensor_id, uint32_t init_table_size,
 				 uint32_t reg_bits);
 int sprd_sensor_write_regtab(struct sensor_reg_tab_tag *p_reg_table,

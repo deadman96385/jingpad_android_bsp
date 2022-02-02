@@ -58,7 +58,7 @@ PVRSRV_ERROR PDVFSLimitMinFrequency(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui
 void PDVFSRequestReactiveUpdate(PVRSRV_RGXDEV_INFO *psDevInfo);
 
 #if (PDVFS_COM == PDVFS_COM_HOST)
-PVRSRV_ERROR PDVFSProcessCoreClkChangeRequest(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32CoreClockRate);
+PVRSRV_ERROR PDVFSProcessCoreClkChangeRequest(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32CoreClockRate, IMG_UINT32 ui32Flags);
 #define PDVFS_PROCESS_CORE_CLK_RATE_CHANGE(devinfo, clk)  PDVFSProcessCoreClkChangeRequest(devinfo, clk)
 #else
 PVRSRV_ERROR PDVFSProcessCoreClkChangeNotification(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32CoreClockRate);

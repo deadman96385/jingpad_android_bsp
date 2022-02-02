@@ -126,9 +126,6 @@ int dcam_if_parse_dt(struct platform_device *pdev,
 		return PTR_ERR(ahb_map);
 	}
 
-	if (of_property_read_u32(dn, "sprd,dcam-superzoom", &super_index))
-		pr_info("None support super-zoom\n");
-
 	if (of_property_read_u32(dn, "sprd,dcam-count", &count)) {
 		pr_err("fail to parse the property of sprd,dcam-count\n");
 		return -EINVAL;
@@ -142,11 +139,6 @@ int dcam_if_parse_dt(struct platform_device *pdev,
 	hw_info->prj_id = (enum cam_prj_id) prj_id;
 
 	pr_info("superzoom :super_index id %d\n", super_index);
-
-	if (super_index >= 0 && super_index < DCAM_ID_MAX) {
-		pr_info("superzoom ->dcam id%d\n", super_index);
-		hw_info->ip_dcam[super_index]->superzoom_support = 1;
-	}
 
 	dcam_max_w = DCAM_PATH_WMAX;
 	dcam_max_h = DCAM_PATH_HMAX;

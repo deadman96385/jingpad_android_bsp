@@ -110,7 +110,7 @@ static struct camera_frame *dcam_prepare_frame(struct dcam_pipe_dev *dev,
 
 	atomic_dec(&path->set_frm_cnt);
 	if (unlikely(frame->is_reserved)) {
-		pr_debug("DCAM%u %s use reserved buffer, out %u, result %u\n",
+		pr_warn("DCAM%u %s use reserved buffer, out %u, result %u\n",
 			dev->idx, to_path_name(path_id),
 			camera_queue_cnt(&path->out_buf_queue),
 			camera_queue_cnt(&path->result_queue));
@@ -472,14 +472,20 @@ static void dcam_cap_sof(void *param)
 			path->frm_deci_cnt = 0;
 			if (path->path_id == DCAM_PATH_FULL) {
 				spin_lock_irqsave(&path->state_lock, flag);
-				if (path->state == DCAM_PATH_PAUSE) {
+				if (path->state == DCAM_PATH_PAUSE
+					&& path->state_update) {
+					atomic_inc(&path->set_frm_cnt);
 					hw->hw_ops.core_ops.path_pause(dev->idx,
 						path->path_id);
-					spin_unlock_irqrestore(&path->state_lock, flag);
-					continue;
-				} else if (path->state == DCAM_PATH_RESUME) {
+				} else if (path->state == DCAM_PATH_RESUME
+					&& path->state_update) {
 					hw->hw_ops.core_ops.path_resume(dev->idx,
 						path->path_id);
+				}
+				path->state_update = 0;
+				if (path->state == DCAM_PATH_PAUSE) {
+					spin_unlock_irqrestore(&path->state_lock, flag);
+					continue;
 				}
 				spin_unlock_irqrestore(&path->state_lock, flag);
 			}
@@ -873,19 +879,36 @@ void dcam_dump_int_tracker(uint32_t idx)
  * registered sub interrupt service routine
  */
 typedef void (*dcam_isr_type)(void *param);
-static const dcam_isr_type _DCAM_ISRS[] = {
-	[DCAM_SENSOR_EOF] = dcam_sensor_eof,
-	[DCAM_CAP_SOF] = dcam_cap_sof,
-	[DCAM_PREVIEW_SOF] = dcam_preview_sof,
-	[DCAM_FULL_PATH_TX_DONE] = dcam_full_path_done,
-	[DCAM_PREV_PATH_TX_DONE] = dcam_bin_path_done,
-	[DCAM_PDAF_PATH_TX_DONE] = dcam_pdaf_path_done,
-	[DCAM_VCH2_PATH_TX_DONE] = dcam_vch2_path_done,
-	[DCAM_VCH3_PATH_TX_DONE] = dcam_vch3_path_done,
-	[DCAM_AEM_TX_DONE] = dcam_aem_done,
-	[DCAM_AFL_TX_DONE] = dcam_afl_done,
-	[DCAM_AFM_INTREQ1] = dcam_afm_done,
-	[DCAM_NR3_TX_DONE] = dcam_nr3_done,
+static const dcam_isr_type _DCAM_ISRS[DCAM_ID_MAX][32] = {
+	[0][DCAM_SENSOR_EOF] = dcam_sensor_eof,
+	[0][DCAM_CAP_SOF] = dcam_cap_sof,
+	[0][DCAM_PREVIEW_SOF] = dcam_preview_sof,
+	[0][DCAM_FULL_PATH_TX_DONE] = dcam_full_path_done,
+	[0][DCAM_PREV_PATH_TX_DONE] = dcam_bin_path_done,
+	[0][DCAM_PDAF_PATH_TX_DONE] = dcam_pdaf_path_done,
+	[0][DCAM_VCH2_PATH_TX_DONE] = dcam_vch2_path_done,
+	[0][DCAM_VCH3_PATH_TX_DONE] = dcam_vch3_path_done,
+	[0][DCAM_AEM_TX_DONE] = dcam_aem_done,
+	[0][DCAM_AFL_TX_DONE] = dcam_afl_done,
+	[0][DCAM_AFM_INTREQ1] = dcam_afm_done,
+	[0][DCAM_NR3_TX_DONE] = dcam_nr3_done,
+
+	[1][DCAM_SENSOR_EOF] = dcam_sensor_eof,
+	[1][DCAM_CAP_SOF] = dcam_cap_sof,
+	[1][DCAM_PREVIEW_SOF] = dcam_preview_sof,
+	[1][DCAM_FULL_PATH_TX_DONE] = dcam_full_path_done,
+	[1][DCAM_PREV_PATH_TX_DONE] = dcam_bin_path_done,
+	[1][DCAM_PDAF_PATH_TX_DONE] = dcam_pdaf_path_done,
+	[1][DCAM_VCH2_PATH_TX_DONE] = dcam_vch2_path_done,
+	[1][DCAM_VCH3_PATH_TX_DONE] = dcam_vch3_path_done,
+	[1][DCAM_AEM_TX_DONE] = dcam_aem_done,
+	[1][DCAM_AFL_TX_DONE] = dcam_afl_done,
+	[1][DCAM_AFM_INTREQ1] = dcam_afm_done,
+	[1][DCAM_NR3_TX_DONE] = dcam_nr3_done,
+
+	[2][DCAM2_SENSOR_SOF] = dcam_cap_sof,   /*only for dcam2*/
+	[2][DCAM2_SENSOR_EOF] = dcam_sensor_eof,
+	[2][DCAM2_FULL_PATH_TX_DONE] = dcam_full_path_done,
 };
 
 /*
@@ -929,6 +952,7 @@ static const int _DCAM1_SEQUENCE[] = {
  * interested interrupt bits in DCAM2
  */
 static const int _DCAM2_SEQUENCE[] = {
+	DCAM2_SENSOR_SOF,/* must */
 	DCAM2_SENSOR_EOF,/* TODO: why for flash */
 	DCAM2_FULL_PATH_TX_DONE,/* for path data */
 };
@@ -1035,6 +1059,7 @@ static irqreturn_t dcam_isr_root(int irq, void *priv)
 {
 	struct dcam_pipe_dev *dev = (struct dcam_pipe_dev *)priv;
 	uint32_t status = 0;
+	uint32_t line_mask;
 	int i = 0;
 
 	if (unlikely(irq != dev->irq)) {
@@ -1051,8 +1076,13 @@ static irqreturn_t dcam_isr_root(int irq, void *priv)
 		return IRQ_NONE;
 	}
 
+	if (dev->idx != DCAM_ID_2)
+		line_mask = DCAMINT_IRQ_LINE_MASK;
+	else
+		line_mask = DCAM2INT_IRQ_LINE_MASK;
+
 	status = DCAM_REG_RD(dev->idx, DCAM_INT_MASK);
-	status &= DCAMINT_IRQ_LINE_MASK;
+	status &= line_mask;
 
 	if (unlikely(!status))
 		return IRQ_NONE;
@@ -1072,8 +1102,8 @@ static irqreturn_t dcam_isr_root(int irq, void *priv)
 		int cur_int = DCAM_SEQUENCES[dev->idx].bits[i];
 
 		if (status & BIT(cur_int)) {
-			if (_DCAM_ISRS[cur_int]) {
-				_DCAM_ISRS[cur_int](dev);
+			if (_DCAM_ISRS[dev->idx][cur_int]) {
+				_DCAM_ISRS[dev->idx][cur_int](dev);
 				status &= ~dev->handled_bits;
 				dev->handled_bits = 0;
 			} else {

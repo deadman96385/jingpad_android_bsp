@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define pr_fmt(fmt) "%s:%d " fmt, __func__, __LINE__
-
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/file.h>
@@ -37,11 +35,13 @@
 #include <linux/pwm.h>
 #include <linux/clk.h>
 
-
-
-
 #include "sprd_img.h"
 #include "flash_drv.h"
+
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "FLASH_SY7807: %d %d %s : " fmt, current->pid, __LINE__, __func__
 
 #define FLASH_IC_DRIVER_NAME       "sprd_sy7807"
 #define FLASH_PWM_NAME             "flash_sy7807"

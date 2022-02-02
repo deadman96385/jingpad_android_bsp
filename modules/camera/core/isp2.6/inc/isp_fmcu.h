@@ -23,7 +23,7 @@
 
 #define ISP_FMCU_CMDQ_SIZE		0x1000
 
-enum fcmu_id {
+enum fmcu_id {
 	ISP_FMCU_0,
 	ISP_FMCU_1,
 	ISP_FMCU_NUM
@@ -59,7 +59,7 @@ enum isp_fmcu_cmd {
 
 struct isp_fmcu_ops;
 struct isp_fmcu_ctx_desc {
-	enum fcmu_id fid;
+	enum fmcu_id fid;
 	enum fmcu_buf_id cur_buf_id;
 	struct camera_buf ion_pool[MAX_BUF];
 	uint32_t *cmd_buf[MAX_BUF];
@@ -81,7 +81,6 @@ struct isp_fmcu_ops {
 	int (*hw_start)(struct isp_fmcu_ctx_desc *fmcu_ctx);
 	int (*cmd_ready)(struct isp_fmcu_ctx_desc *fmcu_ctx);
 };
-
 
 struct isp_fmcu_ctx_desc *get_isp_fmcu_ctx_desc(void *arg);
 int put_isp_fmcu_ctx_desc(struct isp_fmcu_ctx_desc *fmcu);

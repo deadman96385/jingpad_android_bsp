@@ -34,6 +34,13 @@ enum vdsp_ip_type {
 enum vdsp_command {
 	TA_FACEID_ENTER_SEC_MODE = 1,
 	TA_FACEID_EXIT_SEC_MODE,
+	TA_FACEID_LOAD_FW,
+	TA_FACEID_HALT_VDSP,
+	TA_FACEID_RESET_VDSP,
+	TA_FACEID_RELEASE_VDSP,
+	TA_FACEID_ENABLE_VDSP,
+	TA_FACEID_DISABLE_VDSP,
+	TA_FACEID_INIT,
 
 	TA_GET_CAM_STATUS,
 };
@@ -76,6 +83,7 @@ struct vdsp_ca_ctrl {
 bool vdsp_ca_connect(void);
 void vdsp_ca_disconnect(void);
 bool vdsp_set_sec_mode(struct vdsp_msg *vdsp_msg);
+bool vdsp_load_firmware(void);
 
 /*sign data*/
 #define KERNELBOOTCP_PORT "com.android.trusty.kernelbootcp"

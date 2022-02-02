@@ -131,6 +131,7 @@ static const char *cmd2str(u8 cmd)
 	C2S(WIFI_CMD_SET_PROTECT_MODE)
 	C2S(WIFI_CMD_GET_PROTECT_MODE)
 	C2S(WIFI_CMD_DOWNLOAD_INI)
+	C2S(WIFI_CMD_MIRACAST)
 	C2S(WIFI_CMD_PACKET_OFFLOAD)
 #ifdef DFS_MASTER
 	C2S(WIFI_CMD_RADAR_DETECT)
@@ -138,6 +139,7 @@ static const char *cmd2str(u8 cmd)
 #endif
 	C2S(WIFI_CMD_VOWIFI_DATA_PROTECT)
 	C2S(WIFI_CMD_SET_TLV)
+	C2S(WIFI_CMD_SET_SNIFFER)
 	default : return "WIFI_CMD_UNKNOWN";
 	}
 #undef C2S
@@ -348,8 +350,17 @@ struct sprdwl_msg_buf *__sprdwl_cmd_getbuf(struct sprdwl_priv *priv,
 		sprdwl_put_vif(vif);
 
 		if (cmd_id == WIFI_CMD_POWER_SAVE &&
-		    priv->fw_stat[vif->mode] == SPRDWL_INTF_CLOSE) {
-			wl_err("%s:send [%s] fail because mode close", __func__, cmd2str(cmd_id));
+			(vif == NULL ||
+			priv->fw_stat[vif->mode] == SPRDWL_INTF_CLOSE)) {
+			wl_err("%s:send [%s] fail because mode close",
+				__func__, cmd2str(cmd_id));
+			return NULL;
+		}
+		if (priv->hw_type == SPRDWL_HW_SC2355_PCIE &&
+			cmd_id != WIFI_CMD_POWER_SAVE &&
+			sprdwcn_bus_get_status() == WCN_BUS_DOWN) {
+			wl_err("%s:send [%s] fail because bus done",
+				__func__, cmd2str(cmd_id));
 			return NULL;
 		}
 	}
@@ -566,7 +577,8 @@ int sprdwl_cmd_send_recv(struct sprdwl_priv *priv,
 			intf = (struct sprdwl_intf *)(vif->priv->hw_priv);
 			tx_msg = (struct sprdwl_tx_msg *)intf->sprdwl_tx;
 			if (intf->cp_asserted == 0 &&
-				tx_msg->hang_recovery_status == HANG_RECOVERY_END)
+				tx_msg->hang_recovery_status == HANG_RECOVERY_END &&
+				!intf->exit)
 				sprdwl_send_assert_cmd(vif, cmd_id, CMD_RSP_TIMEOUT_ERROR);
 			sprdwl_put_vif(vif);
 		}
@@ -932,9 +944,9 @@ out:
 			wl_info("mac_addr:%02x:%02x:%02x:%02x:%02x:%02x\n",
 				priv->mac_addr[0], priv->mac_addr[1], priv->mac_addr[2],
 				priv->mac_addr[3], priv->mac_addr[4], priv->mac_addr[5]);
-		wl_info("credit_capa:%s\n",
+		wl_info("credit_capa:%s, extend_feature:0x%x\n",
 			(priv->credit_capa == TX_WITH_CREDIT) ?
-			"TX_WITH_CREDIT" : "TX_NO_CREDIT");
+			"TX_WITH_CREDIT" : "TX_NO_CREDIT", priv->extend_feature);
 		wl_info("ott support:%d\n", priv->ott_supt);
 	}
 
@@ -1039,6 +1051,8 @@ int sprdwl_power_save(struct sprdwl_priv *priv, u8 vif_ctx_id,
 	p = (struct sprdwl_cmd_power_save *)msg->data;
 	p->sub_type = sub_type;
 	p->value = status;
+	wl_warn("%s: WIFI_CMD_POWER_SAVE sub_type: %d, status: %d\n",
+			__func__, p->sub_type, p->value);
 	return sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, NULL, NULL);
 }
 
@@ -2097,6 +2111,21 @@ int sprdwl_set_whitelist(struct sprdwl_priv *priv, u8 vif_ctx_id,
 	return sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, NULL, NULL);
 }
 
+int sprdwl_enable_miracast(struct sprdwl_priv *priv,
+		u8 vif_mode, int val)
+{
+	struct sprdwl_msg_buf *msg;
+	struct sprdwl_cmd_miracast *p = NULL;
+
+	msg = sprdwl_cmd_getbuf(priv, sizeof(*p), vif_mode,
+			SPRDWL_HEAD_RSP, WIFI_CMD_MIRACAST);
+	if (!msg)
+		return -ENOMEM;
+	p = (struct sprdwl_cmd_miracast *)msg->data;
+	p->value = val;
+
+	return sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, NULL, NULL);
+}
 int sprdwl_set_mc_filter(struct sprdwl_priv *priv,  u8 vif_ctx_id,
 			 u8 sub_type, u8 num, u8 *mac_addr)
 {
@@ -2490,8 +2519,23 @@ int sprdwl_cmd_host_wakeup_fw(struct sprdwl_priv *priv, u8 ctx_id)
 	u8 r_buf = -1;
 	u16 r_len = 1;
 	int ret = 0;
+	struct sprdwl_vif *vif;
 	struct sprdwl_intf *intf = (struct sprdwl_intf *)(priv->hw_priv);
 	struct sprdwl_tx_msg *tx_msg = (struct sprdwl_tx_msg *)intf->sprdwl_tx;
+
+	vif = ctx_id_to_vif(priv, ctx_id);
+	if (!vif) {
+		wl_err("%s vif is NULL, ctx_id=%d\n", __func__, ctx_id);
+		return -1;
+	}
+	sprdwl_put_vif(vif);
+
+	if (priv->fw_stat[vif->mode] == SPRDWL_INTF_CLOSING ||
+		priv->fw_stat[vif->mode] == SPRDWL_INTF_CLOSE) {
+		wl_err("%s wifi is closing or closed(mode=%d fw_stat=%d)\n",
+				__func__, vif->mode, priv->fw_stat[vif->mode]);
+		return -1;
+	}
 
 	msg = sprdwl_cmd_getbuf(priv, sizeof(*p), ctx_id,
 				SPRDWL_HEAD_RSP, WIFI_CMD_POWER_SAVE);
@@ -2800,6 +2844,44 @@ void sprdwl_event_mlme_tx_status(struct sprdwl_vif *vif, u8 *data, u16 len)
 				     tx_status->ack);
 }
 
+static int sprdwl_rx_monitor_process(struct sprdwl_vif *vif, unsigned char *data,
+				     unsigned int len)
+{
+	struct sk_buff *skb;
+	struct net_device *ndev;
+
+	skb = dev_alloc_skb(len + NET_IP_ALIGN);
+	if (!skb)
+		return -ENOMEM;
+
+	if (len >= 64)
+		print_hex_dump(KERN_WARNING, "managment frame: ", DUMP_PREFIX_OFFSET,
+			       16, 1, data, 64, 0);
+	else
+		print_hex_dump(KERN_WARNING, "managment frame: ", DUMP_PREFIX_OFFSET,
+			       16, 1, data, len, 0);
+	wl_info("mgmt cnt : %d\n", vif->priv->monitor_mgmt_cnt++);
+
+	ndev = vif->ndev;
+	skb_reserve(skb, NET_IP_ALIGN);
+	memcpy(skb->data, data, len);
+	skb_put(skb, len);
+
+	skb->dev = ndev;
+	/*report data for monitor mode*/
+	skb_set_mac_header(skb, 0);
+	skb->ip_summed = CHECKSUM_UNNECESSARY;
+	skb->pkt_type = PACKET_OTHERHOST;
+	skb->protocol = htons(ETH_P_802_2);
+
+	ndev->stats.rx_packets++;
+	ndev->stats.rx_bytes += skb->len;
+
+	netif_rx_ni(skb);
+
+	return 0;
+}
+
 /* @flag: 1 for data, 0 for event */
 void sprdwl_event_frame(struct sprdwl_vif *vif, u8 *data, u16 len, int flag)
 {
@@ -2821,7 +2903,11 @@ void sprdwl_event_frame(struct sprdwl_vif *vif, u8 *data, u16 len, int flag)
 	type = frame->type;
 	buf_len = SPRDWL_GET_LE16(frame->len);
 
-	sprdwl_cfg80211_dump_frame_prot_info(0, 0, buf, buf_len);
+	if (atomic_read(&vif->priv->monitor_mode)) {
+		wl_info("event frame in  rx monitor\n");
+		sprdwl_rx_monitor_process(vif, buf, buf_len);
+		return;
+	}
 
 	switch (type) {
 	case SPRDWL_FRAME_NORMAL:
@@ -3609,4 +3695,22 @@ int sprdwl_set_packet_offload(struct sprdwl_priv *priv, u8 vif_ctx_id,
 	}
 
 	return sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, r_buf, &r_len);
+}
+
+int sprdwl_set_sniffer(struct sprdwl_priv *priv, u8 vif_ctx_id,
+		       u8 type, u8 value)
+{
+	struct sprdwl_msg_buf *msg;
+	struct sprdwl_cmd_sniffer_para *p;
+
+	msg = sprdwl_cmd_getbuf(priv, sizeof(*p), vif_ctx_id,
+				SPRDWL_HEAD_RSP, WIFI_CMD_SET_SNIFFER);
+	if (!msg)
+		return -ENOMEM;
+
+	p = (struct sprdwl_cmd_sniffer_para *)msg->data;
+	p->type = type;
+	p->value = value;
+
+	return sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, NULL, NULL);
 }

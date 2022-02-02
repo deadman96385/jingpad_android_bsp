@@ -1774,7 +1774,6 @@ static IMG_INT PowerAlawysOnSet(const char __user *pcBuffer,
 	return uiCount;
 }
 
-
 static PPVR_DEBUGFS_ENTRY_DATA gpsVersionDebugFSEntry;
 
 static PPVR_DEBUGFS_ENTRY_DATA gpsStatusDebugFSEntry;

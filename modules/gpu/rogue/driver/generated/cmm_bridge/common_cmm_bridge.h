@@ -1,4 +1,4 @@
-/*************************************************************************/ /*!
+/*******************************************************************************
 @File
 @Title          Common bridge header for cmm
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
@@ -40,7 +40,7 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*******************************************************************************/
 
 #ifndef COMMON_CMM_BRIDGE_H
 #define COMMON_CMM_BRIDGE_H
@@ -52,16 +52,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "devicemem_typedefs.h"
 
-
 #define PVRSRV_BRIDGE_CMM_CMD_FIRST			0
 #define PVRSRV_BRIDGE_CMM_DEVMEMINTEXPORTCTX			PVRSRV_BRIDGE_CMM_CMD_FIRST+0
 #define PVRSRV_BRIDGE_CMM_DEVMEMINTUNEXPORTCTX			PVRSRV_BRIDGE_CMM_CMD_FIRST+1
 #define PVRSRV_BRIDGE_CMM_DEVMEMINTACQUIREREMOTECTX			PVRSRV_BRIDGE_CMM_CMD_FIRST+2
 #define PVRSRV_BRIDGE_CMM_CMD_LAST			(PVRSRV_BRIDGE_CMM_CMD_FIRST+2)
 
-
 /*******************************************
-            DevmemIntExportCtx          
+            DevmemIntExportCtx
  *******************************************/
 
 /* Bridge in structure for DevmemIntExportCtx */
@@ -69,42 +67,40 @@ typedef struct PVRSRV_BRIDGE_IN_DEVMEMINTEXPORTCTX_TAG
 {
 	IMG_HANDLE hContext;
 	IMG_HANDLE hPMR;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTEXPORTCTX;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTEXPORTCTX;
 
 /* Bridge out structure for DevmemIntExportCtx */
 typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTEXPORTCTX_TAG
 {
 	IMG_HANDLE hContextExport;
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTEXPORTCTX;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTEXPORTCTX;
 
 /*******************************************
-            DevmemIntUnexportCtx          
+            DevmemIntUnexportCtx
  *******************************************/
 
 /* Bridge in structure for DevmemIntUnexportCtx */
 typedef struct PVRSRV_BRIDGE_IN_DEVMEMINTUNEXPORTCTX_TAG
 {
 	IMG_HANDLE hContextExport;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTUNEXPORTCTX;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTUNEXPORTCTX;
 
 /* Bridge out structure for DevmemIntUnexportCtx */
 typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTUNEXPORTCTX_TAG
 {
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNEXPORTCTX;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNEXPORTCTX;
 
 /*******************************************
-            DevmemIntAcquireRemoteCtx          
+            DevmemIntAcquireRemoteCtx
  *******************************************/
 
 /* Bridge in structure for DevmemIntAcquireRemoteCtx */
 typedef struct PVRSRV_BRIDGE_IN_DEVMEMINTACQUIREREMOTECTX_TAG
 {
 	IMG_HANDLE hPMR;
-} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTACQUIREREMOTECTX;
+} __attribute__ ((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTACQUIREREMOTECTX;
 
 /* Bridge out structure for DevmemIntAcquireRemoteCtx */
 typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTACQUIREREMOTECTX_TAG
@@ -112,7 +108,6 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTACQUIREREMOTECTX_TAG
 	IMG_HANDLE hContext;
 	IMG_HANDLE hPrivData;
 	PVRSRV_ERROR eError;
-} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTACQUIREREMOTECTX;
-
+} __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTACQUIREREMOTECTX;
 
 #endif /* COMMON_CMM_BRIDGE_H */

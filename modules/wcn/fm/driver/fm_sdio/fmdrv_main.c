@@ -46,6 +46,8 @@
 #include <misc/marlin_platform.h>
 #include "wakelock.h"
 
+#include <linux/gpio.h>
+
 /*#define RDS_DEBUG*/
 
 #ifdef CONFIG_OF
@@ -1084,25 +1086,49 @@ int fm_rds_onoff(void *arg) {
     return ret;
 }
 
-/*0:short ana; 1:long ana*/
-int fm_ana_switch(void *arg) {
-    int antenna;
-    int ret = 0;
-    unsigned char payload;
+/*
+ * 0:long ana; 1:short ana <--CP
+ * 0:headset plug in,
+ * 1:headset plug out
+ */
+int fm_ana_switch(void *arg)
+{
+	int antenna;
+	int ret = 0;
+	unsigned char payload;
 
-    if (copy_from_user(&antenna, arg, sizeof(antenna))) {
-        pr_err("fm ana switch 's ret value is -eFAULT\n");
-        return -EFAULT;
-    }
-    pr_info("fm ioctl ana switch is %d\n", antenna);
+	if (copy_from_user(&antenna, arg, sizeof(antenna))) {
+		pr_err("fm ana switch 's ret value is -eFAULT\n");
+		return -EFAULT;
+		}
+	pr_info("fm ioctl ana switch is %d\n", antenna);
 
-    payload = antenna;
-    ret = fm_write_cmd(FM_SET_ANA_SWITCH_CMD, &payload, sizeof(payload), NULL, NULL);
-    if (ret < 0) {
-        pr_err("(fmdrv) %s FM write ANA switch cmd status failed %d\n", __func__, ret);
-        return ret;
-    }
-    return ret;
+	if (fmdev->short_ana) {
+		payload = antenna;
+		pr_info("fm switch ana sant/lant=%d\n", payload);
+		ret = fm_write_cmd(FM_SET_ANA_SWITCH_CMD, &payload,
+				   sizeof(payload), NULL, NULL);
+		if (ret < 0) {
+			pr_err("(fmdrv) %s FM write ANA switch cmd status failed %d\n",
+			       __func__, ret);
+			return ret;
+		}
+	}
+
+	if (!gpio_is_valid(fmdev->switch_ana_innner_gpio))
+		return 0;
+
+	if (antenna == 0) {
+		pr_info("fm set gpio =0\n");
+		gpio_direction_output(fmdev->switch_ana_innner_gpio, 0);
+	}
+	if (antenna == 1) {
+		pr_info("fm set gpio =1\n");
+		gpio_direction_output(fmdev->switch_ana_innner_gpio, 1);
+	}
+
+	return ret;
+
 }
 
 int fm_af_onoff(void *arg) {

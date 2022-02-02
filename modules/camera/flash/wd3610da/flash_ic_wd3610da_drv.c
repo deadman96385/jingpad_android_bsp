@@ -10,7 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/gpio.h>
@@ -28,6 +27,10 @@
 #include "sprd_img.h"
 #include "flash_drv.h"
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "FLASH_WD3610da: %d %d %s : " fmt, current->pid, __LINE__, __func__
 
 #define FLASH_DRIVER_NAME "flash-wd3610da"
 #define FLASH_GPIO_MAX 2
@@ -79,6 +82,7 @@ static int sprd_flash_wd3610da_open_torch(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_EN];
@@ -100,7 +104,8 @@ static int sprd_flash_wd3610da_close_torch(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_EN];
@@ -122,7 +127,7 @@ static int sprd_flash_wd3610da_open_preflash(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_EN];
 		if (gpio_is_valid(gpio_id)) {
@@ -144,6 +149,7 @@ static int sprd_flash_wd3610da_close_preflash(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_EN];
 		if (gpio_is_valid(gpio_id)) {
@@ -165,6 +171,7 @@ static int sprd_flash_wd3610da_open_highlight(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_EN];
 		if (gpio_is_valid(gpio_id)) {
@@ -186,6 +193,7 @@ static int sprd_flash_wd3610da_close_highlight(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_EN];
 		if (gpio_is_valid(gpio_id)) {
@@ -207,6 +215,7 @@ static int sprd_flash_wd3610da_cfg_value_torch(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_EN];
@@ -229,6 +238,7 @@ static int sprd_flash_wd3610da_cfg_value_preflash(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_EN];
 		if (gpio_is_valid(gpio_id)) {
@@ -250,6 +260,7 @@ static int sprd_flash_wd3610da_cfg_value_highlight(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[GPIO_FLASH_TORCH_EN];
 		if (gpio_is_valid(gpio_id)) {

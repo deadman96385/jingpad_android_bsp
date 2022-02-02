@@ -125,9 +125,11 @@ override PLATFORM_RELEASE := 8.0
 else ifeq ($(call release-starts-with,pie),1)
 override PLATFORM_RELEASE := 9.0
 else ifeq ($(PLATFORM_BUILDID),OC)
-override PLATFORM_RELEASE := 9.0.80
+override PLATFORM_RELEASE := 10.0.80
+else ifeq ($(call release-starts-with,q),1)
+override PLATFORM_RELEASE := 10.0
 else ifeq ($(shell echo $(PLATFORM_RELEASE) | grep -qE "[A-Za-z]+"; echo $$?),0)
-override PLATFORM_RELEASE := 9.1
+override PLATFORM_RELEASE := 10.1
 endif
 
 override PLATFORM_RELEASE := 9.0
@@ -182,11 +184,14 @@ is_at_least_oreo_mr1 := \
 is_at_least_pie := \
 	$(shell ( test $(PLATFORM_RELEASE_MAJ) -ge 9 ) && echo 1 || echo 0)
 
+is_at_least_q := \
+	$(shell ( test $(PLATFORM_RELEASE_MAJ) -ge 10 ) && echo 1 || echo 0)
+
 # Assume "future versions" are >9.0, but we don't really know
 is_future_version := \
-	$(shell ( test $(PLATFORM_RELEASE_MAJ) -gt 9 || \
-				( test $(PLATFORM_RELEASE_MAJ) -eq 9 && \
-				  test $(PLATFORM_RELEASE_MIN) -gt 0 ) ) && echo 1 || echo 0)
+	$(shell ( test $(PLATFORM_RELEASE_MAJ) -gt 10 || \
+				( test $(PLATFORM_RELEASE_MAJ) -eq 10 && \
+				  test $(PLATFORM_RELEASE_MIN) -gt 1 ) ) && echo 1 || echo 0)
 
 # Picking an exact match of API_LEVEL for the platform we're building
 # against can avoid compatibility theming and affords better integration.
@@ -196,6 +201,9 @@ is_future_version := \
 # Note: Android 8.1 is the last release that uses Jack. Jack toolchain is deprecated.
 #
 ifeq ($(is_future_version),1)
+override JACK_VERSION :=
+API_LEVEL := 29
+else ifeq ($(is_at_least_q),1)
 override JACK_VERSION :=
 API_LEVEL := 29
 else ifeq ($(is_at_least_pie),1)

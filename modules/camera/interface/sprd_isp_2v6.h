@@ -26,7 +26,10 @@
 #define ISP_YUV_GAMMA_NUM	129
 #define GTM_HIST_BIN_NUM       128
 
+#define MAX_WTAB_LEN 1024
+#define MAX_LSCTAB_LEN (16*1024)
 
+#define PARAM_BUF_NUM_MAX 32
 #define STATIS_BUF_NUM_MAX 8
 
 #define STATIS_AEM_HEADER_SIZE 128
@@ -83,6 +86,8 @@ enum isp_statis_buf_type {
 	STATIS_LSCM,
 	STATIS_HIST2,
 	STATIS_TYPE_MAX,
+	STATIS_DBG_INIT,
+	STATIS_PARAM,
 };
 
 enum isp_dev_capability {
@@ -359,6 +364,8 @@ enum cam_pm_scene {
 	PM_SCENE_PRE,
 	PM_SCENE_CAP,
 	PM_SCENE_VID,
+	PM_SCENE_FDRL,
+	PM_SCENE_FDRH,
 	PM_SCENE_MAX,
 };
 
@@ -482,8 +489,8 @@ struct dcam_dev_lsc_info {
 	uint32_t grid_num_t;
 	uint32_t gridtab_len;
 	uint32_t weight_num;
-	void __user * grid_tab;
-	void __user * weight_tab;
+	uint64_t grid_tab_addr;
+	uint64_t weight_tab_addr;
 };
 
 struct dcam_dev_hist_info {
@@ -767,6 +774,123 @@ struct dcam_dev_vc2_control {
 	uint32_t vch2_mode;
 };
 
+struct isp_3dnr_blend_info {
+	uint32_t bypass;
+	uint32_t filter_switch;
+	uint32_t fusion_mode;
+	uint32_t y_pixel_src_weight[4];
+	uint32_t u_pixel_src_weight[4];
+	uint32_t v_pixel_src_weight[4];
+	uint32_t y_pixel_noise_threshold;
+	uint32_t u_pixel_noise_threshold;
+	uint32_t v_pixel_noise_threshold;
+	uint32_t y_pixel_noise_weight;
+	uint32_t u_pixel_noise_weight;
+	uint32_t v_pixel_noise_weight;
+	uint32_t threshold_radial_variation_u_range_min;
+	uint32_t threshold_radial_variation_u_range_max;
+	uint32_t threshold_radial_variation_v_range_min;
+	uint32_t threshold_radial_variation_v_range_max;
+	uint32_t y_threshold_polyline_0;
+	uint32_t y_threshold_polyline_1;
+	uint32_t y_threshold_polyline_2;
+	uint32_t y_threshold_polyline_3;
+	uint32_t y_threshold_polyline_4;
+	uint32_t y_threshold_polyline_5;
+	uint32_t y_threshold_polyline_6;
+	uint32_t y_threshold_polyline_7;
+	uint32_t y_threshold_polyline_8;
+	uint32_t u_threshold_polyline_0;
+	uint32_t u_threshold_polyline_1;
+	uint32_t u_threshold_polyline_2;
+	uint32_t u_threshold_polyline_3;
+	uint32_t u_threshold_polyline_4;
+	uint32_t u_threshold_polyline_5;
+	uint32_t u_threshold_polyline_6;
+	uint32_t u_threshold_polyline_7;
+	uint32_t u_threshold_polyline_8;
+	uint32_t v_threshold_polyline_0;
+	uint32_t v_threshold_polyline_1;
+	uint32_t v_threshold_polyline_2;
+	uint32_t v_threshold_polyline_3;
+	uint32_t v_threshold_polyline_4;
+	uint32_t v_threshold_polyline_5;
+	uint32_t v_threshold_polyline_6;
+	uint32_t v_threshold_polyline_7;
+	uint32_t v_threshold_polyline_8;
+	uint32_t y_intensity_gain_polyline_0;
+	uint32_t y_intensity_gain_polyline_1;
+	uint32_t y_intensity_gain_polyline_2;
+	uint32_t y_intensity_gain_polyline_3;
+	uint32_t y_intensity_gain_polyline_4;
+	uint32_t y_intensity_gain_polyline_5;
+	uint32_t y_intensity_gain_polyline_6;
+	uint32_t y_intensity_gain_polyline_7;
+	uint32_t y_intensity_gain_polyline_8;
+	uint32_t u_intensity_gain_polyline_0;
+	uint32_t u_intensity_gain_polyline_1;
+	uint32_t u_intensity_gain_polyline_2;
+	uint32_t u_intensity_gain_polyline_3;
+	uint32_t u_intensity_gain_polyline_4;
+	uint32_t u_intensity_gain_polyline_5;
+	uint32_t u_intensity_gain_polyline_6;
+	uint32_t u_intensity_gain_polyline_7;
+	uint32_t u_intensity_gain_polyline_8;
+	uint32_t v_intensity_gain_polyline_0;
+	uint32_t v_intensity_gain_polyline_1;
+	uint32_t v_intensity_gain_polyline_2;
+	uint32_t v_intensity_gain_polyline_3;
+	uint32_t v_intensity_gain_polyline_4;
+	uint32_t v_intensity_gain_polyline_5;
+	uint32_t v_intensity_gain_polyline_6;
+	uint32_t v_intensity_gain_polyline_7;
+	uint32_t v_intensity_gain_polyline_8;
+	uint32_t gradient_weight_polyline_0;
+	uint32_t gradient_weight_polyline_1;
+	uint32_t gradient_weight_polyline_2;
+	uint32_t gradient_weight_polyline_3;
+	uint32_t gradient_weight_polyline_4;
+	uint32_t gradient_weight_polyline_5;
+	uint32_t gradient_weight_polyline_6;
+	uint32_t gradient_weight_polyline_7;
+	uint32_t gradient_weight_polyline_8;
+	uint32_t gradient_weight_polyline_9;
+	uint32_t gradient_weight_polyline_10;
+	uint32_t u_threshold_factor0;
+	uint32_t u_threshold_factor1;
+	uint32_t u_threshold_factor2;
+	uint32_t u_threshold_factor3;
+	uint32_t v_threshold_factor0;
+	uint32_t v_threshold_factor1;
+	uint32_t v_threshold_factor2;
+	uint32_t v_threshold_factor3;
+	uint32_t u_divisor_factor0;
+	uint32_t u_divisor_factor1;
+	uint32_t u_divisor_factor2;
+	uint32_t u_divisor_factor3;
+	uint32_t v_divisor_factor0;
+	uint32_t v_divisor_factor1;
+	uint32_t v_divisor_factor2;
+	uint32_t v_divisor_factor3;
+	uint32_t r1_circle;
+	uint32_t r2_circle;
+	uint32_t r3_circle;
+	uint32_t r1_circle_factor;
+	uint32_t r2_circle_factor;
+	uint32_t r3_circle_factor;
+	uint32_t r_circle_base;
+};
+
+struct isp_3dnr_fast_me {
+	uint32_t nr3_channel_sel;
+	uint32_t nr3_project_mode;
+};
+
+struct isp_dev_3dnr_info {
+	struct isp_3dnr_fast_me fast_me;
+	struct isp_3dnr_blend_info blend;
+};
+
 struct isp_dev_brightness_info {
 	uint32_t bypass;
 	uint32_t factor;
@@ -1007,14 +1131,19 @@ struct isp_dev_hsv_curve_info {
 	uint32_t  hrange_right[5];
 };
 
+struct hsv_data {
+	uint16_t  hue[360];
+	uint16_t  sat[360];
+};
+
 struct isp_dev_hsv_info_v2 {
 	uint32_t  bypass;
 	struct isp_dev_hsv_curve_info curve_info;
 	uint32_t size;
-	/* uint64_t for 32bits/64bits userspace/kernel compatable*/
-	uint64_t hsv_table_addr;
-	uint16_t  hue[360];
-	uint16_t  sat[360];
+	union {
+		struct hsv_data hs; /* new format from sharkl5pro... */
+		uint32_t hsv_table[ISP_HSV_TABLE_NUM]; /* for roc1/sharkl5/sharkl3...*/
+	} d;
 };
 
 struct isp_dev_iircnr_info {
@@ -1728,14 +1857,18 @@ struct dev_dcam_vc2_control {
 	uint32_t vch2_mode;
 };
 
-
-
 struct isp_statis_buf_input {
 	enum isp_statis_buf_type type;
 
 	/* for init all */
-	int32_t mfd_array[STATIS_TYPE_MAX][STATIS_BUF_NUM_MAX];
-	int32_t offset_array[STATIS_TYPE_MAX][STATIS_BUF_NUM_MAX];
+	union {
+		int32_t mfd_array[STATIS_TYPE_MAX][STATIS_BUF_NUM_MAX];
+		int32_t mfd_pmdbg[PARAM_BUF_NUM_MAX];
+	};
+	union {
+		int32_t offset_array[STATIS_TYPE_MAX][STATIS_BUF_NUM_MAX];
+		int32_t offset_pmdbg[PARAM_BUF_NUM_MAX];
+	};
 
 	/* for single buffer set */
 	int32_t mfd;
@@ -1751,6 +1884,7 @@ enum raw_proc_cmd {
 enum raw_proc_scene {
 	RAW_PROC_SCENE_RAWCAP = 0,
 	RAW_PROC_SCENE_HWSIM,
+	RAW_PROC_SCENE_HWSIM_NEW,
 };
 
 struct isp_raw_proc_info {
@@ -1771,123 +1905,6 @@ struct isp_raw_proc_info {
 	uint32_t dst0_offset;/*first bytes offset in buffer fd_dst0*/
 	uint32_t dst1_offset;/*first bytes offset in buffer fd_dst1*/
 	enum raw_proc_scene scene;
-};
-
-struct isp_3dnr_blend_info {
-	uint32_t bypass;
-	uint32_t filter_switch;
-	uint32_t fusion_mode;
-	uint32_t y_pixel_src_weight[4];
-	uint32_t u_pixel_src_weight[4];
-	uint32_t v_pixel_src_weight[4];
-	uint32_t y_pixel_noise_threshold;
-	uint32_t u_pixel_noise_threshold;
-	uint32_t v_pixel_noise_threshold;
-	uint32_t y_pixel_noise_weight;
-	uint32_t u_pixel_noise_weight;
-	uint32_t v_pixel_noise_weight;
-	uint32_t threshold_radial_variation_u_range_min;
-	uint32_t threshold_radial_variation_u_range_max;
-	uint32_t threshold_radial_variation_v_range_min;
-	uint32_t threshold_radial_variation_v_range_max;
-	uint32_t y_threshold_polyline_0;
-	uint32_t y_threshold_polyline_1;
-	uint32_t y_threshold_polyline_2;
-	uint32_t y_threshold_polyline_3;
-	uint32_t y_threshold_polyline_4;
-	uint32_t y_threshold_polyline_5;
-	uint32_t y_threshold_polyline_6;
-	uint32_t y_threshold_polyline_7;
-	uint32_t y_threshold_polyline_8;
-	uint32_t u_threshold_polyline_0;
-	uint32_t u_threshold_polyline_1;
-	uint32_t u_threshold_polyline_2;
-	uint32_t u_threshold_polyline_3;
-	uint32_t u_threshold_polyline_4;
-	uint32_t u_threshold_polyline_5;
-	uint32_t u_threshold_polyline_6;
-	uint32_t u_threshold_polyline_7;
-	uint32_t u_threshold_polyline_8;
-	uint32_t v_threshold_polyline_0;
-	uint32_t v_threshold_polyline_1;
-	uint32_t v_threshold_polyline_2;
-	uint32_t v_threshold_polyline_3;
-	uint32_t v_threshold_polyline_4;
-	uint32_t v_threshold_polyline_5;
-	uint32_t v_threshold_polyline_6;
-	uint32_t v_threshold_polyline_7;
-	uint32_t v_threshold_polyline_8;
-	uint32_t y_intensity_gain_polyline_0;
-	uint32_t y_intensity_gain_polyline_1;
-	uint32_t y_intensity_gain_polyline_2;
-	uint32_t y_intensity_gain_polyline_3;
-	uint32_t y_intensity_gain_polyline_4;
-	uint32_t y_intensity_gain_polyline_5;
-	uint32_t y_intensity_gain_polyline_6;
-	uint32_t y_intensity_gain_polyline_7;
-	uint32_t y_intensity_gain_polyline_8;
-	uint32_t u_intensity_gain_polyline_0;
-	uint32_t u_intensity_gain_polyline_1;
-	uint32_t u_intensity_gain_polyline_2;
-	uint32_t u_intensity_gain_polyline_3;
-	uint32_t u_intensity_gain_polyline_4;
-	uint32_t u_intensity_gain_polyline_5;
-	uint32_t u_intensity_gain_polyline_6;
-	uint32_t u_intensity_gain_polyline_7;
-	uint32_t u_intensity_gain_polyline_8;
-	uint32_t v_intensity_gain_polyline_0;
-	uint32_t v_intensity_gain_polyline_1;
-	uint32_t v_intensity_gain_polyline_2;
-	uint32_t v_intensity_gain_polyline_3;
-	uint32_t v_intensity_gain_polyline_4;
-	uint32_t v_intensity_gain_polyline_5;
-	uint32_t v_intensity_gain_polyline_6;
-	uint32_t v_intensity_gain_polyline_7;
-	uint32_t v_intensity_gain_polyline_8;
-	uint32_t gradient_weight_polyline_0;
-	uint32_t gradient_weight_polyline_1;
-	uint32_t gradient_weight_polyline_2;
-	uint32_t gradient_weight_polyline_3;
-	uint32_t gradient_weight_polyline_4;
-	uint32_t gradient_weight_polyline_5;
-	uint32_t gradient_weight_polyline_6;
-	uint32_t gradient_weight_polyline_7;
-	uint32_t gradient_weight_polyline_8;
-	uint32_t gradient_weight_polyline_9;
-	uint32_t gradient_weight_polyline_10;
-	uint32_t u_threshold_factor0;
-	uint32_t u_threshold_factor1;
-	uint32_t u_threshold_factor2;
-	uint32_t u_threshold_factor3;
-	uint32_t v_threshold_factor0;
-	uint32_t v_threshold_factor1;
-	uint32_t v_threshold_factor2;
-	uint32_t v_threshold_factor3;
-	uint32_t u_divisor_factor0;
-	uint32_t u_divisor_factor1;
-	uint32_t u_divisor_factor2;
-	uint32_t u_divisor_factor3;
-	uint32_t v_divisor_factor0;
-	uint32_t v_divisor_factor1;
-	uint32_t v_divisor_factor2;
-	uint32_t v_divisor_factor3;
-	uint32_t r1_circle;
-	uint32_t r2_circle;
-	uint32_t r3_circle;
-	uint32_t r1_circle_factor;
-	uint32_t r2_circle_factor;
-	uint32_t r3_circle_factor;
-	uint32_t r_circle_base;
-};
-
-struct isp_3dnr_fast_me {
-	uint32_t nr3_channel_sel;
-	uint32_t nr3_project_mode;
-};
-
-struct isp_dev_3dnr_info {
-	struct isp_3dnr_fast_me fast_me;
-	struct isp_3dnr_blend_info blend;
 };
 
 
@@ -1917,4 +1934,105 @@ struct dev_test_info {
 	uint32_t outbuf_fd;
 	uint32_t outbuf_kaddr[2];
 };
+
+
+struct dcam_param_data_l3 {
+	struct dcam_dev_lsc_info lens_info;
+	struct dcam_dev_blc_info blc_info;
+	struct dcam_dev_rgb_gain_info gain_info;
+	struct dcam_dev_rgb_dither_info rgb_dither;
+	struct dcam_dev_awbc_info awbc_info;
+	struct dcam_dev_bpc_info_l3 bpc_info_l3;
+	struct dcam_dev_3dnr_me nr3_me;
+	struct isp_dev_grgb_info grgb_info;
+	int16_t weight_tab[MAX_WTAB_LEN];
+	uint16_t lsc_tab[MAX_LSCTAB_LEN];
+};
+
+struct dcam_param_data_l5pro {
+	struct dcam_dev_lsc_info lens_info;
+	struct dcam_dev_blc_info blc_info;
+	struct dcam_dev_rgb_gain_info gain_info;
+	struct dcam_dev_rgb_dither_info rgb_dither;
+	struct dcam_dev_awbc_info awbc_info;
+	struct dcam_dev_bpc_info bpc_info;
+	struct dcam_dev_3dnr_me nr3_me;
+	struct dcam_dev_raw_gtm_block_info gtm_info;
+	int16_t weight_tab[MAX_WTAB_LEN];
+	uint16_t lsc_tab[MAX_LSCTAB_LEN];
+};
+
+struct isp_param_data_l3 {
+	struct isp_dev_3dnr_info nr3d_info;
+	struct isp_dev_brightness_info brightness_info;
+	struct isp_dev_contrast_info contrast_info;
+	struct isp_dev_csa_info csa_info;
+	struct isp_dev_hue_info_l3 hue_info;
+	struct isp_dev_cce_info cce_info;
+	struct isp_dev_pre_cdn_info pre_cdn_info;
+	struct isp_dev_cdn_info cdn_info;
+	struct isp_dev_post_cdn_info post_cdn_info;
+	struct isp_dev_cfa_info cfa_info;
+	struct isp_dev_cmc10_info cmc10_info;
+	struct isp_dev_edge_info_v2 edge_info;
+	struct isp_dev_gamma_info gamma_info;
+	struct isp_dev_hsv_info_v2 hsv_info;
+	struct isp_dev_iircnr_info iircnr_info;
+	struct isp_dev_nlm_info_v2 nlm_info;
+	struct isp_dev_posterize_info pstrz_info;
+	struct isp_dev_uvd_info uvd_info;
+	struct isp_dev_ygamma_info ygamma_info;
+	struct isp_dev_ynr_info ynr_info;
+	struct isp_dev_yrandom_info yrandom_info;
+	struct isp_dev_noise_filter_info nf_info;
+	uint32_t vst_buf[ISP_VST_IVST_NUM];
+	uint32_t ivst_buf[ISP_VST_IVST_NUM];
+};
+
+struct isp_param_data_l5pro {
+	struct isp_dev_grgb_info grgb_info;
+	struct isp_dev_3dnr_info nr3d_info;
+	struct isp_dev_bchs_info bchs_info;
+	struct isp_dev_cce_info cce_info;
+	struct isp_dev_pre_cdn_info pre_cdn_info;
+	struct isp_dev_cdn_info cdn_info;
+	struct isp_dev_post_cdn_info post_cdn_info;
+	struct isp_dev_cfa_info cfa_info;
+	struct isp_dev_cmc10_info cmc10_info;
+	struct isp_dev_edge_info_v2 edge_info;
+	struct isp_dev_gamma_info gamma_info;
+	struct isp_dev_hsv_info_v2 hsv_info;
+	struct isp_dev_iircnr_info iircnr_info;
+	struct isp_dev_rgb_ltm_info ltm_rgb_info;
+	struct isp_dev_yuv_ltm_info ltm_yuv_info;
+	struct isp_dev_nlm_info_v2 nlm_info;
+	struct isp_dev_nlm_imblance_v1 imblance_info;
+	struct isp_dev_posterize_info_v2 pstrz_info_v2;
+	struct isp_dev_uvd_info_v2 uvd_info_v2;
+	struct isp_dev_ygamma_info ygamma_info;
+	struct isp_dev_ynr_info_v2 ynr_info_v2;
+	struct isp_dev_yrandom_info yrandom_info;
+	struct isp_dev_noise_filter_info nf_info;
+	uint32_t vst_buf[ISP_VST_IVST_NUM2];
+	uint32_t ivst_buf[ISP_VST_IVST_NUM2];
+};
+
+/************* debug data start ***********/
+struct debug_base_info {
+	int32_t cam_id;
+	int32_t dcam_cid;
+	int32_t isp_cid;
+	int32_t scene_id;
+	int32_t frame_id;
+	int32_t sec;
+	int32_t usec;
+	int32_t size;
+	int32_t res_data0[8];
+	uint32_t awbc_r;
+	uint32_t awbc_b;
+	uint32_t awbc_gr;
+	uint32_t awbc_gb;
+	int32_t res_data1[44];
+};
+/************* debug data end ***********/
 #endif

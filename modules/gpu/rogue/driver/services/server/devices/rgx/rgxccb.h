@@ -205,6 +205,21 @@ typedef enum _RGX_CCB_REQUESTOR_TUPLE_
 #define U32toU8_Unpack3(U32Packed) ((U32Packed>>16) & 0xFF)
 #define U32toU8_Unpack4(U32Packed) ((U32Packed>>24) & 0xFF)
 
+/* Defines for bit meanings within the ui32CCBFlags member of struct _RGX_CLIENT_CCB_
+ *
+ *   ( X = taken/in use, - = available/unused )
+ *
+ *   31                             10
+ *    |                             ||
+ *    ------------------------------XX
+ *  Bit   Meaning
+ *    0 = If set, CCB is still open and commands will be appended to it
+ *    1 = If set, do not perform Sync Lockup Recovery (SLR) for this CCB
+ */
+#define CCB_FLAGS_CCB_STATE_OPEN (0)  /*!< This bit is set to indicate CCB is in the 'Open' state. */
+#define CCB_FLAGS_SLR_DISABLED   (1)  /*!< This bit is set to disable Sync Lockup Recovery (SLR) for this CCB. */
+
+
 /*	Table containing an array of strings for each requestor type in the list of RGX_CCB_REQUESTORS. In addition to its use in
 	this module (rgxccb.c), this table is also used to access string to be dumped in PDUMP comments, hence, marking it extern for
 	use in other modules.

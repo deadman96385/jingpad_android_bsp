@@ -10,8 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define pr_fmt(fmt) "%s:%d " fmt, __func__, __LINE__
-
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/file.h>
@@ -35,6 +33,11 @@
 
 #include "sprd_img.h"
 #include "flash_drv.h"
+
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "FLASH_OCP8137: %d %d %s : " fmt, current->pid, __LINE__, __func__
 
 #define FLASH_IC_DRIVER_NAME       "sprd_ocp8137"
 /* Slave address should be shifted to the right 1bit.
@@ -75,7 +78,7 @@ static int flash_ic_driver_reg_write(struct i2c_client *i2c, u8 reg, u8 value)
 {
 	int ret;
 
-	pr_debug("flash ic reg write %x %x\n", reg, value);
+	pr_info("flash ic reg write %x %x\n", reg, value);
 
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	return ret;
@@ -193,7 +196,7 @@ static int sprd_flash_ic_open_torch(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (drv_data->i2c_info) {
 		flash_ic_driver_reg_read(drv_data->i2c_info, 0x0a, &data);
@@ -232,7 +235,7 @@ static int sprd_flash_ic_close_torch(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
-
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	idx = drv_data->torch_led_index;
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[1];
@@ -266,6 +269,8 @@ static int sprd_flash_ic_open_preflash(void *drvd, uint8_t idx)
 
 	if (!drv_data)
 		return -EFAULT;
+	
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 
 	if (drv_data->i2c_info) {
 		flash_ic_driver_reg_read(drv_data->i2c_info, 0x0a, &data);
@@ -304,6 +309,7 @@ static int sprd_flash_ic_close_preflash(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[1];
 		if (gpio_is_valid(gpio_id)) {
@@ -337,6 +343,7 @@ static int sprd_flash_ic_open_highlight(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (drv_data->i2c_info) {
 		flash_ic_driver_reg_read(drv_data->i2c_info, 0x0a, &data);
 		flash_ic_driver_reg_read(drv_data->i2c_info, 0x0b, &data);
@@ -377,6 +384,7 @@ static int sprd_flash_ic_close_highlight(void *drvd, uint8_t idx)
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, idx:%d\n", drv_data->torch_led_index, idx);
 	if (SPRD_FLASH_LED0 & idx) {
 		gpio_id = drv_data->gpio_tab[2];
 		if (gpio_is_valid(gpio_id)) {
@@ -407,6 +415,7 @@ static int sprd_flash_ic_cfg_value_torch(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("torch_led_index:%d, element->index %d, idx:%d\n", drv_data->torch_led_index, element->index, idx);
 	idx = drv_data->torch_led_index;
 	if (drv_data->i2c_info) {
 		if (SPRD_FLASH_LED0 & idx)
@@ -429,6 +438,7 @@ static int sprd_flash_ic_cfg_value_preflash(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("element->index %d, idx:%d\n", element->index, idx);
 	if (drv_data->i2c_info) {
 		if (SPRD_FLASH_LED0 & idx)
 			flash_ic_driver_reg_write(drv_data->i2c_info,
@@ -450,6 +460,7 @@ static int sprd_flash_ic_cfg_value_highlight(void *drvd, uint8_t idx,
 	if (!drv_data)
 		return -EFAULT;
 
+	pr_info("element->index %d, idx:%d\n", element->index, idx);
 	if (drv_data->i2c_info) {
 		if (SPRD_FLASH_LED0 & idx)
 			flash_ic_driver_reg_write(drv_data->i2c_info,

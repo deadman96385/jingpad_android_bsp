@@ -72,7 +72,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define DTS_CLK_OFFSET          6
 #define FREQ_KHZ                1000
 
-//#define USE_QOS
+#define USE_QOS
 
 #if defined(PVR_DVFS) || defined(SUPPORT_PDVFS)
 #define GPU_POLL_MS             50
@@ -81,10 +81,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 struct gpu_qos_config {
-	u8 arqos;
-	u8 awqos;
-	u8 arqos_threshold;
-	u8 awqos_threshold;
+	u8 arqos_gpu0;
+	u8 awqos_gpu0;
+	u8 arqos_threshold_gpu0;
+	u8 awqos_threshold_gpu0;
+	u8 arqos_gpu1 ;
+	u8 awqos_gpu1;
+	u8 arqos_threshold_gpu1;
+	u8 awqos_threshold_gpu1;
 };
 
 struct gpu_freq_info {
@@ -137,8 +141,9 @@ struct gpu_dvfs_context {
 	struct gpu_reg_info top_force_reg;
 	struct gpu_reg_info rgx_dust_force_reg;
 	struct gpu_reg_info rgx_dust_auto_reg;
-	struct gpu_reg_info gpu_qos_sel;
-	struct gpu_reg_info gpu_qos;
+	struct gpu_reg_info cgm_gpu_dvfs_en;
+	struct gpu_reg_info gpu0_qos;
+	struct gpu_reg_info gpu1_qos;
 	struct gpu_reg_info dvfs_index_cfg;
 	struct gpu_reg_info sw_dvfs_ctrl;
 	struct gpu_reg_info pdvfs_cfg;
@@ -157,10 +162,14 @@ static struct gpu_dvfs_context gpu_dvfs_ctx=
 #if defined(USE_QOS)
 static struct gpu_qos_config gpu_qos_cfg=
 {
-	.arqos=0,
-	.awqos=0,
-	.arqos_threshold=0,
-	.awqos_threshold=0,
+	.arqos_gpu0=0,
+	.awqos_gpu0=0,
+	.arqos_threshold_gpu0=0,
+	.awqos_threshold_gpu0=0,
+	.arqos_gpu1=0,
+	.awqos_gpu1=0,
+	.arqos_threshold_gpu1=0,
+	.awqos_threshold_gpu1=0,
 };
 #endif
 
@@ -258,14 +267,18 @@ static void RgxFreqInit(struct device *dev)
 	PVR_ASSERT(NULL != gpu_dvfs_ctx.rgx_dust_auto_reg.regmap_ptr);
 	syscon_get_args_by_name(dev->of_node,"rgx_dust_auto_shutdown", 2, (uint32_t *)gpu_dvfs_ctx.rgx_dust_auto_reg.args);
 
-#if defined(USE_QOS)
-	gpu_dvfs_ctx.gpu_qos_sel.regmap_ptr = syscon_regmap_lookup_by_name(dev->of_node,"gpu_qos_sel");
-	PVR_ASSERT(NULL != gpu_dvfs_ctx.gpu_qos_sel.regmap_ptr);
-	syscon_get_args_by_name(dev->of_node,"gpu_qos_sel", 2, (uint32_t *)gpu_dvfs_ctx.gpu_qos_sel.args);
+	gpu_dvfs_ctx.cgm_gpu_dvfs_en.regmap_ptr = syscon_regmap_lookup_by_name(dev->of_node,"cgm_gpu_dvfs_en");
+	PVR_ASSERT(NULL != gpu_dvfs_ctx.cgm_gpu_dvfs_en.regmap_ptr);
+	syscon_get_args_by_name(dev->of_node,"cgm_gpu_dvfs_en", 2, (uint32_t *)gpu_dvfs_ctx.cgm_gpu_dvfs_en.args);
 
-	gpu_dvfs_ctx.gpu_qos.regmap_ptr = syscon_regmap_lookup_by_name(dev->of_node,"gpu_qos");
-	PVR_ASSERT(NULL != gpu_dvfs_ctx.gpu_qos.regmap_ptr);
-	syscon_get_args_by_name(dev->of_node,"gpu_qos", 2, (uint32_t *)gpu_dvfs_ctx.gpu_qos.args);
+#if defined(USE_QOS)
+	gpu_dvfs_ctx.gpu0_qos.regmap_ptr = syscon_regmap_lookup_by_name(dev->of_node,"gpu0_qos");
+	PVR_ASSERT(NULL != gpu_dvfs_ctx.gpu0_qos.regmap_ptr);
+	syscon_get_args_by_name(dev->of_node,"gpu0_qos", 2, (uint32_t *)gpu_dvfs_ctx.gpu0_qos.args);
+
+	gpu_dvfs_ctx.gpu1_qos.regmap_ptr = syscon_regmap_lookup_by_name(dev->of_node,"gpu1_qos");
+	PVR_ASSERT(NULL != gpu_dvfs_ctx.gpu1_qos.regmap_ptr);
+	syscon_get_args_by_name(dev->of_node,"gpu1_qos", 2, (uint32_t *)gpu_dvfs_ctx.gpu1_qos.args);
 #endif
 
 	//gpu index cfg
@@ -289,17 +302,29 @@ static void RgxFreqInit(struct device *dev)
 	qos_node = of_parse_phandle(dev->of_node, "sprd,qos", 0);
 	if (qos_node)
 	{
-		if (of_property_read_u8(qos_node, "arqos", &gpu_qos_cfg.arqos)) {
-			pr_warn("gpu arqos config reading fail.\n");
+		if (of_property_read_u8(qos_node, "arqos-gpu0", &gpu_qos_cfg.arqos_gpu0)) {
+			pr_warn("gpu0 arqos config reading fail.\n");
 		}
-		if (of_property_read_u8(qos_node, "awqos", &gpu_qos_cfg.awqos)) {
-			pr_warn("gpu awqos config reading fail.\n");
+		if (of_property_read_u8(qos_node, "awqos-gpu0", &gpu_qos_cfg.awqos_gpu0)) {
+			pr_warn("gpu0 awqos config reading fail.\n");
 		}
-		if (of_property_read_u8(qos_node, "arqos-threshold", &gpu_qos_cfg.arqos_threshold)) {
-			pr_warn("gpu arqos_threshold config reading fail.\n");
+		if (of_property_read_u8(qos_node, "arqos-threshold-gpu0", &gpu_qos_cfg.arqos_threshold_gpu0)) {
+			pr_warn("gpu0 arqos_threshold config reading fail.\n");
 		}
-		if (of_property_read_u8(qos_node, "awqos-threshold", &gpu_qos_cfg.awqos_threshold)) {
-			pr_warn("gpu awqos_threshold config reading fail.\n");
+		if (of_property_read_u8(qos_node, "awqos-threshold-gpu0", &gpu_qos_cfg.awqos_threshold_gpu0)) {
+			pr_warn("gpu0 awqos_threshold config reading fail.\n");
+		}
+		if (of_property_read_u8(qos_node, "arqos-gpu1", &gpu_qos_cfg.arqos_gpu1)) {
+			pr_warn("gpu1 arqos config reading fail.\n");
+		}
+		if (of_property_read_u8(qos_node, "awqos-gpu1", &gpu_qos_cfg.awqos_gpu1)) {
+			pr_warn("gpu1awqos config reading fail.\n");
+		}
+		if (of_property_read_u8(qos_node, "arqos-threshold-gpu1", &gpu_qos_cfg.arqos_threshold_gpu1)) {
+			pr_warn("gpu1 arqos_threshold config reading fail.\n");
+		}
+		if (of_property_read_u8(qos_node, "awqos-threshold-gpu1", &gpu_qos_cfg.awqos_threshold_gpu1)) {
+			pr_warn("gpu1 awqos_threshold config reading fail.\n");
 		}
 	} else {
 		pr_warn("can't find gpu qos config node\n");
@@ -598,7 +623,7 @@ static void RgxPowerOn(void)
 	regmap_update_bits(gpu_dvfs_ctx.rgx_dust_force_reg.regmap_ptr, gpu_dvfs_ctx.rgx_dust_force_reg.args[0], gpu_dvfs_ctx.rgx_dust_force_reg.args[1], ~gpu_dvfs_ctx.rgx_dust_force_reg.args[1]);
 	regmap_update_bits(gpu_dvfs_ctx.rgx_dust_auto_reg.regmap_ptr, gpu_dvfs_ctx.rgx_dust_auto_reg.args[0], gpu_dvfs_ctx.rgx_dust_auto_reg.args[1], gpu_dvfs_ctx.rgx_dust_auto_reg.args[1]);
 #endif
-	udelay(100);
+	udelay(1000);
 
 	gpu_dvfs_ctx.gpu_power_on = 1;
 }
@@ -617,13 +642,14 @@ static void RgxPowerOff(void)
 	regmap_update_bits(gpu_dvfs_ctx.rgx_dust_force_reg.regmap_ptr, gpu_dvfs_ctx.rgx_dust_force_reg.args[0], gpu_dvfs_ctx.rgx_dust_force_reg.args[1], gpu_dvfs_ctx.rgx_dust_force_reg.args[1]);
 	regmap_update_bits(gpu_dvfs_ctx.rgx_dust_auto_reg.regmap_ptr, gpu_dvfs_ctx.rgx_dust_auto_reg.args[0], gpu_dvfs_ctx.rgx_dust_auto_reg.args[1], ~gpu_dvfs_ctx.rgx_dust_auto_reg.args[1]);
 #endif
+	udelay(1000);
 }
 
 #if defined(USE_QOS)
 static void RgxQosConfig(void)
 {
-	regmap_update_bits(gpu_dvfs_ctx.gpu_qos_sel.regmap_ptr, gpu_dvfs_ctx.gpu_qos_sel.args[0], gpu_dvfs_ctx.gpu_qos_sel.args[1], gpu_dvfs_ctx.gpu_qos_sel.args[1]);
-	regmap_update_bits(gpu_dvfs_ctx.gpu_qos.regmap_ptr, gpu_dvfs_ctx.gpu_qos.args[0], gpu_dvfs_ctx.gpu_qos.args[1], ((gpu_qos_cfg.awqos_threshold << 12) | (gpu_qos_cfg.arqos_threshold << 8) | (gpu_qos_cfg.awqos << 4) | gpu_qos_cfg.arqos));
+	regmap_update_bits(gpu_dvfs_ctx.gpu0_qos.regmap_ptr, gpu_dvfs_ctx.gpu0_qos.args[0], gpu_dvfs_ctx.gpu0_qos.args[1], ((1 << 16) | (gpu_qos_cfg.awqos_threshold_gpu0 << 12) | (gpu_qos_cfg.arqos_threshold_gpu0 << 8) | (gpu_qos_cfg.awqos_gpu0 << 4) | gpu_qos_cfg.arqos_gpu0));
+	regmap_update_bits(gpu_dvfs_ctx.gpu1_qos.regmap_ptr, gpu_dvfs_ctx.gpu1_qos.args[0], gpu_dvfs_ctx.gpu1_qos.args[1], ((1 << 16) | (gpu_qos_cfg.awqos_threshold_gpu1 << 12) | (gpu_qos_cfg.arqos_threshold_gpu1 << 8) | (gpu_qos_cfg.awqos_gpu1 << 4) | gpu_qos_cfg.arqos_gpu1));
 }
 #endif
 
@@ -638,14 +664,16 @@ static void RgxClockOn(void)
 	}
 	clk_prepare_enable(gpu_dvfs_ctx.clk_gpu_i);
 
-
 	//enable gpu clock
 	clk_prepare_enable(gpu_dvfs_ctx.clk_gpu_core_eb);
 	clk_prepare_enable(gpu_dvfs_ctx.clk_gpu_core);
 	clk_prepare_enable(gpu_dvfs_ctx.clk_gpu_mem_eb);
 	clk_prepare_enable(gpu_dvfs_ctx.clk_gpu_mem);
 	clk_prepare_enable(gpu_dvfs_ctx.clk_gpu_sys_eb);
-	udelay(200);
+	udelay(1000);
+
+	//enable DVFS
+	regmap_update_bits(gpu_dvfs_ctx.cgm_gpu_dvfs_en.regmap_ptr, gpu_dvfs_ctx.cgm_gpu_dvfs_en.args[0], gpu_dvfs_ctx.cgm_gpu_dvfs_en.args[1], gpu_dvfs_ctx.cgm_gpu_dvfs_en.args[1]);
 
 #if defined(PVR_HW_DVFS)
 	//set dvfs index, 0: 384M 1:512M 2:614.4M 3:768M 4:800M
@@ -685,6 +713,7 @@ static void RgxClockOff(void)
 	clk_disable_unprepare(gpu_dvfs_ctx.clk_gpu_mem_eb);
 	clk_disable_unprepare(gpu_dvfs_ctx.clk_gpu_sys_eb);
 	clk_disable_unprepare(gpu_dvfs_ctx.clk_gpu_i);
+	udelay(1000);
 
 	//disable all clocks
 	for(i=0;i<gpu_dvfs_ctx.gpu_clk_num;i++)

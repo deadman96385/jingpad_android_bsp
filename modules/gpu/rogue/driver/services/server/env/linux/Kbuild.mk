@@ -501,4 +501,7 @@ CFLAGS_mem_utils.o := -ffreestanding
 # Chrome OS kernel adds some issues
 ccflags-y += -Wno-ignored-qualifiers
 
+# Treat #warning as a warning
+ccflags-y += -Wno-error=cpp
+
 include $(TOP)/services/system/$(PVR_SYSTEM)/Kbuild.mk

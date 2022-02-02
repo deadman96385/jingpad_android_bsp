@@ -583,12 +583,12 @@ void RGXFreeFirmware(PVRSRV_RGXDEV_INFO *psDevInfo);
 @Input          psSrc		 MemDesc describing the pointer
 @Input          ui32Flags	 Any combination of  RFW_FWADDR_*_FLAG
 
-@Return			void
+@Return         PVRSRV_ERROR
 */ /**************************************************************************/
-void RGXSetFirmwareAddress(RGXFWIF_DEV_VIRTADDR	*ppDest,
-						   DEVMEM_MEMDESC		*psSrc,
-						   IMG_UINT32			uiOffset,
-						   IMG_UINT32			ui32Flags);
+PVRSRV_ERROR RGXSetFirmwareAddress(RGXFWIF_DEV_VIRTADDR	*ppDest,
+								   DEVMEM_MEMDESC		*psSrc,
+								   IMG_UINT32			uiOffset,
+								   IMG_UINT32			ui32Flags);
 
 
 /*************************************************************************/ /*!

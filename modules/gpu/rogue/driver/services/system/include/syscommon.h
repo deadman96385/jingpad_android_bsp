@@ -50,6 +50,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvrsrv_device.h"
 #include "pvrsrv_error.h"
 
+/*************************************************************************/ /*!
+@Description    Pointer to a Low-level Interrupt Service Routine (LISR).
+@Input  pvData  Private data provided to the LISR.
+@Return         True if interrupt handled, false otherwise.
+*/ /**************************************************************************/
 typedef IMG_BOOL (*PFN_LISR)(void *pvData);
 
 /**************************************************************************/ /*!

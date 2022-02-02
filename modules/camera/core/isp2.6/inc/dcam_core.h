@@ -30,11 +30,10 @@
 #define DCAM_OUT_BUF_Q_LEN 16
 #define DCAM_RESERVE_BUF_Q_LEN 12
 
-#define DCAM_INTERNAL_RES_BUF_SIZE  0xC0000
+#define DCAM_INTERNAL_RES_BUF_SIZE  0x100000
 #define DCAM_LSC_BUF_SIZE 0x3000
 
 #define DCAM_OFFLINE_TIMEOUT		msecs_to_jiffies(2000)
-
 
 // TODO: how many helpers there should be?
 #define DCAM_SYNC_HELPER_COUNT 20
@@ -115,6 +114,7 @@ struct dcam_path_desc {
 
 	spinlock_t state_lock;
 	enum dcam_path_state state;
+	uint32_t state_update;
 
 	struct img_endian endian;
 	struct img_size in_size;

@@ -2213,7 +2213,6 @@ static IMG_BOOL _GetDevicememHistoryData(IMG_PID uiPID, IMG_DEV_VIRTADDR sFaultD
 		}
 	}
 
-
 	return bAnyHits;
 }
 
@@ -3738,7 +3737,11 @@ void RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 	RGXFWIF_RUNTIME_CFG *psRuntimeCfg = psDevInfo->psRGXFWIfRuntimeCfg;
 	/* space for the current clock speed and 3 previous */
 	RGXFWIF_TIME_CORR asTimeCorrs[4];
+#if defined (SUPPORT_PDVFS)
+	IMG_UINT32 ui32NumClockSpeedChanges, ui32NumReactiveUpdates, ui32NumProactiveUpdates, ui32NumUnprofiledUpdates;
+#else
 	IMG_UINT32 ui32NumClockSpeedChanges;
+#endif
 
 #if defined(NO_HARDWARE)
 	PVR_UNREFERENCED_PARAMETER(bRGXPoweredON);
@@ -3886,6 +3889,11 @@ void RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			  psRuntimeCfg->ui32ActivePMLatencyms);
 
 		ui32NumClockSpeedChanges = (IMG_UINT32) OSAtomicRead(&psDevInfo->psDeviceNode->iNumClockSpeedChanges);
+	#if defined (SUPPORT_PDVFS)
+		ui32NumReactiveUpdates =   (IMG_UINT32) OSAtomicRead(&psDevInfo->iNumReactiveUpdates);
+		ui32NumProactiveUpdates =  (IMG_UINT32) OSAtomicRead(&psDevInfo->iNumProactiveUpdates);
+		ui32NumUnprofiledUpdates = (IMG_UINT32) OSAtomicRead(&psDevInfo->iNumUnprofiledUpdates);
+	#endif
 		RGXGetTimeCorrData(psDevInfo->psDeviceNode, asTimeCorrs, ARRAY_SIZE(asTimeCorrs));
 
 		PVR_DUMPDEBUG_LOG("RGX DVFS: %u frequency changes. Current frequency: %u.%03u MHz (sampled at %" IMG_UINT64_FMTSPEC ")",
@@ -3906,6 +3914,12 @@ void RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 												asTimeCorrs[1].ui64OSTimeStamp,
 												asTimeCorrs[2].ui64OSTimeStamp,
 												asTimeCorrs[3].ui64OSTimeStamp);
+		#if defined (SUPPORT_PDVFS)
+			PVR_DUMPDEBUG_LOG("          Reactive: %u, Proactive: %u, Unprofiled: %u",
+												ui32NumReactiveUpdates,
+												ui32NumProactiveUpdates,
+												ui32NumUnprofiledUpdates);
+		#endif
 		}
 
 		for (ui32OSid = 0; ui32OSid < RGXFW_NUM_OS; ui32OSid++)
@@ -4921,9 +4935,16 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				IMG_UINT8 ui8Idx;
 				IMG_UINT64 ui64Seconds, ui64Nanoseconds;
 
-				ConvertOSTimestampToSAndNS(psRGXFWIfTraceBufCtl->ui64LastForcedUpdateTime, &ui64Seconds, &ui64Nanoseconds);
-				PVR_DUMPDEBUG_LOG("RGX SLR: (most recent forced update was around %" IMG_UINT64_FMTSPEC ".%09" IMG_UINT64_FMTSPEC ")",
-								   ui64Seconds, ui64Nanoseconds);
+				if (psRGXFWIfTraceBufCtl->ui64LastForcedUpdateTime > 0ULL)
+				{
+					ConvertOSTimestampToSAndNS(psRGXFWIfTraceBufCtl->ui64LastForcedUpdateTime, &ui64Seconds, &ui64Nanoseconds);
+					PVR_DUMPDEBUG_LOG("RGX SLR: (most recent forced update was around %" IMG_UINT64_FMTSPEC ".%09" IMG_UINT64_FMTSPEC ")",
+									  ui64Seconds, ui64Nanoseconds);
+				}
+				else
+				{
+					PVR_DUMPDEBUG_LOG("RGX SLR: (unable to force update as fence contained no sync checkpoints)");
+				}
 				/* Dump SLR log */
 				if (psRGXFWIfTraceBufCtl->sSLRLogFirst.aszCCBName[0])
 				{

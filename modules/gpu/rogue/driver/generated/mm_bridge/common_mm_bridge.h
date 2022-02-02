@@ -92,7 +92,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_MM_CMD_LAST			(PVRSRV_BRIDGE_MM_CMD_FIRST+34)
 
 /*******************************************
-            PMRExportPMR          
+            PMRExportPMR
  *******************************************/
 
 /* Bridge in structure for PMRExportPMR */
@@ -112,7 +112,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMREXPORTPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMREXPORTPMR;
 
 /*******************************************
-            PMRUnexportPMR          
+            PMRUnexportPMR
  *******************************************/
 
 /* Bridge in structure for PMRUnexportPMR */
@@ -128,7 +128,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRUNEXPORTPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRUNEXPORTPMR;
 
 /*******************************************
-            PMRGetUID          
+            PMRGetUID
  *******************************************/
 
 /* Bridge in structure for PMRGetUID */
@@ -145,7 +145,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRGETUID_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRGETUID;
 
 /*******************************************
-            PMRMakeLocalImportHandle          
+            PMRMakeLocalImportHandle
  *******************************************/
 
 /* Bridge in structure for PMRMakeLocalImportHandle */
@@ -162,7 +162,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRMAKELOCALIMPORTHANDLE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRMAKELOCALIMPORTHANDLE;
 
 /*******************************************
-            PMRUnmakeLocalImportHandle          
+            PMRUnmakeLocalImportHandle
  *******************************************/
 
 /* Bridge in structure for PMRUnmakeLocalImportHandle */
@@ -178,7 +178,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRUNMAKELOCALIMPORTHANDLE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRUNMAKELOCALIMPORTHANDLE;
 
 /*******************************************
-            PMRImportPMR          
+            PMRImportPMR
  *******************************************/
 
 /* Bridge in structure for PMRImportPMR */
@@ -198,7 +198,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRIMPORTPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRIMPORTPMR;
 
 /*******************************************
-            PMRLocalImportPMR          
+            PMRLocalImportPMR
  *******************************************/
 
 /* Bridge in structure for PMRLocalImportPMR */
@@ -217,7 +217,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRLOCALIMPORTPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRLOCALIMPORTPMR;
 
 /*******************************************
-            PMRUnrefPMR          
+            PMRUnrefPMR
  *******************************************/
 
 /* Bridge in structure for PMRUnrefPMR */
@@ -233,7 +233,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRUNREFPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRUNREFPMR;
 
 /*******************************************
-            PMRUnrefUnlockPMR          
+            PMRUnrefUnlockPMR
  *******************************************/
 
 /* Bridge in structure for PMRUnrefUnlockPMR */
@@ -249,7 +249,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PMRUNREFUNLOCKPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PMRUNREFUNLOCKPMR;
 
 /*******************************************
-            PhysmemNewRamBackedPMR          
+            PhysmemNewRamBackedPMR
  *******************************************/
 
 /* Bridge in structure for PhysmemNewRamBackedPMR */
@@ -275,7 +275,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMNEWRAMBACKEDPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PHYSMEMNEWRAMBACKEDPMR;
 
 /*******************************************
-            PhysmemNewRamBackedLockedPMR          
+            PhysmemNewRamBackedLockedPMR
  *******************************************/
 
 /* Bridge in structure for PhysmemNewRamBackedLockedPMR */
@@ -301,7 +301,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMNEWRAMBACKEDLOCKEDPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PHYSMEMNEWRAMBACKEDLOCKEDPMR;
 
 /*******************************************
-            PhysmemImportSecBuf          
+            PhysmemImportSecBuf
  *******************************************/
 
 /* Bridge in structure for PhysmemImportSecBuf */
@@ -321,7 +321,7 @@ typedef struct PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTSECBUF_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_PHYSMEMIMPORTSECBUF;
 
 /*******************************************
-            DevmemIntPin          
+            DevmemIntPin
  *******************************************/
 
 /* Bridge in structure for DevmemIntPin */
@@ -337,7 +337,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTPIN_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTPIN;
 
 /*******************************************
-            DevmemIntUnpin          
+            DevmemIntUnpin
  *******************************************/
 
 /* Bridge in structure for DevmemIntUnpin */
@@ -353,7 +353,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTUNPIN_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNPIN;
 
 /*******************************************
-            DevmemIntPinValidate          
+            DevmemIntPinValidate
  *******************************************/
 
 /* Bridge in structure for DevmemIntPinValidate */
@@ -370,7 +370,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTPINVALIDATE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTPINVALIDATE;
 
 /*******************************************
-            DevmemIntUnpinInvalidate          
+            DevmemIntUnpinInvalidate
  *******************************************/
 
 /* Bridge in structure for DevmemIntUnpinInvalidate */
@@ -387,7 +387,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTUNPININVALIDATE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNPININVALIDATE;
 
 /*******************************************
-            DevmemIntCtxCreate          
+            DevmemIntCtxCreate
  *******************************************/
 
 /* Bridge in structure for DevmemIntCtxCreate */
@@ -406,7 +406,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTCTXCREATE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTCTXCREATE;
 
 /*******************************************
-            DevmemIntCtxDestroy          
+            DevmemIntCtxDestroy
  *******************************************/
 
 /* Bridge in structure for DevmemIntCtxDestroy */
@@ -422,7 +422,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTCTXDESTROY_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTCTXDESTROY;
 
 /*******************************************
-            DevmemIntHeapCreate          
+            DevmemIntHeapCreate
  *******************************************/
 
 /* Bridge in structure for DevmemIntHeapCreate */
@@ -442,7 +442,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTHEAPCREATE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTHEAPCREATE;
 
 /*******************************************
-            DevmemIntHeapDestroy          
+            DevmemIntHeapDestroy
  *******************************************/
 
 /* Bridge in structure for DevmemIntHeapDestroy */
@@ -458,7 +458,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTHEAPDESTROY_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTHEAPDESTROY;
 
 /*******************************************
-            DevmemIntMapPMR          
+            DevmemIntMapPMR
  *******************************************/
 
 /* Bridge in structure for DevmemIntMapPMR */
@@ -478,7 +478,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTMAPPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTMAPPMR;
 
 /*******************************************
-            DevmemIntUnmapPMR          
+            DevmemIntUnmapPMR
  *******************************************/
 
 /* Bridge in structure for DevmemIntUnmapPMR */
@@ -494,7 +494,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTUNMAPPMR_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNMAPPMR;
 
 /*******************************************
-            DevmemIntReserveRange          
+            DevmemIntReserveRange
  *******************************************/
 
 /* Bridge in structure for DevmemIntReserveRange */
@@ -513,7 +513,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTRESERVERANGE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTRESERVERANGE;
 
 /*******************************************
-            DevmemIntUnreserveRange          
+            DevmemIntUnreserveRange
  *******************************************/
 
 /* Bridge in structure for DevmemIntUnreserveRange */
@@ -529,7 +529,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTUNRESERVERANGE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNRESERVERANGE;
 
 /*******************************************
-            ChangeSparseMem          
+            ChangeSparseMem
  *******************************************/
 
 /* Bridge in structure for ChangeSparseMem */
@@ -554,7 +554,7 @@ typedef struct PVRSRV_BRIDGE_OUT_CHANGESPARSEMEM_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CHANGESPARSEMEM;
 
 /*******************************************
-            DevmemIntMapPages          
+            DevmemIntMapPages
  *******************************************/
 
 /* Bridge in structure for DevmemIntMapPages */
@@ -575,7 +575,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTMAPPAGES_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTMAPPAGES;
 
 /*******************************************
-            DevmemIntUnmapPages          
+            DevmemIntUnmapPages
  *******************************************/
 
 /* Bridge in structure for DevmemIntUnmapPages */
@@ -593,7 +593,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTUNMAPPAGES_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTUNMAPPAGES;
 
 /*******************************************
-            DevmemIsVDevAddrValid          
+            DevmemIsVDevAddrValid
  *******************************************/
 
 /* Bridge in structure for DevmemIsVDevAddrValid */
@@ -610,7 +610,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMISVDEVADDRVALID_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMISVDEVADDRVALID;
 
 /*******************************************
-            HeapCfgHeapConfigCount          
+            HeapCfgHeapConfigCount
  *******************************************/
 
 /* Bridge in structure for HeapCfgHeapConfigCount */
@@ -627,7 +627,7 @@ typedef struct PVRSRV_BRIDGE_OUT_HEAPCFGHEAPCONFIGCOUNT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_HEAPCFGHEAPCONFIGCOUNT;
 
 /*******************************************
-            HeapCfgHeapCount          
+            HeapCfgHeapCount
  *******************************************/
 
 /* Bridge in structure for HeapCfgHeapCount */
@@ -644,7 +644,7 @@ typedef struct PVRSRV_BRIDGE_OUT_HEAPCFGHEAPCOUNT_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_HEAPCFGHEAPCOUNT;
 
 /*******************************************
-            HeapCfgHeapConfigName          
+            HeapCfgHeapConfigName
  *******************************************/
 
 /* Bridge in structure for HeapCfgHeapConfigName */
@@ -664,7 +664,7 @@ typedef struct PVRSRV_BRIDGE_OUT_HEAPCFGHEAPCONFIGNAME_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_HEAPCFGHEAPCONFIGNAME;
 
 /*******************************************
-            HeapCfgHeapDetails          
+            HeapCfgHeapDetails
  *******************************************/
 
 /* Bridge in structure for HeapCfgHeapDetails */
@@ -690,7 +690,7 @@ typedef struct PVRSRV_BRIDGE_OUT_HEAPCFGHEAPDETAILS_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_HEAPCFGHEAPDETAILS;
 
 /*******************************************
-            DevmemIntRegisterPFNotifyKM          
+            DevmemIntRegisterPFNotifyKM
  *******************************************/
 
 /* Bridge in structure for DevmemIntRegisterPFNotifyKM */
@@ -708,7 +708,7 @@ typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTREGISTERPFNOTIFYKM_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTREGISTERPFNOTIFYKM;
 
 /*******************************************
-            GetMaxDevMemSize          
+            GetMaxDevMemSize
  *******************************************/
 
 /* Bridge in structure for GetMaxDevMemSize */
@@ -726,7 +726,7 @@ typedef struct PVRSRV_BRIDGE_OUT_GETMAXDEVMEMSIZE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_GETMAXDEVMEMSIZE;
 
 /*******************************************
-            DevmemGetFaultAddress          
+            DevmemGetFaultAddress
  *******************************************/
 
 /* Bridge in structure for DevmemGetFaultAddress */

@@ -500,15 +500,20 @@ int isp_k_update_imbalance(uint32_t idx,
 	val = (center_x << 16) | center_y;
 	ISP_REG_WR(idx, ISP_NLM_IMBLANCE_PARA28, val);
 
-	radius = (imbalance_info->imblance_radial_1D_radius_thr * new_width + (old_width / 2)) / old_width;
-	radius_limit = (new_height + new_width) * imbalance_info->imblance_radial_1D_radius_thr_factor / imbalance_info->radius_base;
+	radius = (imbalance_info->imblance_radial_1D_radius_thr
+		* new_width + (old_width / 2)) / old_width;
+	radius_limit = (new_height + new_width)
+		* imbalance_info->imblance_radial_1D_radius_thr_factor
+		/ imbalance_info->radius_base;
 	radius = (radius < radius_limit) ? radius : radius_limit;
 
 	val = radius;
 	ISP_REG_WR(idx, ISP_NLM_IMBLANCE_PARA29, val);
 
-	pr_info("center %d %d,  orig radius %d %d, base %d, new %d %d\n",
-		center_x, center_y, imbalance_info->imblance_radial_1D_radius_thr,imbalance_info->imblance_radial_1D_radius_thr_factor,imbalance_info->radius_base,radius_limit,radius);
+	pr_debug("center %d %d,  orig radius %d %d, base %d, new %d %d\n",
+		center_x, center_y, imbalance_info->imblance_radial_1D_radius_thr,
+		imbalance_info->imblance_radial_1D_radius_thr_factor,
+		imbalance_info->radius_base,radius_limit,radius);
 
 	return ret;
 }

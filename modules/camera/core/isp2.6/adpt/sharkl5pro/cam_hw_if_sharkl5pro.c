@@ -1497,6 +1497,23 @@ static void sharkl5pro_cam_gtm_ltm_dis(uint32_t dcam_idx, uint32_t isp_idx)
 	pr_debug("gtm %d ltm dis %d\n", g_gtm_en, g_ltm_bypass);
 }
 
+static int sharkl5pro_cam_gtm_update(uint32_t gtm_idx, void *arg)
+{
+	int ret = 0;
+	struct dcam_pipe_dev *dev = NULL;
+
+	if (unlikely(!arg)) {
+		pr_err("fail to get valid arg\n");
+		return -EFAULT;
+	}
+
+	dev = (struct dcam_pipe_dev *)arg;
+	ret = dcam_k_raw_gtm_block(gtm_idx, dev->blk_dcam_pm);
+	dev->hw->hw_ops.core_ops.auto_copy(DCAM_CTRL_COEF, dev);
+
+	return ret;
+}
+
 static int sharkl5pro_isp_clk_eb(struct cam_hw_soc_info *hw)
 {
 	int ret = 0;
@@ -1960,8 +1977,6 @@ static struct isp_cfg_entry isp_cfg_func_tab[ISP_BLOCK_TOTAL - ISP_BLOCK_BASE] =
 [ISP_BLOCK_POST_CDN - ISP_BLOCK_BASE]	= {ISP_BLOCK_POST_CDN, isp_k_cfg_post_cdn},
 [ISP_BLOCK_PSTRZ - ISP_BLOCK_BASE]	= {ISP_BLOCK_PSTRZ, isp_k_cfg_pstrz},
 [ISP_BLOCK_YRANDOM - ISP_BLOCK_BASE]	= {ISP_BLOCK_YRANDOM, isp_k_cfg_yrandom},
-[ISP_BLOCK_RGB_LTM- ISP_BLOCK_BASE]	= {ISP_BLOCK_RGB_LTM, isp_k_cfg_rgb_ltm},
-[ISP_BLOCK_YUV_LTM - ISP_BLOCK_BASE]	= {ISP_BLOCK_YUV_LTM, isp_k_cfg_yuv_ltm},
 };
 
 static void *sharkl5pro_block_func_get(uint32_t index, enum cam_block_type type)
@@ -2682,6 +2697,7 @@ static struct cam_hw_ip_info sharkl5pro_dcam[DCAM_ID_MAX] = {
 		.store_addr_tab = sharkl5pro_dcam_store_addr,
 		.path_ctrl_id_tab = sharkl5pro_path_ctrl_id,
 		.pdaf_type3_reg_addr = DCAM_PPE_RIGHT_WADDR,
+		.rds_en = 0,
 	},
 	[DCAM_ID_1] = {
 		.slm_path = BIT(DCAM_PATH_BIN) | BIT(DCAM_PATH_AEM)
@@ -2695,6 +2711,7 @@ static struct cam_hw_ip_info sharkl5pro_dcam[DCAM_ID_MAX] = {
 		.store_addr_tab = sharkl5pro_dcam_store_addr,
 		.path_ctrl_id_tab = sharkl5pro_path_ctrl_id,
 		.pdaf_type3_reg_addr = DCAM_PPE_RIGHT_WADDR,
+		.rds_en = 0,
 	},
 	[DCAM_ID_2] = {
 		.slm_path = BIT(DCAM_PATH_BIN) | BIT(DCAM_PATH_AEM)
@@ -2708,6 +2725,7 @@ static struct cam_hw_ip_info sharkl5pro_dcam[DCAM_ID_MAX] = {
 		.store_addr_tab = sharkl5pro_dcam_store_addr,
 		.path_ctrl_id_tab = sharkl5pro_path_ctrl_id,
 		.pdaf_type3_reg_addr = DCAM_PPE_RIGHT_WADDR,
+		.rds_en = 0,
 	},
 };
 static struct cam_hw_ip_info sharkl5pro_isp = {
@@ -2784,6 +2802,7 @@ struct cam_hw_info sharkl5pro_hw_info = {
 			.dcam_gtm_status_get = sharkl5pro_dcam_gtm_status_get,
 			.cam_gtm_ltm_eb = sharkl5pro_cam_gtm_ltm_eb,
 			.cam_gtm_ltm_dis = sharkl5pro_cam_gtm_ltm_dis,
+			.cam_gtm_update = sharkl5pro_cam_gtm_update,
 			.isp_fetch_set = sharkl5pro_isp_fetch_set,
 			.isp_fbd_slice_set = sharkl5pro_isp_fbd_slice_set,
 			.isp_fbd_addr_set = sharkl5pro_isp_fbd_addr_set,

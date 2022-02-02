@@ -1314,6 +1314,7 @@ typedef struct
 typedef struct
 {
 	IMG_UINT32 ui32CoreClkRate;
+	IMG_UINT32 ui32Flags;
 } UNCACHED_ALIGN RGXFWIF_FWCCB_CMD_CORE_CLK_RATE_CHANGE_DATA;
 
 typedef struct

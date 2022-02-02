@@ -34,6 +34,9 @@
 #ifndef _SYNAPTICS_DSX_H_
 #define _SYNAPTICS_DSX_H_
 
+//Enable the FW upgrade
+#define DO_STARTUP_FW_UPDATE
+
 /*
  * synaptics_dsx_cap_button_map - 0d button map
  * @nbuttons: number of 0d buttons

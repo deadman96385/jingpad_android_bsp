@@ -2,7 +2,7 @@
 @File
 @Title          X Device Memory Management core internal
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Services internal interface for extended device memory management.
+@Description    Internal interface for extended device memory management.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -96,8 +96,7 @@ DevmemXFreeVirtual(DEVMEMX_VIRTDESC *psVirtDesc);
 
 /* DevmemXMapVirtualRange()
  *
- * Map memory from a physical descriptor into a
- * virtual range.
+ * Map memory from a physical descriptor into a virtual range.
  */
 PVRSRV_ERROR
 DevmemXMapVirtualRange(IMG_UINT32 ui32PageCount,
@@ -132,7 +131,7 @@ DevmemXUnmapPhysicalToCPU(DEVMEMX_PHYSDESC *psMemAllocPhys);
 
 /* DevmemXCreateDevmemMemDesc()
  *
- * DEPRICATED!
+ * DEPRECATED!
  * DO NOT USE IN PRODUCTION DRIVER!
  *
  * Create a devmem memdesc from a physical and
@@ -146,7 +145,7 @@ DevmemXCreateDevmemMemDesc(const IMG_DEV_VIRTADDR sVirtualAddress,
 
 /* DevmemXFreeDevmemMemDesc()
  *
- * DEPRICATED!
+ * DEPRECATED!
  * DO NOT USE IN PRODUCTION DRIVER!
  *
  * Free the memdesc again. Has no impact on the underlying

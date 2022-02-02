@@ -598,6 +598,7 @@ SyncCheckpointResolveFence(PSYNC_CHECKPOINT_CONTEXT psSyncCheckpointContext,
 			}
 
 			SyncCheckpointFreeCheckpointListMem(*papsSyncCheckpoints);
+			*papsSyncCheckpoints = NULL;
 		}
 
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -1424,21 +1425,19 @@ SyncCheckpointSignal(PSYNC_CHECKPOINT psSyncCheckpoint, IMG_UINT32 ui32FenceSync
 			                      psSyncCheckpointInt->azName,
 			                      psSyncCheckpointInt->ui32UID, psSyncCheckpointInt->hTimeline,
 			                      (psSyncCheckpointInt->psSyncCheckpointBlock->ui32FirmwareAddr +
-			                    		  _SyncCheckpointGetOffset(psSyncCheckpointInt)));
+								   _SyncCheckpointGetOffset(psSyncCheckpointInt)));
 			_SyncCheckpointSignalPDump(psSyncCheckpointInt);
 #endif
 		}
 		else
 		{
-#if (ENABLE_SYNC_CHECKPOINT_ENQ_AND_SIGNAL_DEBUG == 1)
 			PVR_DPF((PVR_DBG_WARNING,
-					"%s asked to set PVRSRV_SYNC_CHECKPOINT_SIGNALLED(%d) for (psSyncCheckpointInt->ui32UID=%d), "
-					"when value is already %d",
-					__func__,
-					PVRSRV_SYNC_CHECKPOINT_SIGNALLED,
-					psSyncCheckpointInt->ui32UID,
-					psSyncCheckpointInt->psSyncCheckpointFwObj->ui32State));
-#endif
+					 "%s asked to set PVRSRV_SYNC_CHECKPOINT_SIGNALLED(%d) for (psSyncCheckpointInt->ui32UID=%d), "
+					 "when value is already %d",
+					 __func__,
+					 PVRSRV_SYNC_CHECKPOINT_SIGNALLED,
+					 psSyncCheckpointInt->ui32UID,
+					 psSyncCheckpointInt->psSyncCheckpointFwObj->ui32State));
 		}
 	}
 }

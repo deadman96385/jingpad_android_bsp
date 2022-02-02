@@ -332,6 +332,9 @@ int sprdwl_cmd_send_recv(struct sprdwl_priv *priv,
 			wiphy_info(priv->wiphy, "get scanning_sem timeout");
 			priv->scanning_flag = 0;
 			up(&priv->scanning_sem);
+			/*need free buf*/
+			priv->if_ops->free_msg_buf(priv->hw_intf, msg);
+			dev_kfree_skb(msg->skb);
 			return sem_ret;
 		}
 		wiphy_info(priv->wiphy, "get scanning_sem success");
@@ -653,12 +656,11 @@ int sprdwl_del_station(struct sprdwl_priv *priv, u8 vif_mode,
 }
 
 int sprdwl_get_station(struct sprdwl_priv *priv, u8 vif_mode,
-		       u8 *signal, u8 *noise, u8 *rate, u32 *failed)
+		       struct sprdwl_cmd_get_station *sta)
 {
 	struct sprdwl_msg_buf *msg;
-	struct sprdwl_cmd_get_station sta;
-	u8 *r_buf = (u8 *)&sta;
-	u16 r_len = sizeof(sta);
+	u8 *r_buf = (u8 *)sta;
+	u16 r_len = sizeof(struct sprdwl_cmd_get_station);
 	int ret;
 
 	msg = sprdwl_cmd_getbuf(priv, 0, vif_mode, SPRDWL_HEAD_RSP,
@@ -666,12 +668,6 @@ int sprdwl_get_station(struct sprdwl_priv *priv, u8 vif_mode,
 	if (!msg)
 		return -ENOMEM;
 	ret = sprdwl_cmd_send_recv(priv, msg, CMD_WAIT_TIMEOUT, r_buf, &r_len);
-	if (!ret && r_len) {
-		*rate = sta.txrate;
-		*failed = sta.txfailed;
-		*signal = sta.signal;
-		*noise = sta.noise;
-	}
 
 	return ret;
 }

@@ -176,7 +176,7 @@ void PDVFSRequestReactiveUpdate(PVRSRV_RGXDEV_INFO *psDevInfo)
 @Input          ui32CoreClockRate    New core clock rate.
 @Return         PVRSRV_ERROR.
 */ /**************************************************************************/
-PVRSRV_ERROR PDVFSProcessCoreClkChangeRequest(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32CoreClockRate)
+PVRSRV_ERROR PDVFSProcessCoreClkChangeRequest(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_UINT32 ui32CoreClockRate, IMG_UINT32 ui32Flags)
 {
 	PVRSRV_DEVICE_CONFIG *psDevConfig = psDevInfo->psDeviceNode->psDevConfig;
 	IMG_DVFS_DEVICE_CFG *psDVFSDeviceCfg = &psDevConfig->sDVFS.sDVFSDeviceCfg;
@@ -225,6 +225,19 @@ PVRSRV_ERROR PDVFSProcessCoreClkChangeRequest(PVRSRV_RGXDEV_INFO *psDevInfo, IMG
 #endif
 
 	PVRSRVDevicePostClockSpeedChange(psDevInfo->psDeviceNode, psDVFSDeviceCfg->bIdleReq, NULL);
+
+	if (ui32Flags & RGX_FREQ_UPDATE_REACTIVE_EN)
+	{
+		OSAtomicIncrement(&psDevInfo->iNumReactiveUpdates);
+	}
+	else if (ui32Flags & RGX_FREQ_UPDATE_PROACTIVE_EN)
+	{
+		OSAtomicIncrement(&psDevInfo->iNumProactiveUpdates);
+	}
+	else if (ui32Flags & RGX_FREQ_UPDATE_UNPROFILED_EN)
+	{
+		OSAtomicIncrement(&psDevInfo->iNumUnprofiledUpdates);
+	}
 
 	return PVRSRV_OK;
 }

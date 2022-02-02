@@ -37,7 +37,8 @@
 #define ISP_AXI_STOP_TIMEOUT            1000
 #define ISP_AXI_ARBITER_WQOS_MASK       0x37FF
 #define ISP_AXI_ARBITER_RQOS_MASK       0x1FF
-
+#define IMG_TYPE_RAW                   0x2B
+#define IMG_TYPE_YUV                   0x1E
 /*
 .* pdaf bypass is bit3 of DCAM_CFG
 .* 4in1 bypass is bit12 of DCAM_MIPI_CAP_CFG
@@ -406,6 +407,11 @@ static int sharkl3_dcam_start(void *arg)
 	int ret = 0;
 	struct dcam_pipe_dev *dev = NULL;
 	uint32_t idx = 0;
+	uint32_t reg_val = 0;
+	uint32_t image_vc = 0;
+	uint32_t image_data_type = IMG_TYPE_RAW;
+	uint32_t image_mode = 1;
+	uint32_t line_en = 0;
 
 	if (!arg) {
 		pr_err("fail to get valid arg\n");
@@ -415,9 +421,22 @@ static int sharkl3_dcam_start(void *arg)
 	dev = (struct dcam_pipe_dev *)arg;
 	idx = dev->idx;
 
+
+	if (dev->cap_info.format == DCAM_CAP_MODE_YUV)
+		image_data_type = IMG_TYPE_YUV;
+
+	reg_val = ((image_vc & 0x3) << 16) |
+		((image_data_type & 0x3F) << 8) | (image_mode & 0x3);
+	DCAM_REG_WR(dev->idx, DCAM_IMAGE_CONTROL, reg_val);
+
 	DCAM_REG_WR(idx, DCAM_INT_CLR, 0xFFFFFFFF);
 	/* see DCAM_PREVIEW_SOF in dcam_int.h for details */
-	DCAM_REG_WR(idx, DCAM_INT_EN, DCAMINT_IRQ_LINE_EN_NORMAL);
+
+	if (idx != DCAM_ID_2)
+		line_en = DCAMINT_IRQ_LINE_EN_NORMAL;
+	else
+		line_en = DCAM2INT_IRQ_LINE_EN_NORMAL;
+	DCAM_REG_WR(idx, DCAM_INT_EN, line_en);
 	/* trigger cap_en*/
 	DCAM_REG_MWR(idx, DCAM_CFG, BIT_0, 1);
 
@@ -557,6 +576,7 @@ static int sharkl3_dcam_reset(struct cam_hw_info *hw, void *arg)
 	struct cam_hw_soc_info *soc = NULL;
 	struct cam_hw_ip_info *ip = NULL;
 	uint32_t bypass, eb;
+	uint32_t line_mask;
 
 	if (!hw || !arg) {
 		pr_err("fail to get input para\n");
@@ -576,10 +596,15 @@ static int sharkl3_dcam_reset(struct cam_hw_info *hw, void *arg)
 	for (i = 0x200; i < 0x400; i += 4)
 		DCAM_REG_WR(idx, i, 0);
 
+	if (idx != DCAM_ID_2)
+		line_mask = DCAMINT_IRQ_LINE_MASK;
+	else
+		line_mask = DCAM2INT_IRQ_LINE_MASK;
+
 	DCAM_REG_MWR(idx, DCAM_INT_CLR,
-		DCAMINT_IRQ_LINE_MASK, DCAMINT_IRQ_LINE_MASK);
+		line_mask, line_mask);
 	DCAM_REG_MWR(idx, DCAM_INT_EN,
-		DCAMINT_IRQ_LINE_MASK, DCAMINT_IRQ_LINE_MASK);
+		line_mask, line_mask);
 
 	/* init registers(sram regs) to default value */
 	dcam_reg_set_default_value(idx);
@@ -811,7 +836,12 @@ static int sharkl3_dcam_mipi_cap_set(void *arg)
 
 	/* data format */
 	if (cap_info->format == DCAM_CAP_MODE_RAWRGB) {
-		DCAM_REG_MWR(idx, DCAM_MIPI_CAP_CFG, BIT_1, 1 << 1);
+		if (idx != DCAM_ID_2)
+			DCAM_REG_MWR(idx, DCAM_MIPI_CAP_CFG,
+				BIT_1, BIT_1);
+		else
+			DCAM_REG_MWR(idx, DCAM_MIPI_CAP_CFG,
+				BIT_1 | BIT_0, BIT_0);
 		DCAM_REG_MWR(idx, DCAM_MIPI_CAP_CFG, BIT_17 | BIT_16,
 				cap_info->pattern << 16);
 	} else if (cap_info->format == DCAM_CAP_MODE_YUV) {
@@ -934,6 +964,10 @@ static int sharkl3_dcam_path_start(void *handle, uint32_t path_id)
 
 		/* full_path_en */
 		DCAM_REG_MWR(idx, DCAM_CFG, BIT_1, (1 << 1));
+		if (dev->cap_info.format == DCAM_CAP_MODE_YUV) {
+			DCAM_REG_MWR(idx, DCAM_FULL_CFG, BIT_2, 0 << 2);
+			DCAM_REG_MWR(idx, DCAM_CFG, BIT_2, (1 << 2));
+		}
 		break;
 
 
@@ -1843,6 +1877,9 @@ static void sharkl3_isp_fetch_set(void *arg)
 		ISP_REG_WR(idx, ISP_FETCH_SLICE_V_PITCH, fetch->pitch.pitch_ch2);
 	}
 
+	if (pctx->in_fmt != IMG_PIX_FMT_GREY)
+		ISP_HREG_MWR(ISP_YUV_MULT, BIT_31, 0 << 31);
+
 	pr_info("isp_fetch: bayer mode=%d ,mipi_word_num %d, mipi_pos %d\n",
 		pctx->dispatch_bayer_mode,
 		fetch->mipi_word_num, fetch->mipi_byte_rel_pos);
@@ -1977,6 +2014,7 @@ static struct cam_hw_ip_info sharkl3_dcam[DCAM_ID_MAX] = {
 		.store_addr_tab = sharkl3_dcam_store_addr,
 		.path_ctrl_id_tab = sharkl3_path_ctrl_id,
 		.pdaf_type3_reg_addr = DCAM_VCH2_BASE_WADDR,
+		.rds_en = 0,
 	},
 	[DCAM_ID_1] = {
 		.slm_path = BIT(DCAM_PATH_BIN),
@@ -1989,6 +2027,7 @@ static struct cam_hw_ip_info sharkl3_dcam[DCAM_ID_MAX] = {
 		.store_addr_tab = sharkl3_dcam_store_addr,
 		.path_ctrl_id_tab = sharkl3_path_ctrl_id,
 		.pdaf_type3_reg_addr = DCAM_VCH2_BASE_WADDR,
+		.rds_en = 0,
 	},
 	[DCAM_ID_2] = {
 		.slm_path = 0,
@@ -2001,6 +2040,7 @@ static struct cam_hw_ip_info sharkl3_dcam[DCAM_ID_MAX] = {
 		.store_addr_tab = sharkl3_dcam2_store_addr,
 		.path_ctrl_id_tab = sharkl3_path_ctrl_id,
 		.pdaf_type3_reg_addr = DCAM_VCH2_BASE_WADDR,
+		.rds_en = 0,
 	},
 };
 
@@ -2078,6 +2118,7 @@ struct cam_hw_info sharkl3_hw_info = {
 			.dcam_gtm_status_get = NULL,
 			.cam_gtm_ltm_eb = NULL,
 			.cam_gtm_ltm_dis = NULL,
+			.cam_gtm_update = NULL,
 			.isp_fetch_set = sharkl3_isp_fetch_set,
 			.default_para_set = sharkl3_isp_default_param_set,
 			.block_func_get = sharkl3_block_func_get,

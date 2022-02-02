@@ -59,7 +59,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_CACHE_CMD_LAST			(PVRSRV_BRIDGE_CACHE_CMD_FIRST+2)
 
 /*******************************************
-            CacheOpQueue          
+            CacheOpQueue
  *******************************************/
 
 /* Bridge in structure for CacheOpQueue */
@@ -84,7 +84,7 @@ typedef struct PVRSRV_BRIDGE_OUT_CACHEOPQUEUE_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CACHEOPQUEUE;
 
 /*******************************************
-            CacheOpExec          
+            CacheOpExec
  *******************************************/
 
 /* Bridge in structure for CacheOpExec */
@@ -104,7 +104,7 @@ typedef struct PVRSRV_BRIDGE_OUT_CACHEOPEXEC_TAG
 } __attribute__ ((packed)) PVRSRV_BRIDGE_OUT_CACHEOPEXEC;
 
 /*******************************************
-            CacheOpLog          
+            CacheOpLog
  *******************************************/
 
 /* Bridge in structure for CacheOpLog */

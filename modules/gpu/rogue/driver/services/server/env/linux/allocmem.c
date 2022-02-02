@@ -173,7 +173,7 @@ void *_OSAllocMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32All
 			_PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
 										  pvRet,
 										  sCpuPAddr,
-										  ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										  ((ui32Size + PAGE_SIZE-1) & ~(PAGE_SIZE-1)),
 										  NULL,
 										  OSGetCurrentClientProcessIDKM(),
 										  pvAllocFromFile,
@@ -220,7 +220,7 @@ void *_OSAllocZMem(IMG_UINT32 ui32Size, void *pvAllocFromFile, IMG_UINT32 ui32Al
 			_PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
 										  pvRet,
 										  sCpuPAddr,
-										  ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										  ((ui32Size + PAGE_SIZE-1) & ~(PAGE_SIZE-1)),
 										  NULL,
 										  OSGetCurrentClientProcessIDKM(),
 										  pvAllocFromFile,
@@ -275,7 +275,7 @@ void *OSAllocMem(IMG_UINT32 ui32Size)
 #if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
 			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-											    ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+											    ((ui32Size + PAGE_SIZE-1) & ~(PAGE_SIZE-1)),
 											    (IMG_UINT64)(uintptr_t) pvRet,
 												OSGetCurrentClientProcessIDKM());
 #else
@@ -285,7 +285,7 @@ void *OSAllocMem(IMG_UINT32 ui32Size)
 			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
 										 pvRet,
 										 sCpuPAddr,
-										 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										 ((ui32Size + PAGE_SIZE-1) & ~(PAGE_SIZE-1)),
 										 NULL,
 										 OSGetCurrentClientProcessIDKM());
 #endif
@@ -339,7 +339,7 @@ void *OSAllocZMem(IMG_UINT32 ui32Size)
 #if !defined(PVR_DISABLE_KMALLOC_MEMSTATS)
 #if !defined(PVRSRV_ENABLE_MEMORY_STATS)
 			PVRSRVStatsIncrMemAllocStatAndTrack(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
-											    ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+											    ((ui32Size + PAGE_SIZE-1) & ~(PAGE_SIZE-1)),
 											    (IMG_UINT64)(uintptr_t) pvRet,
 												OSGetCurrentClientProcessIDKM());
 #else
@@ -349,7 +349,7 @@ void *OSAllocZMem(IMG_UINT32 ui32Size)
 			PVRSRVStatsAddMemAllocRecord(PVRSRV_MEM_ALLOC_TYPE_VMALLOC,
 										 pvRet,
 										 sCpuPAddr,
-										 ((ui32Size + PAGE_SIZE -1) & ~(PAGE_SIZE-1)),
+										 ((ui32Size + PAGE_SIZE-1) & ~(PAGE_SIZE-1)),
 										 NULL,
 										 OSGetCurrentClientProcessIDKM());
 #endif

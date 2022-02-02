@@ -2961,6 +2961,10 @@ PVRSRV_ERROR PVRSRVRGXDestroyRenderContextKM(RGX_SERVER_RENDER_CONTEXT *psRender
                 psRenderContext->sWorkEstData.ui32WorkEstCCBReceived));
 
 		eError = PVRSRV_ERROR_RETRY;
+		PVR_DPF((PVR_DBG_ERROR,
+				"PVRSRVRGXDestroyRenderContextKM(workload estimation): FW->ui32WorkEst:%d, Host ui32WorkEst:%d error(%u)=>force OK",
+				ui32WorkEstCCBSubmitted, psRenderContext->sWorkEstData.ui32WorkEstCCBReceived, eError));
+		eError = PVRSRV_OK;
 		goto e0;
 	}
 #endif

@@ -32,7 +32,7 @@
 .push_link = push, .tx_complete = complete, .power_notify = suspend }
 
 struct sprdwl_intf_sc2355 g_intf_sc2355;
-
+struct sprdwl_intf *g_intf;
 static inline struct sprdwl_intf *get_intf(void)
 {
 	return (struct sprdwl_intf *)g_intf_sc2355.intf;
@@ -939,7 +939,7 @@ static int sprdwl_sc2355_rx_handle(int chn, struct mbuf_t *head,
 	struct sprdwl_rx_if *rx_if = (struct sprdwl_rx_if *)intf->sprdwl_rx;
 	struct sprdwl_msg_buf *msg = NULL;
 
-	wl_info("%s: channel:%d head:%p tail:%p num:%d\n",
+	wl_debug("%s: channel:%d head:%p tail:%p num:%d\n",
 		__func__, chn, head, tail, num);
 
 	/*To process credit earlier*/
@@ -1583,6 +1583,30 @@ void sprdwl_tx_delba(struct sprdwl_intf *intf,
 	sprdwl_put_vif(vif);
 }
 
+void sprdwl_count_rx_tp(struct sprdwl_intf *intf, u32 len)
+{
+	unsigned long long timeus = 0;
+	struct sprdwl_rx_if *rx_if = (struct sprdwl_rx_if *)intf->sprdwl_rx;
+
+	rx_if->rx_total_len += (unsigned long)len;
+	if (rx_if->rx_total_len == (unsigned long)len) {
+		rx_if->rxtimebegin = ktime_get();
+		return;
+	}
+
+	rx_if->rxtimeend = ktime_get();
+	timeus = div_u64(rx_if->rxtimeend - rx_if->rxtimebegin, NSEC_PER_USEC);
+	if (div_u64(((unsigned long long)rx_if->rx_total_len * 8 ) , (u32)timeus) >= (unsigned long long)intf->tcpack_delay_th_in_mb &&
+		timeus > (unsigned long long)intf->tcpack_time_in_ms * USEC_PER_MSEC) {
+		rx_if->rx_total_len = 0;
+		enable_tcp_ack_delay("tcpack_delay_en=1", strlen("tcpack_delay_en="));
+	} else if (div_u64((rx_if->rx_total_len * 8 ) , (u32)timeus) < intf->tcpack_delay_th_in_mb &&
+		timeus > intf->tcpack_time_in_ms * USEC_PER_MSEC) {
+		rx_if->rx_total_len = 0;
+		enable_tcp_ack_delay("tcpack_delay_en=0", strlen("tcpack_delay_en="));
+	}
+}
+
 int sprdwl_intf_init(struct sprdwl_priv *priv, struct sprdwl_intf *intf)
 {
 	int ret = -EINVAL, chn = 0;
@@ -1608,6 +1632,7 @@ int sprdwl_intf_init(struct sprdwl_priv *priv, struct sprdwl_intf *intf)
 		}
 
 		g_intf_sc2355.intf = (void *)intf;
+		g_intf = intf;
 		/* TODO: Need we reserve g_intf_sc2355? */
 		intf->hw_intf = (void *)&g_intf_sc2355;
 
@@ -1616,6 +1641,8 @@ int sprdwl_intf_init(struct sprdwl_priv *priv, struct sprdwl_intf *intf)
 		intf->priv = priv;
 		intf->fw_awake = 1;
 		intf->fw_power_down = 0;
+		intf->tcpack_time_in_ms = RX_TP_COUNT_IN_MS;
+		intf->tcpack_delay_th_in_mb = DROPACK_TP_TH_IN_M;
 	} else {
 err:
 		wl_err("%s: unregister %d ops\n",

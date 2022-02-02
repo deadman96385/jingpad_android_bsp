@@ -380,6 +380,9 @@ pvr_sync_create_fence(const char *fence_name,
 	*new_checkpoint_handle = checkpoint;
 	*fence_uid = OSGetCurrentClientProcessIDKM();
 	*fence_uid = (*fence_uid << 32) | (new_fence_fd & U32_MAX);
+	/* not used but don't want to return dangling pointers */
+	*timeline_update_sync = NULL;
+	*timeline_update_value = 0;
 
 	pvr_sync_timeline_fput(timeline);
 err_out:
@@ -432,7 +435,7 @@ pvr_sync_rollback_fence_data(PVRSRV_FENCE fence_to_rollback,
 
 	put_unused_fd(fence_to_rollback);
 
-	pvr_fence_destroy(pvr_fence);
+	//pvr_fence_destroy(pvr_fence);
 
 	return PVRSRV_OK;
 }

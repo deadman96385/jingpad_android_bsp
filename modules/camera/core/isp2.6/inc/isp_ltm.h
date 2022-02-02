@@ -28,6 +28,7 @@ extern "C" {
 #define LTM_MAX_TILE_RANGE		65536
 #define LTM_MAX_ROI_X			240
 #define LTM_MAX_ROI_Y			180
+#define LTM_ID_MAX			3
 
 typedef struct isp_ltm_hist_param {
 	/* match ltm stat info */
@@ -155,6 +156,7 @@ struct isp_ltm_ctx_desc {
 	uint32_t bypass;
 	uint32_t type;
 	uint32_t isp_pipe_ctx_id;
+	uint32_t ltm_index;
 
 	/*
 	 * preview and capture frame has UNIFY and UNIQ frame ID
@@ -221,24 +223,25 @@ struct isp_ltm_share_ctx_param {
 };
 
 struct isp_ltm_share_ctx_desc {
-	struct isp_ltm_share_ctx_param *param;
+	struct isp_ltm_share_ctx_param *param[LTM_ID_MAX];
 	struct isp_ltm_share_ctx_ops *ops;
 };
 
 struct isp_ltm_share_ctx_ops {
-	int (*init)(void);
-	int (*deinit)(struct isp_ltm_share_ctx_desc *share_ctx);
-	int (*set_status)(int status, int context_idx, int type);
-	int (*get_status)(int type);
-	int (*set_update)(int update, int type);
-	int (*get_update)(int type);
-	int (*set_frmidx)(int frame_idx);
-	int (*get_frmidx)(void);
-	int (*set_completion)(int frame_idx, enum isp_ltm_region ltm_id);
-	int (*get_completion)(enum isp_ltm_region ltm_id);
-	int (*complete_completion)(enum isp_ltm_region ltm_id);
-	int (*set_config)(struct isp_ltm_ctx_desc *ctx, struct isp_ltm_hists *hists);
-	int (*get_config)(struct isp_ltm_ctx_desc *ctx, struct isp_ltm_hists *hists);
+	int (*init)(uint32_t idx);
+	int (*deinit)(uint32_t idx);
+	int (*set_status)(int status, int context_idx, int type, uint32_t idx);
+	int (*get_status)(int type, uint32_t idx);
+	int (*set_update)(int update, int type, uint32_t idx);
+	int (*get_update)(int type, uint32_t idx);
+	int (*set_frmidx)(int frame_idx, uint32_t idx);
+	int (*get_frmidx)(uint32_t idx);
+	int (*set_completion)(int frame_idx, enum isp_ltm_region ltm_id, uint32_t idx);
+	int (*get_completion)(enum isp_ltm_region ltm_id, uint32_t idx);
+	int (*complete_completion)(enum isp_ltm_region ltm_id, uint32_t idx);
+	int (*set_config)(struct isp_ltm_ctx_desc *ctx, struct isp_ltm_hists *hists, uint32_t idx);
+	int (*get_config)(struct isp_ltm_ctx_desc *ctx, struct isp_ltm_hists *hists, uint32_t idx);
+	int (*clear_status)(uint32_t idx);
 };
 
 struct isp_ltm_tilenum_minus1 {
@@ -281,14 +284,12 @@ struct isp_ltm_share_ctx_desc *isp_get_ltm_share_ctx_desc(void);
 int isp_put_ltm_share_ctx_desc(struct isp_ltm_share_ctx_desc *param);
 
 int isp_ltm_gen_frame_config(struct isp_ltm_ctx_desc *ctx,
-	enum isp_ltm_region ltm_id);
+	enum isp_ltm_region ltm_id, struct isp_ltm_info *ltm_info);
 int isp_ltm_gen_map_slice_config(struct isp_ltm_ctx_desc *ctx,
 			enum isp_ltm_region ltm_id,
 			struct isp_ltm_rtl_param  *prtl,
 			uint32_t *slice_info);
 
-struct isp_ltm_info *isp_ltm_get_tuning_config(int type,
-		enum isp_ltm_region ltm_id);
 int isp_ltm_config_param(struct isp_ltm_ctx_desc *ctx,
 		enum isp_ltm_region ltm_id);
 

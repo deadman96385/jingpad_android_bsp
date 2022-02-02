@@ -101,28 +101,9 @@ int isp_hw_deinit(void *arg)
 	return ret;
 }
 
-struct isp_work_ctrl {
-	uint32_t work_en_sw;
-	uint32_t work_start;
-	uint32_t work_mode;
-};
-
 int isp_hw_start(struct cam_hw_info *hw, void *arg)
 {
 	int ret = 0;
-	struct isp_work_ctrl work_ctrl;
-
-	/* by SW config (for DVFS)*/
-	work_ctrl.work_mode = 1;
-	work_ctrl.work_en_sw = 0;
-	work_ctrl.work_start = 1;
-
-#if 0
-	/* to be refined. */
-	ISP_HREG_MWR(ISP_WORK_CTRL, BIT_0, work_ctrl.work_mode);
-	ISP_HREG_MWR(ISP_WORK_CTRL, BIT_1, (work_ctrl.work_start << 1));
-	ISP_HREG_MWR(ISP_WORK_CTRL, BIT_2, (work_ctrl.work_en_sw << 2));
-#endif
 	hw->hw_ops.core_ops.default_para_set(hw, NULL, ISP_HW_PARA);
 
 	return ret;

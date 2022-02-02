@@ -42,7 +42,6 @@
 #define ISP_PATH_DECI_FAC_MAX       4
 #define ISP_SC_COEFF_UP_MAX         4
 #define ISP_SC_COEFF_DOWN_MAX       4
-#define ISP_DIV_ALIGN(a, b)	((a / b) & ~(ISP_PIXEL_ALIGN_WIDTH - 1))
 
 unsigned long coff_buf_addr[2][3][4] = {
 	{
@@ -132,8 +131,7 @@ static enum isp_store_format get_store_format(uint32_t forcc)
 	return format;
 }
 
-static enum isp_store_format
-	get_afbc_store_format(uint32_t forcc)
+static enum isp_store_format get_afbc_store_format(uint32_t forcc)
 {
 	enum isp_store_format format = ISP_STORE_FORMAT_MAX;
 
@@ -181,9 +179,8 @@ static enum isp_fetch_format get_fetch_format(uint32_t forcc)
 }
 
 static int calc_scaler_param(struct img_trim *in_trim,
-					struct img_size *out_size,
-					struct isp_scaler_info *scaler,
-					struct img_deci_info *deci)
+	struct img_size *out_size, struct isp_scaler_info *scaler,
+	struct img_deci_info *deci)
 {
 	int ret = 0;
 	unsigned int tmp_dstsize = 0;
@@ -197,9 +194,9 @@ static int calc_scaler_param(struct img_trim *in_trim,
 	/* check input crop limit with max scale up output size(2 bit aligned) */
 	if (in_trim->size_x > (out_size->w * d_max * (1 << f_max)) ||
 		in_trim->size_y > (out_size->h * d_max * (1 << f_max)) ||
-		in_trim->size_x < ISP_DIV_ALIGN(out_size->w, u_max) ||
-		in_trim->size_y < ISP_DIV_ALIGN(out_size->h, u_max)) {
-		pr_err("fail to get in_trim %d %d. out _size %d %d, fmax %d, u_max %d\n",
+		in_trim->size_x < ISP_DIV_ALIGN_W(out_size->w, u_max) ||
+		in_trim->size_y < ISP_DIV_ALIGN_H(out_size->h, u_max)) {
+		pr_debug("fail to get in_trim %d %d. out _size %d %d, fmax %d, u_max %d\n",
 				in_trim->size_x, in_trim->size_y,
 				out_size->w, out_size->h, f_max, d_max);
 		ret = -EINVAL;
@@ -255,9 +252,8 @@ static int calc_scaler_param(struct img_trim *in_trim,
 	return ret;
 }
 
-static int calc_scaler_coeff(
-					struct isp_scaler_info *scaler,
-					uint32_t scale2yuv420)
+static int calc_scaler_coeff(struct isp_scaler_info *scaler,
+	uint32_t scale2yuv420)
 {
 	uint32_t *tmp_buf = NULL;
 	uint32_t *h_coeff = NULL;
@@ -486,113 +482,69 @@ int cfg_path_thumbscaler(struct isp_path_desc *path)
 static int cfg_fbd_raw(struct isp_pipe_context *pctx,
 	struct isp_ctx_size_desc *cfg_in)
 {
-	int32_t tile_col = 0, tile_row = 0;
-	int32_t crop_start_x = 0, crop_start_y = 0,
-		crop_width = 0, crop_height = 0;
-	int32_t left_offset_tiles_num = 0,
-		up_offset_tiles_num = 0;
-	int32_t img_width = cfg_in->src.w;
-	int32_t end_x = 0, end_y = 0,
-		left_tiles_num = 0, right_tiles_num = 0,
-		middle_tiles_num = 0, left_size,right_size = 0;
-	int32_t up_tiles_num = 0, down_tiles_num = 0,
-		vertical_middle_tiles_num = 0,
-		up_size = 0, down_size = 0;
-	int32_t tiles_num_pitch = 0;
-
+	uint32_t sx, sy, ex, ey;
+	uint32_t w0, h0, w, h;
+	uint32_t tsx, tsy, tex, tey;
+	uint32_t shx, shy, tid;
 	struct isp_fbd_raw_info *fbd_raw = &pctx->fbd_raw;
 
+	fbd_raw = &pctx->fbd_raw;
 	fbd_raw->width = cfg_in->src.w;
 	fbd_raw->height = cfg_in->src.h;
-
+	/* assign same value as width and height */
 	fbd_raw->size = pctx->input_size;
 	fbd_raw->trim = pctx->input_trim;
 
-	pr_debug("fbd raw info: width %d, height %d, trim: x %d, y %d, w %d, h %d\n",
-		fbd_raw->size.w, fbd_raw->size.h,
+	fbd_raw->fetch_fbd_bypass = 0;
+	fbd_raw->tiles_num_pitch =
+		div64_u64(ALIGN(fbd_raw->width, DCAM_FBC_TILE_WIDTH),
+			  DCAM_FBC_TILE_WIDTH);
+	fbd_raw->low_bit_pitch = fbd_raw->width >> 1;
+
+	/* w0, h0: size of whole region */
+	w0 = fbd_raw->size.w;
+	h0 = fbd_raw->size.h;
+	/* w, h: size of fetched region */
+	w = fbd_raw->trim.size_x;
+	h = fbd_raw->trim.size_y;
+	/* sx, sy, ex, ey: start and stop of fetched region (unit: pixel) */
+	sx = fbd_raw->trim.start_x;
+	sy = fbd_raw->trim.start_y;
+	ex = sx + w - 1;
+	ey = sy + h - 1;
+	/* shx, shy: quick for division */
+	shx = ffs(DCAM_FBC_TILE_WIDTH) - 1;
+	shy = ffs(DCAM_FBC_TILE_HEIGHT) - 1;
+	/* tsx, tsy, tex, tey: start and stop of (sx, sy) tile (unit: tile) */
+	tsx = sx >> shx;
+	tsy = sy >> shy;
+	tex = ex >> shx;
+	tey = ey >> shy;
+	/* tid: start index of (sx, sy) tile in all tiles */
+	tid = tsy * fbd_raw->tiles_num_pitch + tsx;
+
+	fbd_raw->pixel_start_in_hor = sx & (DCAM_FBC_TILE_WIDTH - 1);
+	fbd_raw->pixel_start_in_ver = sy & (DCAM_FBC_TILE_HEIGHT - 1);
+	fbd_raw->tiles_num_in_hor = tex - tsx + 1;
+	fbd_raw->tiles_num_in_ver = tey - tsy + 1;
+	fbd_raw->tiles_start_odd = tid & 0x1;
+
+	fbd_raw->header_addr_offset = tid >> 1;
+	fbd_raw->tile_addr_offset_x256 = tid << 8;
+	fbd_raw->low_bit_addr_offset = (sx >> 1) + ((sy * w0) >> 2);
+
+	pr_debug("tid %u, w %u h %u\n", tid, w, h);
+	pr_debug("fetch (%u %u %u %u) from %ux%u\n",
+		 sx, sy, ex, ey, w0, h0);
+	pr_debug("tile %u %u %u %u\n", tsx, tsy, tex, tey);
+	pr_debug("fetch_fbd: %08x %08x %08x\n",
+		 fbd_raw->header_addr_offset,
+		 fbd_raw->tile_addr_offset_x256,
+		 fbd_raw->low_bit_addr_offset);
+	pr_debug("ctx%d fbd_raw: size %u %u, crop %u %u %u %u\n",
+		pctx->ctx_id, fbd_raw->width, fbd_raw->height,
 		fbd_raw->trim.start_x, fbd_raw->trim.start_y,
 		fbd_raw->trim.size_x, fbd_raw->trim.size_y);
-
-	fbd_raw->fetch_fbd_bypass = 0;
-	fbd_raw->fetch_fbd_4bit_bypass = pctx->fetch_fbd_4bit_bypass;
-
-	tile_col = (fbd_raw->width + ISP_FBD_TILE_WIDTH - 1) / ISP_FBD_TILE_WIDTH;
-	tile_col = (tile_col + 2 - 1) / 2 * 2;
-	tile_row =(fbd_raw->height + ISP_FBD_TILE_HEIGHT - 1)/ ISP_FBD_TILE_HEIGHT;
-
-	fbd_raw->tiles_num_pitch = tile_col;
-	fbd_raw->low_bit_pitch = fbd_raw->tiles_num_pitch * ISP_FBD_TILE_WIDTH / 2;
-	if(0 == fbd_raw->fetch_fbd_4bit_bypass)
-		fbd_raw->low_4bit_pitch = fbd_raw->tiles_num_pitch * ISP_FBD_TILE_WIDTH;
-
-	if (fbd_raw->trim.size_x != fbd_raw->size.w ||
-		fbd_raw->trim.size_y != fbd_raw->size.h) {
-		tiles_num_pitch = fbd_raw->tiles_num_pitch;
-		fbd_raw->width = fbd_raw->trim.size_x;
-		fbd_raw->height = fbd_raw->trim.size_y;
-
-		crop_start_x = fbd_raw->trim.start_x;
-		crop_start_y = fbd_raw->trim.start_y;
-		crop_width = fbd_raw->trim.size_x;
-		crop_height = fbd_raw->trim.size_y;
-
-		left_offset_tiles_num = crop_start_x / ISP_FBD_TILE_WIDTH;
-		up_offset_tiles_num = crop_start_y / ISP_FBD_TILE_HEIGHT;
-		end_x = crop_start_x + crop_width - 1;
-		end_y = crop_start_y + crop_height - 1;
-		if (crop_start_x %  ISP_FBD_TILE_WIDTH == 0) {
-			left_tiles_num = 0;
-			left_size = 0;
-		} else {
-			left_tiles_num = 1;
-			left_size = ISP_FBD_TILE_WIDTH - crop_start_x %  ISP_FBD_TILE_WIDTH;
-		}
-		if ((end_x + 1) % ISP_FBD_TILE_WIDTH == 0)
-			right_tiles_num = 0;
-		else right_tiles_num = 1;
-		right_size = (end_x + 1) % ISP_FBD_TILE_WIDTH;
-		middle_tiles_num = (crop_width - left_size - right_size) / ISP_FBD_TILE_WIDTH;
-
-		if (crop_start_y % ISP_FBD_TILE_HEIGHT == 0) {
-			up_tiles_num = 0;
-			up_size = 0;
-		} else {
-			up_tiles_num = 1;
-			up_size = ISP_FBD_TILE_HEIGHT - crop_start_y % ISP_FBD_TILE_HEIGHT;
-		}
-		if ((end_y + 1) % ISP_FBD_TILE_HEIGHT == 0)
-			down_tiles_num = 0;
-		else down_tiles_num = 1;
-		down_size = (end_y + 1) % ISP_FBD_TILE_HEIGHT;
-		vertical_middle_tiles_num = (crop_height - up_size - down_size) / ISP_FBD_TILE_HEIGHT;
-		fbd_raw->pixel_start_in_hor = crop_start_x % ISP_FBD_TILE_WIDTH;
-		fbd_raw->pixel_start_in_ver = crop_start_y % ISP_FBD_TILE_HEIGHT;
-		fbd_raw->tiles_num_in_ver = up_tiles_num + down_tiles_num + vertical_middle_tiles_num;
-		fbd_raw->tiles_num_in_hor = left_tiles_num + right_tiles_num + middle_tiles_num;
-		fbd_raw->tiles_start_odd = left_offset_tiles_num % 2;
-		fbd_raw->header_addr_offset =
-			(left_offset_tiles_num + up_offset_tiles_num * tiles_num_pitch) / 2;
-		fbd_raw->tile_addr_offset_x256 =
-			(left_offset_tiles_num + up_offset_tiles_num * tiles_num_pitch) * ISP_FBD_BASE_ALIGN;
-		fbd_raw->low_bit_addr_offset = (crop_start_x + crop_start_y * img_width) /2;
-		if(0 == fbd_raw->fetch_fbd_4bit_bypass)
-			fbd_raw->low_4bit_addr_offset = (crop_start_x + crop_start_y * img_width);
-		pr_debug("addr offset:header 0x%x, 8bit 0x%x, 2bit 0x%x, 4bit 0x%x\n",
-			fbd_raw->header_addr_offset, fbd_raw->tile_addr_offset_x256,
-			fbd_raw->low_bit_addr_offset, fbd_raw->low_4bit_addr_offset);
-	} else {
-		fbd_raw->pixel_start_in_hor = 0;
-		fbd_raw->pixel_start_in_ver = 0;
-		fbd_raw->tiles_num_in_hor = tile_col;
-		fbd_raw->tiles_num_in_ver = tile_row;
-		fbd_raw->tiles_start_odd = 0;
-		fbd_raw->header_addr_offset = 0;
-		fbd_raw->tile_addr_offset_x256 = 0;
-		fbd_raw->low_bit_addr_offset = 0;
-		if(0 == fbd_raw->fetch_fbd_4bit_bypass)
-			fbd_raw->low_4bit_addr_offset = 0;
-	}
-
 	return 0;
 }
 
@@ -618,10 +570,11 @@ int isp_cfg_ctx_base(struct isp_pipe_context *pctx, void *param)
 	pctx->ltm_rgb = cfg_in->ltm_rgb;
 	pctx->ltm_yuv = cfg_in->ltm_yuv;
 	pctx->in_fmt = cfg_in->in_fmt;
+	pctx->src_info.src_fmt = cfg_in->in_fmt;
 	pctx->is_loose = cfg_in->is_loose;
 	pctx->dispatch_bayer_mode = cfg_in->bayer_pattern;
 	pctx->dev->ltm_handle->ops->set_status(1, pctx->ctx_id,
-					       pctx->mode_ltm);
+		pctx->mode_ltm, pctx->attach_cam_id);
 	pctx->ch_id = cfg_in->ch_id;
 	if (pctx->in_fmt == IMG_PIX_FMT_GREY)
 		pctx->dispatch_color = 0; /* raw rgb */
@@ -667,6 +620,8 @@ int isp_cfg_ctx_size(struct isp_pipe_context *pctx, void *param)
 
 	pctx->input_size = cfg_in->src;
 	pctx->input_trim = cfg_in->crop;
+	pctx->isp_k_param.src_w = pctx->input_size.w;
+	pctx->isp_k_param.src_h = pctx->input_size.h;
 
 	/*Bug 1024606 sw workaround
 	fetch fbd crop isp timeout when crop.start_y % 4 == 2 */
@@ -688,7 +643,7 @@ int isp_cfg_ctx_size(struct isp_pipe_context *pctx, void *param)
 			fetch->fetch_fmt = ISP_FETCH_CSI2_RAW10;
 	}
 
-	pr_info("ctx%d fetch fmt: %d  in %d %d, crop %d %d %d %d is_loose %d\n",
+	pr_debug("ctx%d fetch fmt: %d  in %d %d, crop %d %d %d %d is_loose %d\n",
 			pctx->ctx_id, fetch->fetch_fmt, src->w, src->h,
 				intrim->start_x, intrim->start_y, intrim->size_x,
 					intrim->size_y, pctx->is_loose);
@@ -843,6 +798,7 @@ int isp_cfg_path_base(struct isp_path_desc *path, void *param)
 	 * So, cfg it as base.
 	 */
 	path->dst = cfg_in->output_size;
+	path->stream_dst = path->dst;
 
 	/* CFG output format */
 	store->color_fmt = get_store_format(path->out_fmt);
@@ -875,6 +831,7 @@ int isp_cfg_path_size(struct isp_path_desc *path, void *param)
 	struct isp_pipe_context *pctx = NULL;
 	struct isp_store_info *store = NULL;
 	struct isp_afbc_store_info *afbc_store = &path->afbc_store;
+	struct isp_ifbc_store_info *ifbc_store = &path->ifbc_store;
 
 	if (!path || !param) {
 		pr_err("fail to get valid input ptr, path %p, param %p\n",
@@ -911,7 +868,7 @@ int isp_cfg_path_size(struct isp_path_desc *path, void *param)
 	path->out_trim.start_y = 0;
 	path->out_trim.size_x = path->dst.w;
 	path->out_trim.size_y = path->dst.h;
-	pr_info("sw %d, path %d. src %d %d ; in_trim %d %d %d %d ; out_trim %d %d %d %d ; dst %d %d\n",
+	pr_debug("sw %d, path %d. src %d %d ; in_trim %d %d %d %d ; out_trim %d %d %d %d ; dst %d %d\n",
 		pctx->ctx_id,
 		path->spath_id, path->src.w, path->src.h,
 		path->in_trim.start_x, path->in_trim.start_y,
@@ -920,7 +877,27 @@ int isp_cfg_path_size(struct isp_path_desc *path, void *param)
 		path->out_trim.size_x, path->out_trim.size_y,
 		path->dst.w, path->dst.h);
 
-	if (path->store_fbc) {
+	if (path->store_ifbc) {
+		ifbc_store->bypass = 0;
+		store->bypass = 1;
+		ifbc_store->endian = path->data_endian.uv_endian;
+		ifbc_store->mirror_en = 0;
+		ifbc_store->color_format =
+			get_afbc_store_format(path->out_fmt);
+		ifbc_store->tile_number_pitch = 0;
+
+		ifbc_store->border.up_border = 0;
+		ifbc_store->border.down_border = 0;
+		ifbc_store->border.left_border = 0;
+		ifbc_store->border.right_border = 0;
+		pr_info("path ifbc %d, fmt 0x%x, store %d, dst_size %d %d\n",
+			path->spath_id, path->out_fmt,
+			store->color_fmt, path->dst.w, path->dst.h);
+	} else {
+		ifbc_store->bypass = 1;
+	}
+
+	if (path->store_afbc) {
 		afbc_store->bypass = 0;
 		store->bypass = 1;
 		afbc_store->endian = path->data_endian.uv_endian;
@@ -989,35 +966,15 @@ int isp_cfg_path_size(struct isp_path_desc *path, void *param)
 	return ret;
 }
 
-int isp_cfg_path_dst_size(struct isp_path_desc *path, void *param)
-{
-	int ret = 0;
-	struct img_size *size;
-	struct isp_pipe_context *pctx = NULL;
-
-	if (!path || !param) {
-		pr_err("fail to get valid input ptr, path %p, param %p\n",
-			path, param);
-		return -EFAULT;
-	}
-
-	pctx = path->attach_ctx;
-
-	size = (struct img_size *)param;
-	path->dst.w = size->w;
-	path->dst.h = size->h;
-	pr_info("sw %d, path dst w %d, h %d\n",
-		pctx->ctx_id, path->dst.w, path->dst.h);
-	return ret;
-}
-
 int isp_cfg_path_compression(struct isp_path_desc *path, void *param)
 {
 	struct isp_path_compression_desc *compression = param;
 
-	path->store_fbc = compression->store_fbc;
+	path->store_ifbc = compression->store_ifbc;
+	path->store_afbc = compression->store_afbc;
 
-	pr_debug("path %d, store_fbc %u\n", path->spath_id, path->store_fbc);
+	pr_debug("path %d, store_ifbc %u, store_afbc %u\n",
+		path->spath_id, path->store_ifbc, path->store_afbc);
 
 	return 0;
 }
@@ -1454,7 +1411,7 @@ static int set_path_store(struct isp_path_desc *path)
 int isp_set_path(struct isp_path_desc *path)
 {
 	int ret = 0;
-	enum isp_afbc_path afbc_path_id = 0;
+	enum isp_fbc_path fbc_path_id = 0;
 	struct cam_hw_info *hw = NULL;
 
 	if (!path) {
@@ -1462,7 +1419,7 @@ int isp_set_path(struct isp_path_desc *path)
 		return -EINVAL;
 	}
 
-	afbc_path_id = (enum isp_afbc_path)path->spath_id;
+	fbc_path_id = (enum isp_fbc_path)path->spath_id;
 	hw = path->hw;
 
 	pr_debug("enter.\n");
@@ -1473,9 +1430,12 @@ int isp_set_path(struct isp_path_desc *path)
 		set_path_scaler(path);
 	}
 	set_path_store(path);
-	if (afbc_path_id < AFBC_PATH_NUM
+	if (fbc_path_id < FBC_PATH_NUM
 		&& hw->hw_ops.core_ops.isp_afbc_path_set)
 		hw->hw_ops.core_ops.isp_afbc_path_set(path);
+	if (fbc_path_id < FBC_PATH_NUM
+		&& hw->hw_ops.core_ops.isp_ifbc_path_set)
+		hw->hw_ops.core_ops.isp_ifbc_path_set(path);
 	pr_debug("done.\n");
 	return ret;
 }
@@ -1602,6 +1562,51 @@ int isp_path_set_afbc_store_frm(
 
 	pr_debug("path %d afbc done 0x%x 0x%x\n", path->spath_id,
 		path->afbc_store.yheader, path->afbc_store.yaddr);
+
+	return ret;
+}
+
+int isp_path_set_ifbc_store_frm(
+		struct isp_path_desc *path,
+		struct camera_frame *frame)
+{
+	int ret = 0;
+	int idx = 0;
+	int width, height;
+	struct compressed_addr out_addr;
+	struct isp_pipe_context *pctx = NULL;
+	struct isp_ifbc_store_info *ifbc_store = NULL;
+	struct cam_hw_info *hw = NULL;
+
+	if (!path || !frame) {
+		pr_err("fail to get valid input ptr, path %p, frame %p\n",
+			path, frame);
+		return -EINVAL;
+	}
+	pr_debug("ifbc enter.\n");
+	hw = path->hw;
+	pctx = path->attach_ctx;
+	ifbc_store = &path->ifbc_store;
+	idx = pctx->ctx_id;
+
+	width = ifbc_store->size_in_hor;
+	height = ifbc_store->size_in_ver;
+
+	isp_cal_compressed_addr(width, height,
+			frame->buf.iova[0], &out_addr);
+
+	if (hw->hw_ops.core_ops.isp_ifbc_addr_set)
+		hw->hw_ops.core_ops.isp_ifbc_addr_set(idx,
+			path->spath_id, (unsigned long *)&out_addr);
+
+	path->ifbc_store.y_header_addr_init= out_addr.addr1;
+	path->ifbc_store.y_tile_addr_init_x256= out_addr.addr1;
+	path->ifbc_store.c_header_addr_init = out_addr.addr2;
+	path->ifbc_store.c_tile_addr_init_x256 = out_addr.addr2;
+
+	pr_debug("path %d ifbc done 0x%x 0x%x\n", path->spath_id,
+		path->ifbc_store.y_header_addr_init,
+		path->ifbc_store.c_header_addr_init);
 
 	return ret;
 }

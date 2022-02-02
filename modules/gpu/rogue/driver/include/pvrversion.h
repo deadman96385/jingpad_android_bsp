@@ -49,17 +49,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define PVRVERSION_FAMILY           "rogueddk"
 #define PVRVERSION_BRANCHNAME       "1.11"
-#define PVRVERSION_BUILD             5471373
+#define PVRVERSION_BUILD             5516664
 #define PVRVERSION_BSCONTROL        "Rogue_DDK_Android"
 
-#define PVRVERSION_STRING           "Rogue_DDK_Android rogueddk 1.11@5471373"
-#define PVRVERSION_STRING_SHORT     "1.11@5471373"
+#define PVRVERSION_STRING           "Rogue_DDK_Android rogueddk 1.11@5516664"
+#define PVRVERSION_STRING_SHORT     "1.11@5516664"
 
 #define COPYRIGHT_TXT               "Copyright (c) Imagination Technologies Ltd. All Rights Reserved."
 
-#define PVRVERSION_BUILD_HI          547
-#define PVRVERSION_BUILD_LO          1373
-#define PVRVERSION_STRING_NUMERIC   "1.11.547.1373"
+#define PVRVERSION_BUILD_HI          551
+#define PVRVERSION_BUILD_LO          6664
+#define PVRVERSION_STRING_NUMERIC   "1.11.551.6664"
 
 #define PVRVERSION_PACK(MAJ,MIN) (((IMG_UINT32)((IMG_UINT32)(MAJ) & 0xFFFFU) << 16U) | (((MIN) & 0xFFFFU) << 0U))
 #define PVRVERSION_UNPACK_MAJ(VERSION) (((VERSION) >> 16U) & 0xFFFFU)

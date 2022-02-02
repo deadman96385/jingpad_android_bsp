@@ -78,11 +78,9 @@
 /* TODO: need to pass the num to driver by hal */
 #define CAP_NUM_COMMON 1
 
-/* TODO: set superzoom coeff default val */
-#define SUPERZOOM_DEFAULT_COEFF	4
-#define SUPERZOOM_COEFF_UP_MAX	4
-
 #define PRE_RDS_OUT 3264
+#define CAM_ZSL_NUM 8
+#define CAM_ZSL_SKIP_NUM 1
 
 enum camera_module_state {
 	CAM_INIT = 0,
@@ -139,7 +137,6 @@ struct camera_uchannel {
 	uint32_t deci_factor;/* for ISP output path */
 	uint32_t is_high_fps;/* for DCAM slow motion feature */
 	uint32_t high_fps_skip_num;/* for DCAM slow motion feature */
-	uint32_t is_compressed;/* for ISP output fbc format */
 
 	struct sprd_img_size src_size;
 	struct sprd_img_rect src_crop;
@@ -172,6 +169,7 @@ struct camera_uinfo {
 	uint32_t slice_num;
 	uint32_t slice_count;
 	uint32_t is_afbc;
+	uint32_t is_ifbc;
 };
 
 struct sprd_img_flash_info {
@@ -194,7 +192,8 @@ struct channel_context {
 	uint32_t compress_input;
 	uint32_t compress_4bit_bypass;
 	uint32_t compress_3dnr;
-	uint32_t compress_output;
+	uint32_t compress_output_ifbc;
+	uint32_t compress_output_afbc;
 
 	int32_t dcam_path_id;
 	uint32_t second_path_id; /* second path */
@@ -207,8 +206,9 @@ struct channel_context {
 	/* isp_path_id = (ctx_id << ISP_PATH_BITS) | path_id */
 	int32_t isp_path_id;
 	int32_t slave_isp_path_id;
-	int32_t reserved_buf_fd;
-	enum isp_superzoom_status cap_status;
+
+	uint32_t zsl_buffer_num;
+	uint32_t zsl_skip_num;
 
 	struct camera_uchannel ch_uinfo;
 	struct img_size swap_size;
@@ -222,7 +222,6 @@ struct channel_context {
 
 	uint32_t alloc_start;
 	struct completion alloc_com;
-	struct completion superzoom_frm;
 	struct sprd_cam_work alloc_buf_work;
 
 	uint32_t uinfo_3dnr;	/* set by hal, 1:hw 3dnr; */
@@ -230,9 +229,11 @@ struct channel_context {
 	uint32_t mode_ltm;
 	uint32_t ltm_rgb;
 	uint32_t ltm_yuv;
-	struct camera_frame *superzoom_buf;
+	struct camera_frame *postproc_buf;
 	struct camera_frame *nr3_bufs[ISP_NR3_BUF_NUM];
 	struct camera_frame *ltm_bufs[LTM_MAX][ISP_LTM_BUF_NUM];
+	struct camera_frame *res_frame;
+	int32_t reserved_buf_fd;
 
 	/* dcam/isp shared frame buffer for full path */
 	struct camera_queue share_buf_queue;
@@ -324,6 +325,7 @@ struct camera_group {
 	struct miscdevice *md;
 	struct platform_device *pdev;
 	struct camera_queue empty_frm_q;
+	struct camera_queue empty_state_q;
 	struct  sprd_cam_sec_cfg camsec_cfg;
 	struct camera_debugger debugger;
 	struct cam_hw_info *hw_info;
@@ -336,6 +338,7 @@ struct cam_ioctl_cmd {
 };
 
 struct camera_queue *g_empty_frm_q;
+struct camera_queue *g_empty_state_q;
 struct cam_global_ctrl g_camctrl = {
 	ZOOM_BINNING2,
 	DCAM_SCALE_DOWN_MAX * 10,
@@ -417,77 +420,68 @@ static void cam_release_camera_frame(void *param)
 /* compression policy */
 static void cal_compression(struct camera_module *module)
 {
-	struct channel_context *ch_pre, *ch_cap, *ch_vid;
+	struct channel_context *ch_pre, *ch_cap, *ch_vid, *ch_raw;
 	struct cam_hw_info *dcam_hw;
 	struct compression_override *override;
 
 	ch_pre = &module->channel[CAM_CH_PRE];
 	ch_cap = &module->channel[CAM_CH_CAP];
 	ch_vid = &module->channel[CAM_CH_VID];
+	ch_raw = &module->channel[CAM_CH_RAW];
 
-	/*
-	 * Enable compression for DCAM path by default. Full path is prior to
-	 * bin path.
-	 */
-	ch_cap->compress_input = ch_cap->enable
-		&& ch_cap->ch_uinfo.sn_fmt == IMG_PIX_FMT_GREY
-		&& !ch_cap->ch_uinfo.is_high_fps
-		&& !module->cam_uinfo.is_4in1;
-	ch_pre->compress_input = ch_pre->enable
-		&& ch_pre->ch_uinfo.sn_fmt == IMG_PIX_FMT_GREY
-		&& !ch_pre->ch_uinfo.is_high_fps
-		&& !ch_cap->compress_input
-		&& !module->cam_uinfo.is_4in1;
-	ch_vid->compress_input = ch_pre->compress_input;
 
-	/* Disable compression for 3DNR by default */
-	ch_cap->compress_3dnr = 0;
-	ch_pre->compress_3dnr = 0;
-	ch_vid->compress_3dnr = ch_pre->compress_3dnr;
-
-	/*
-	 * Enable compression for ISP store according to HAL setting. Normally
-	 * this only happens in slow motion and only for video path.
-	 */
-	ch_cap->compress_output =
-		ch_cap->enable && ch_cap->ch_uinfo.is_compressed;
-	ch_pre->compress_output =
-		ch_pre->enable && ch_pre->ch_uinfo.is_compressed;
-	ch_vid->compress_output =
-		ch_vid->enable && ch_vid->ch_uinfo.is_compressed;
-
-	/* disable all compression on SharkL5 */
-	dcam_hw = module->grp->hw_info;
-	if (dcam_hw->prj_id == SHARKL5) {
-		ch_cap->compress_input = ch_cap->compress_output =
-			ch_cap->compress_3dnr = 0;
-		ch_pre->compress_input = ch_pre->compress_output =
-			ch_pre->compress_3dnr = 0;
-		ch_vid->compress_input = ch_vid->compress_output =
-			ch_vid->compress_3dnr = 0;
-	}
-
-	/* TODO disable all fbc/fbd for bug 1040757 */
+	/* Disable all fbc/fbd by default (for bug 1040757) */
 	ch_cap->compress_input = ch_cap->compress_3dnr
-		= ch_cap->compress_output = 0;
+		= ch_cap->compress_output_ifbc
+		= ch_cap->compress_output_afbc = 0;
 	ch_pre->compress_input = ch_pre->compress_3dnr
-		= ch_pre->compress_output = 0;
+		= ch_cap->compress_output_ifbc
+		= ch_cap->compress_output_afbc = 0;
 	ch_vid->compress_input = ch_vid->compress_3dnr
-		= ch_vid->compress_output = 0;
+		= ch_cap->compress_output_ifbc
+		= ch_cap->compress_output_afbc = 0;
 
 	/* Bypass compression low_4bit by default */
 	ch_cap->compress_4bit_bypass = 1;
 	ch_pre->compress_4bit_bypass = 1;
 	ch_vid->compress_4bit_bypass = 1;
 
-	/* open compression on SharkL5 pro */
+	dcam_hw = module->grp->hw_info;
+
+	/* disable all compression on SharkL5 */
+	if (dcam_hw->prj_id == SHARKL5) {
+		ch_cap->compress_input = ch_cap->compress_output_ifbc =
+			ch_cap->compress_output_afbc = ch_cap->compress_3dnr = 0;
+		ch_pre->compress_input = ch_pre->compress_output_ifbc =
+			ch_pre->compress_output_afbc = ch_pre->compress_3dnr = 0;
+		ch_vid->compress_input = ch_vid->compress_output_ifbc =
+			ch_vid->compress_output_afbc = ch_vid->compress_3dnr = 0;
+	}
+
+	/* open compression on Sharkl5pro */
 	if (dcam_hw->prj_id == SHARKL5pro) {
 		/* dcam support full path or bin path */
 		ch_cap->compress_input = 0;
 		ch_pre->compress_input = 0;
 		ch_vid->compress_input = 0;
 		/* isp support preview path and video path*/
-		ch_vid->compress_output = module->cam_uinfo.is_afbc;
+		ch_vid->compress_output_ifbc= module->cam_uinfo.is_ifbc;
+		ch_vid->compress_output_afbc= module->cam_uinfo.is_afbc;
+		/* 3dnr support preview&capture&video path*/
+		ch_cap->compress_3dnr = 0;
+		ch_pre->compress_3dnr = 0;
+		ch_vid->compress_3dnr = ch_pre->compress_3dnr;
+	}
+
+	/* open compression on ROC1 */
+	if (dcam_hw->prj_id == ROC1) {
+		/* dcam support full path or bin path */
+		ch_cap->compress_input = 0;
+		ch_pre->compress_input = 0;
+		ch_vid->compress_input = 0;
+		/* isp support preview path and video path*/
+		ch_vid->compress_output_ifbc= module->cam_uinfo.is_ifbc;
+		ch_vid->compress_output_afbc= module->cam_uinfo.is_afbc;
 		/* 3dnr support preview&capture&video path*/
 		ch_cap->compress_3dnr = 0;
 		ch_pre->compress_3dnr = 0;
@@ -499,17 +493,27 @@ static void cal_compression(struct camera_module *module)
 	if (override->enable) {
 		ch_cap->compress_input = override->override[CH_CAP][FBC_DCAM];
 		ch_cap->compress_3dnr = override->override[CH_CAP][FBC_3DNR];
-		ch_cap->compress_output = override->override[CH_CAP][FBC_ISP];
+		if (dcam_hw->prj_id == ROC1)
+			ch_cap->compress_output_ifbc = override->override[CH_CAP][FBC_ISP];
+		if (dcam_hw->prj_id == SHARKL5pro)
+			ch_cap->compress_output_afbc = override->override[CH_CAP][FBC_ISP];
 
 		ch_pre->compress_input = override->override[CH_PRE][FBC_DCAM];
 		ch_pre->compress_3dnr = override->override[CH_PRE][FBC_3DNR];
-		ch_pre->compress_output = override->override[CH_PRE][FBC_ISP];
+		if (dcam_hw->prj_id == ROC1)
+			ch_pre->compress_output_ifbc = override->override[CH_PRE][FBC_ISP];
+		if (dcam_hw->prj_id == SHARKL5pro)
+			ch_pre->compress_output_afbc = override->override[CH_PRE][FBC_ISP];
 
 		ch_vid->compress_input = override->override[CH_VID][FBC_DCAM];
 		ch_vid->compress_3dnr = override->override[CH_VID][FBC_3DNR];
-		ch_vid->compress_output = override->override[CH_VID][FBC_ISP];
+		if (dcam_hw->prj_id == ROC1)
+			ch_vid->compress_output_ifbc = override->override[CH_VID][FBC_ISP];
+		if (dcam_hw->prj_id == SHARKL5pro)
+			ch_vid->compress_output_afbc = override->override[CH_VID][FBC_ISP];
 	}
 
+	/* dcam2 not support fbc */
 	if (module->idx > 1) {
 		ch_cap->compress_input = 0;
 		ch_pre->compress_input = 0;
@@ -517,21 +521,29 @@ static void cal_compression(struct camera_module *module)
 
 	/* dcam not support fbc when dcam need fetch */
 	if (module->cam_uinfo.dcam_slice_mode ||
-		module->cam_uinfo.is_4in1)
+		module->cam_uinfo.is_4in1 ||
+		ch_cap->ch_uinfo.sn_fmt != IMG_PIX_FMT_GREY)
 		ch_cap->compress_input = 0;
 
-	/* dcam not support fbc when open slowmotion */
-	if (ch_pre->ch_uinfo.is_high_fps)
+	/* dcam not support fbc when open slowmotion
+		Full path is prior to bin path*/
+	if (ch_pre->ch_uinfo.is_high_fps ||
+		ch_cap->compress_input ||
+		ch_pre->ch_uinfo.sn_fmt != IMG_PIX_FMT_GREY)
 		ch_pre->compress_input = 0;
 
-	pr_info("cam%d: cap %u %u %u, pre %u %u %u, vid %u %u %u\n",
+	/* raw capture not support fbc */
+	if (ch_raw->enable)
+		ch_cap->compress_input = 0;
+
+	pr_info("cam%d: cap %u %u %u %u, pre %u %u %u %u, vid %u %u %u %u\n",
 		module->idx,
 		ch_cap->compress_input, ch_cap->compress_3dnr,
-		ch_cap->compress_output,
+		ch_cap->compress_output_ifbc, ch_cap->compress_output_afbc,
 		ch_pre->compress_input, ch_pre->compress_3dnr,
-		ch_pre->compress_output,
+		ch_pre->compress_output_ifbc, ch_pre->compress_output_afbc,
 		ch_vid->compress_input, ch_vid->compress_3dnr,
-		ch_vid->compress_output);
+		ch_vid->compress_output_ifbc, ch_vid->compress_output_afbc);
 }
 
 static void config_compression(struct camera_module *module)
@@ -575,7 +587,8 @@ static void config_compression(struct camera_module *module)
 				  ch_cap->isp_path_id >> ISP_CTXID_OFFSET,
 				  0, &ctx_compression_desc);
 
-		path_compression_desc.store_fbc = ch_cap->compress_output;
+		path_compression_desc.store_ifbc = ch_cap->compress_output_ifbc;
+		path_compression_desc.store_afbc = ch_cap->compress_output_afbc;
 		isp_ops->cfg_path(module->isp_dev_handle,
 				  ISP_PATH_CFG_PATH_COMPRESSION,
 				  ch_cap->isp_path_id >> ISP_CTXID_OFFSET,
@@ -593,7 +606,8 @@ static void config_compression(struct camera_module *module)
 				  ch_pre->isp_path_id >> ISP_CTXID_OFFSET,
 				  0, &ctx_compression_desc);
 
-		path_compression_desc.store_fbc = ch_pre->compress_output;
+		path_compression_desc.store_ifbc = ch_pre->compress_output_ifbc;
+		path_compression_desc.store_afbc = ch_pre->compress_output_afbc;
 		isp_ops->cfg_path(module->isp_dev_handle,
 				  ISP_PATH_CFG_PATH_COMPRESSION,
 				  ch_pre->isp_path_id >> ISP_CTXID_OFFSET,
@@ -611,7 +625,8 @@ static void config_compression(struct camera_module *module)
 				  ch_vid->isp_path_id >> ISP_CTXID_OFFSET,
 				  0, &ctx_compression_desc);
 
-		path_compression_desc.store_fbc = ch_vid->compress_output;
+		path_compression_desc.store_ifbc = ch_vid->compress_output_ifbc;
+		path_compression_desc.store_afbc = ch_vid->compress_output_afbc;
 		isp_ops->cfg_path(module->isp_dev_handle,
 				  ISP_PATH_CFG_PATH_COMPRESSION,
 				  ch_vid->isp_path_id >> ISP_CTXID_OFFSET,// TODO
@@ -682,7 +697,167 @@ static void prepare_frame_from_file(struct camera_queue *queue,
 	pr_info("done\n");
 
 enqueue_frame:
-	camera_enqueue(queue, frame);
+	camera_enqueue(queue, &frame->list);
+}
+
+static int cam_cfg_path_buffer(struct camera_module *module,
+	uint32_t index)
+{
+	int ret = 0;
+	uint32_t j, isp_ctx_id, isp_path_id;
+	struct channel_context *ch = NULL;
+	struct cam_hw_info *hw = NULL;
+
+	if (!module) {
+		pr_err("fail to get input ptr\n");
+		return -EFAULT;
+	}
+
+	ch = &module->channel[index];
+	hw = module->grp->hw_info;
+	if (!ch->alloc_start)
+		return 0;
+	ret = wait_for_completion_interruptible(&ch->alloc_com);
+	if (ret != 0) {
+		pr_err("fail to config channel/path param work %d\n",
+			ret);
+		flush_workqueue(module->workqueue);
+		goto exit;
+	}
+	ch->alloc_start = 0;
+
+	if (atomic_read(&ch->err_status) != 0) {
+		pr_err("fail to get ch %d correct status\n", ch->ch_id);
+		ret = -EFAULT;
+		goto exit;
+	}
+
+	/* set shared frame for dcam output */
+	while (1) {
+		struct camera_frame *pframe = NULL;
+
+		pframe = camera_dequeue(&ch->share_buf_queue,
+			struct camera_frame, list);
+		if (pframe == NULL)
+			break;
+		if (module->cam_uinfo.is_4in1 &&
+			index == CAM_CH_CAP)
+			ret = dcam_ops->cfg_path(
+				module->dcam_dev_handle,
+				DCAM_PATH_CFG_OUTPUT_BUF,
+				ch->aux_dcam_path_id,
+				pframe);
+		else
+			ret = dcam_ops->cfg_path(
+				module->dcam_dev_handle,
+				DCAM_PATH_CFG_OUTPUT_BUF,
+				ch->dcam_path_id,
+				pframe);
+		if (ret) {
+			pr_err("fail to config dcam output buffer\n");
+			camera_enqueue(&ch->share_buf_queue, &pframe->list);
+			ret = -EINVAL;
+			goto exit;
+		}
+	}
+	isp_ctx_id = ch->isp_path_id >> ISP_CTXID_OFFSET;
+	isp_path_id = ch->isp_path_id & ISP_PATHID_MASK;
+
+	for (j = 0; j < ISP_NR3_BUF_NUM; j++) {
+		if (ch->nr3_bufs[j] == NULL)
+			continue;
+		ret = isp_ops->cfg_path(module->isp_dev_handle,
+				ISP_PATH_CFG_3DNR_BUF,
+				isp_ctx_id, isp_path_id,
+				ch->nr3_bufs[j]);
+		if (ret) {
+			pr_err("fail to config isp 3DNR buffer\n");
+			goto exit;
+		}
+	}
+
+	if (hw->ip_dcam[module->dcam_idx]->superzoom_support) {
+		if (ch->postproc_buf== NULL)
+			return 0;
+		ret = isp_ops->cfg_path(module->isp_dev_handle,
+				ISP_PATH_CFG_POSTPROC_BUF,
+				isp_ctx_id, isp_path_id,
+				ch->postproc_buf);
+		if (ret) {
+			pr_err("fail to config isp superzoom buffer sw %d,  path id %d\n",
+				isp_ctx_id, isp_path_id);
+			goto exit;
+		}
+	}
+
+exit:
+	return ret;
+}
+
+static int cam_cfg_ltm_buffer(struct camera_module *module,
+	uint32_t index)
+{
+	int ret = 0;
+	uint32_t j, isp_ctx_id, isp_path_id;
+	struct channel_context *ch = NULL;
+	struct channel_context *ch_pre = NULL;
+	struct channel_context *ch_cap = NULL;
+
+	if (!module) {
+		pr_err("fail to get input ptr\n");
+		return -EFAULT;
+	}
+
+	ch_pre = &module->channel[CAM_CH_PRE];
+	ch_cap = &module->channel[CAM_CH_CAP];
+	/* non-zsl capture, do nothing */
+	if (!ch_pre->enable && ch_cap->enable)
+		return 0;
+	ch = &module->channel[index];
+	isp_ctx_id = ch->isp_path_id >> ISP_CTXID_OFFSET;
+	isp_path_id = ch->isp_path_id & ISP_PATHID_MASK;
+	if (module->cam_uinfo.is_rgb_ltm) {
+		for (j = 0; j < ISP_LTM_BUF_NUM; j++) {
+			ch->ltm_bufs[LTM_RGB][j] =
+				ch_pre->ltm_bufs[LTM_RGB][j];
+			if (ch->ltm_bufs[LTM_RGB][j] == NULL) {
+				pr_err("fail to get rgb_buf ch->ltm_bufs[%d][%d] NULL, index : %x\n",
+					LTM_RGB, j, index);
+				goto exit;
+			}
+			ret = isp_ops->cfg_path(module->isp_dev_handle,
+					ISP_PATH_CFG_RGB_LTM_BUF,
+					isp_ctx_id, isp_path_id,
+					ch->ltm_bufs[LTM_RGB][j]);
+			if (ret) {
+				pr_err("fail to config isp rgb LTM buffer\n");
+				goto exit;
+			}
+		}
+	}
+
+	if (module->cam_uinfo.is_yuv_ltm) {
+		for (j = 0; j < ISP_LTM_BUF_NUM; j++) {
+			ch->ltm_bufs[LTM_YUV][j] =
+				ch_pre->ltm_bufs[LTM_YUV][j];
+			if (ch->ltm_bufs[LTM_YUV][j] == NULL) {
+				pr_err("fail to get yuv_buf ch->ltm_bufs[%d][%d] NULL, index: %x\n",
+					LTM_YUV, j, index);
+				goto exit;
+			}
+			ret = isp_ops->cfg_path(module->isp_dev_handle,
+					ISP_PATH_CFG_YUV_LTM_BUF,
+					isp_ctx_id, isp_path_id,
+					ch->ltm_bufs[LTM_YUV][j]);
+			if (ret) {
+				pr_err("fail to config isp yuv LTM buffer\n");
+				goto exit;
+			}
+		}
+	}
+
+exit:
+	return ret;
 }
 
 static void alloc_buffers(struct work_struct *work)
@@ -690,13 +865,16 @@ static void alloc_buffers(struct work_struct *work)
 	int ret = 0;
 	int i, count, total, iommu_enable;
 	uint32_t width, height, size, is_loose;
+	uint32_t postproc_w, postproc_h;
 	struct sprd_cam_work *alloc_work;
 	struct camera_module *module;
 	struct camera_frame *pframe;
 	struct channel_context *channel;
+	struct channel_context *channel_vid = NULL;
 	struct camera_debugger *debugger;
 	struct cam_hw_info *hw = NULL;
 	int path_id;
+	uint32_t zsl_num = 0, zsl_skip_num = 0;
 
 	pr_info("enter.\n");
 
@@ -708,9 +886,16 @@ static void alloc_buffers(struct work_struct *work)
 	module = (struct camera_module *)alloc_work->priv_data;
 	hw = module->grp->hw_info;
 	iommu_enable = module->iommu_enable;
+	channel_vid = &module->channel[CAM_CH_VID];
 
-	width = channel->swap_size.w;
-	height = channel->swap_size.h;
+	if (channel->ch_id != CAM_CH_CAP &&
+		hw->ip_dcam[module->dcam_idx]->rds_en) {
+		width = channel->dst_dcam.w;
+		height = channel->dst_dcam.h;
+	} else {
+		width = channel->swap_size.w;
+		height = channel->swap_size.h;
+	}
 	is_loose = module->cam_uinfo.sensor_if.if_spec.mipi.is_loose;
 
 	if (channel->compress_input) {
@@ -747,6 +932,18 @@ static void alloc_buffers(struct work_struct *work)
 	if (channel->ch_id == CAM_CH_PRE &&
 		module->grp->camsec_cfg.camsec_mode != SEC_UNABLE) {
 		total = 4;
+	}
+
+	zsl_num = CAM_ZSL_NUM;
+	zsl_skip_num = CAM_ZSL_SKIP_NUM;
+	channel->zsl_skip_num = zsl_skip_num;
+	if (channel->ch_id == CAM_CH_CAP) {
+		channel->zsl_buffer_num = zsl_num / (zsl_skip_num + 1);
+		total += channel->zsl_buffer_num;
+		if (zsl_num % (zsl_skip_num + 1) != 0) {
+			channel->zsl_buffer_num += 1;
+			total += 1;
+		}
 	}
 
 	pr_info("ch_id %d, camsec=%d, buffer size: %u (%u x %u), num %d\n",
@@ -786,7 +983,7 @@ static void alloc_buffers(struct work_struct *work)
 				goto exit;
 			}
 
-			ret = camera_enqueue(&channel->share_buf_queue, pframe);
+			ret = camera_enqueue(&channel->share_buf_queue, &pframe->list);
 			if (ret) {
 				pr_err("fail to enqueue shared buf: %d ch %d\n",
 						i, channel->ch_id);
@@ -821,14 +1018,19 @@ static void alloc_buffers(struct work_struct *work)
 				DCAM_IOCTL_CFG_REPLACER, NULL);
 	}
 
-	if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-		&& channel->ch_id == CAM_CH_CAP) {
+	if (hw->ip_dcam[module->dcam_idx]->superzoom_support) {
 		/*more than 8x zoom capture alloc buf*/
 
-		uint32_t w = module->cam_uinfo.sn_max_size.w;
-		uint32_t h = module->cam_uinfo.sn_max_size.h;
+		postproc_w = channel->ch_uinfo.dst_size.w / ISP_SCALER_UP_MAX;
+		postproc_h = channel->ch_uinfo.dst_size.h / ISP_SCALER_UP_MAX;
+		if (channel->ch_id != CAM_CH_CAP && channel_vid->enable) {
+			postproc_w = MAX(channel->ch_uinfo.dst_size.w,
+				channel_vid->ch_uinfo.dst_size.w) / ISP_SCALER_UP_MAX;
+			postproc_h = MAX(channel->ch_uinfo.dst_size.h,
+				channel_vid->ch_uinfo.dst_size.h) / ISP_SCALER_UP_MAX;
+		}
 
-		size = ((w + 1) & (~1)) * h * 3 / 2;
+		size = ((postproc_w + 1) & (~1)) * postproc_h * 3 / 2;
 		size = ALIGN(size, CAM_BUF_ALIGN_SIZE);
 		pframe = get_empty_frame();
 		if (!pframe) {
@@ -853,12 +1055,15 @@ static void alloc_buffers(struct work_struct *work)
 			goto exit;
 		}
 
-		channel->superzoom_buf = pframe;
+		channel->postproc_buf = pframe;
 		pr_info("idx %d, superzoom w %d, h %d, buf %p \n",
-			module->dcam_idx, w, h, pframe);
+			module->dcam_idx, postproc_w, postproc_h, pframe);
 	}
 
-	if (channel->type_3dnr == CAM_3DNR_HW) {
+	pr_debug("channel->ch_id = %d, channel->type_3dnr = %d, channel->uinfo_3dnr = %d\n",
+		channel->ch_id, channel->type_3dnr, channel->uinfo_3dnr);
+	if ((channel->type_3dnr == CAM_3DNR_HW) &&
+		(!((channel->uinfo_3dnr == 0) && (channel->ch_id == CAM_CH_PRE)))) {
 		/* YUV420 for 3DNR ref*/
 		if (channel->compress_3dnr)
 			size = isp_3dnr_cal_compressed_size(width, height);
@@ -926,13 +1131,6 @@ static void alloc_buffers(struct work_struct *work)
 					}
 					cambuf_kmap(&pframe->buf);
 					channel->ltm_bufs[LTM_RGB][i] = pframe;
-				} else { /* CAM_CH_CAP case */
-					/*
-					 * LTM capture, USING preview path histo,
-					 * So, setting preview buf to capture path
-					 * */
-					channel->ltm_bufs[LTM_RGB][i] =
-						module->channel[CAM_CH_PRE].ltm_bufs[LTM_RGB][i];
 				}
 			}
 		}
@@ -960,13 +1158,6 @@ static void alloc_buffers(struct work_struct *work)
 					}
 					cambuf_kmap(&pframe->buf);
 					channel->ltm_bufs[LTM_YUV][i] = pframe;
-				} else { /* CAM_CH_CAP case */
-					/*
-					 * LTM capture, USING preview path histo,
-					 * So, setting preview buf to capture path
-					 * */
-					channel->ltm_bufs[LTM_YUV][i] =
-						module->channel[CAM_CH_PRE].ltm_bufs[LTM_YUV][i];
 				}
 			}
 		}
@@ -975,6 +1166,12 @@ static void alloc_buffers(struct work_struct *work)
 exit:
 	complete(&channel->alloc_com);
 	atomic_set(&alloc_work->status, CAM_WORK_DONE);
+	if (channel->ch_id != CAM_CH_PRE &&
+		channel->ch_id != CAM_CH_VID) {
+		ret = cam_cfg_path_buffer(module, channel->ch_id);
+		if (ret)
+			pr_err("fail to cfg path buffer\n");
+	}
 	pr_info("ch %d done. status %d\n",
 		channel->ch_id, atomic_read(&channel->err_status));
 }
@@ -1024,14 +1221,15 @@ static struct camera_frame *dual_fifo_queue(struct camera_module *module,
 	int ret;
 
 	/* zsl, save frames to fifo buffer */
-	ret = camera_enqueue(&module->zsl_fifo_queue, pframe);
+	ret = camera_enqueue(&module->zsl_fifo_queue, &pframe->list);
 	if (ret) /* fail */
 		return pframe;
 
 	if (get_outbuf_queue_cnt(module->dcam_dev_handle,
 		channel->dcam_path_id) < 1) {
 		/* do fifo */
-		pframe = camera_dequeue(&module->zsl_fifo_queue);
+		pframe = camera_dequeue(&module->zsl_fifo_queue,
+			struct camera_frame, list);
 		if (pframe)
 			return pframe;
 	}
@@ -1238,7 +1436,7 @@ static struct camera_frame *deal_4in1_frame(struct camera_module *module,
 		atomic_dec(&module->capture_frames_dcam);
 		pframe->evt = IMG_TX_DONE;
 		pframe->channel_id = CAM_CH_RAW;
-		ret = camera_enqueue(&module->frm_queue, pframe);
+		ret = camera_enqueue(&module->frm_queue, &pframe->list);
 		complete(&module->frm_com);
 		pr_info("raw frame[%d] fd %d, size[%d %d], 0x%x\n",
 			pframe->fid, pframe->buf.mfd[0], pframe->width,
@@ -1251,6 +1449,7 @@ static struct camera_frame *deal_4in1_frame(struct camera_module *module,
 		dev->hw->hw_ops.core_ops.stop_cap_eb(dev);
 		dcam_ops->cfg_path(dev, DCAM_PATH_CFG_SHUTOFF,
 			channel->dcam_path_id, &shutoff);
+		dev->hw->hw_ops.dcam_soc_ops.sram_reset(dev->hw, &dev->idx);
 		return NULL;
 	}
 	/* set buffer back to dcam0 full path, to out_buf_queue */
@@ -1294,84 +1493,6 @@ struct camera_frame *deal_4in1_raw_capture(struct camera_module *module,
 	return NULL;
 }
 
-static int set_superzoom_complete(void *priv_data)
-{
-	int ret = 0;
-	struct camera_module *module;
-	struct channel_context *channel;
-
-	if (!priv_data) {
-		pr_err("fail to set superzoom complete\n");
-		ret = -1;
-		goto exit;
-	}
-
-	module = (struct camera_module *)priv_data;
-	channel = &module->channel[CAM_CH_CAP];
-	complete(&channel->superzoom_frm);
-	pr_info("done superzoom complete, module idx %d\n", module->idx);
-exit:
-	return ret;
-
-}
-
-static int get_superzoom_dst(void *param, void *priv_data)
-{
-	int ret = 0;
-	struct camera_module *module;
-	struct channel_context *channel;
-	struct img_size *size;
-
-	if (!param || !priv_data) {
-		pr_err("fail to get superzoom dst\n");
-		ret = -1;
-		goto exit;
-	}
-
-	module = (struct camera_module *)priv_data;
-	channel = &module->channel[CAM_CH_CAP];
-	size = (struct img_size *)param;
-	size->w = channel->ch_uinfo.dst_size.w;
-	size->h = channel->ch_uinfo.dst_size.h;
-	pr_info("superzoom dst size w %d, h %d\n", size->w, size->h);
-exit:
-	return ret;
-}
-
-static int is_deal_superzoom(enum isp_cb_type type)
-{
-	int ret = 0;
-
-	if (type == ISP_CB_SET_SUPERZOOM_COMPLETE
-		|| type == ISP_CB_GET_SUPERZOOM_DST) {
-		pr_info(" is superzoom type %d\n", type);
-		ret = 1;
-	}
-
-	return ret;
-}
-
-static int deal_with_superzoom(enum isp_cb_type type,
-	void *param, void *priv_data)
-{
-	int ret = 0;
-	pr_info(" enter\n");
-
-	switch (type) {
-		case ISP_CB_SET_SUPERZOOM_COMPLETE:
-			ret = set_superzoom_complete(priv_data);
-		break;
-		case ISP_CB_GET_SUPERZOOM_DST:
-			ret = get_superzoom_dst(param, priv_data);
-		break;
-		default:
-			pr_err("should not go to here  type%d\n", type);
-		break;
-	}
-
-	return ret;
-}
-
 int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 {
 	int ret = 0;
@@ -1379,11 +1500,6 @@ int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 	struct camera_frame *pframe;
 	struct camera_module *module;
 	struct channel_context *channel;
-
-	if (is_deal_superzoom(type)) {
-		pr_info("do superzoom type %d\n", type);
-		return deal_with_superzoom(type, param, priv_data);
-	}
 
 	if (!param || !priv_data) {
 		pr_err("fail to get valid param %p %p\n", param, priv_data);
@@ -1398,7 +1514,7 @@ int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 		if (pframe) {
 			pframe->evt = IMG_TX_ERR;
 			pframe->irq_type = CAMERA_IRQ_IMG;
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 		}
 		complete(&module->frm_com);
 		return 0;
@@ -1418,7 +1534,7 @@ int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 			(channel->dcam_path_id < 0)) {
 			/* stream off or test_isp_only */
 			pr_info("isp ret src frame %p\n", pframe);
-			camera_enqueue(&channel->share_buf_queue, pframe);
+			camera_enqueue(&channel->share_buf_queue, &pframe->list);
 		} else if (module->cap_status == CAM_CAPTURE_RAWPROC) {
 			if (module->cam_uinfo.dcam_slice_mode == CAM_OFFLINE_SLICE_SW) {
 				struct channel_context *ch = NULL;
@@ -1450,7 +1566,7 @@ int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 				channel->dcam_path_id);
 
 			if (module->dump_thrd.thread_task && module->in_dump) {
-				ret = camera_enqueue(&module->dump_queue, pframe);
+				ret = camera_enqueue(&module->dump_queue, &pframe->list);
 				if (ret == 0) {
 					complete(&module->dump_com);
 					return 0;
@@ -1506,14 +1622,14 @@ int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 			pframe->evt = IMG_TX_DONE;
 			ch_id = pframe->channel_id;
 
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 			if (ret) {
 				cambuf_put_ionbuf(&pframe->buf);
 				put_empty_frame(pframe);
 			} else {
 				complete(&module->frm_com);
-				pr_debug("ch %d get out frame: %p, evt %d\n",
-						ch_id, pframe, pframe->evt);
+				pr_debug("ch %d get out frame: %p, evt %d mfd %x\n",
+						ch_id, pframe, pframe->evt, pframe->buf.mfd[0]);
 			}
 		} else {
 			cambuf_put_ionbuf(&pframe->buf);
@@ -1525,7 +1641,7 @@ int isp_callback(enum isp_cb_type type, void *param, void *priv_data)
 		pframe->evt = IMG_TX_DONE;
 		pframe->irq_type = CAMERA_IRQ_STATIS;
 		if (atomic_read(&module->state) == CAM_RUNNING) {
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 			if (ret) {
 				put_empty_frame(pframe);
 			} else {
@@ -1554,6 +1670,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 	struct isp_offline_param *cur;
 	struct cam_hw_info *hw = NULL;
 	int cap_frame = 0, skip_frame = 0;
+	uint32_t gtm_param_idx = DCAM_GTM_PARAM_PRE;
 
 	if (!param || !priv_data) {
 		pr_err("fail to get valid param %p %p\n", param, priv_data);
@@ -1575,7 +1692,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 		if (pframe) {
 			pframe->evt = IMG_TX_ERR;
 			pframe->irq_type = CAMERA_IRQ_IMG;
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 		}
 		complete(&module->frm_com);
 		return 0;
@@ -1600,7 +1717,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 		if (atomic_read(&module->state) != CAM_RUNNING) {
 			pr_info("stream off. put frame %p\n", pframe);
 			if (pframe->buf.type == CAM_BUF_KERNEL) {
-				camera_enqueue(&channel->share_buf_queue, pframe);
+				camera_enqueue(&channel->share_buf_queue, &pframe->list);
 			} else {
 				/* 4in1 or raw buffer is allocate from user */
 				cambuf_put_ionbuf(&pframe->buf);
@@ -1633,7 +1750,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 				}
 				pframe->evt = IMG_TX_DONE;
 				pframe->irq_type = CAMERA_IRQ_IMG;
-				ret = camera_enqueue(&module->frm_queue, pframe);
+				ret = camera_enqueue(&module->frm_queue, &pframe->list);
 				complete(&module->frm_com);
 				pr_info("get out raw frame: fd:%d\n", pframe->buf.mfd[0]);
 				return 0;
@@ -1650,7 +1767,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 			/* set width,heigth */
 			pframe->width = channel->ch_uinfo.dst_size.w;
 			pframe->height = channel->ch_uinfo.dst_size.h;
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 			complete(&module->frm_com);
 			pr_info("get out raw frame: fd:%d [%d %d]\n",
 				pframe->buf.mfd[0], pframe->width, pframe->height);
@@ -1683,7 +1800,13 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 				ret = dcam_ops->cfg_path(module->dcam_dev_handle,
 						DCAM_PATH_CFG_OUTPUT_BUF,
 						channel->dcam_path_id, pframe);
-
+				if (pframe->param_data) {
+					cur = (struct isp_offline_param *)pframe->param_data;
+					cur->prev = channel->isp_updata;
+					channel->isp_updata = (void *)cur;
+					pframe->param_data = NULL;
+					pr_debug("store:  cur %p   prev %p\n", cur, cur->prev);
+				}
 				return ret;
 			}
 
@@ -1720,9 +1843,29 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 				if (pframe->sync_data)
 					dcam_if_release_sync(pframe->sync_data,
 							     pframe);
-				if (module->cam_uinfo.is_dual)
+				if (module->cam_uinfo.is_dual) {
 					pframe = dual_fifo_queue(module,
 						pframe, channel);
+				} else if (channel->zsl_skip_num == CAM_ZSL_SKIP_NUM) {
+					if (channel->zsl_skip_num)
+						channel->zsl_skip_num--;
+					else
+						channel->zsl_skip_num = CAM_ZSL_SKIP_NUM;
+					ret = camera_enqueue(&channel->share_buf_queue, &pframe->list);
+					if (channel->share_buf_queue.cnt > channel->zsl_buffer_num)
+						pframe = camera_dequeue(&channel->share_buf_queue,
+							struct camera_frame, list);
+					else
+						return ret;
+				} else {
+					if (channel->zsl_skip_num)
+						channel->zsl_skip_num--;
+					else
+						channel->zsl_skip_num = CAM_ZSL_SKIP_NUM;
+				}
+
+				pr_debug("share buf queue cnt %d skip_cnt %d\n",
+					channel->share_buf_queue.cnt, channel->zsl_skip_num);
 
 				if (pframe) {
 					if (pframe->dcam_idx == DCAM_ID_1)
@@ -1735,19 +1878,16 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 							 module->dcam_dev_handle,
 							 DCAM_PATH_CFG_OUTPUT_BUF,
 							 channel->dcam_path_id, pframe);
-					}
+				}
 				return ret;
 			}
 
 			/* cap scene special process */
 			if (module->dcam_cap_status == DCAM_CAPTURE_START_WITH_TIMESTAMP) {
-
 				pframe = deal_dual_frame(module,
 						pframe, channel);
-
 				if (!pframe)
 					return 0;
-
 				if (atomic_read(&module->capture_frames_dcam) > 0)
 					atomic_dec(&module->capture_frames_dcam);
 
@@ -1777,8 +1917,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 						module->idx,
 						module->dcam_cap_status,
 						module->capture_times,
-						pframe->boot_sensor_time
-						);
+						pframe->boot_sensor_time);
 					if (pframe->sync_data)
 						dcam_if_release_sync(pframe->sync_data, pframe);
 					ret = dcam_ops->cfg_path(
@@ -1791,6 +1930,8 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 					cap_frame = atomic_read(&module->capture_frames_dcam);
 					skip_frame = atomic_read(&module->cap_skip_frames);
 					if (cap_frame > 0 && skip_frame == 0) {
+						dcam_ops->ioctl(module->dcam_dev_handle,
+							DCAM_IOCTL_CFG_GTM_UPDATE, &gtm_param_idx);
 						pr_info("cam%d cap type[%d] num[%d]\n", module->idx,
 							module->dcam_cap_status,
 							cap_frame);
@@ -1817,7 +1958,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 				&& (module->cap_status != CAM_CAPTURE_RAWPROC) && (pframe->fid < 1))
 				ret = 1;
 			else
-				ret = camera_enqueue(&channel->share_buf_queue, pframe);
+				ret = camera_enqueue(&channel->share_buf_queue, &pframe->list);
 			if (ret) {
 				pr_debug("capture queue overflow\n");
 				if (pframe->sync_data)
@@ -1828,6 +1969,16 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 						DCAM_PATH_CFG_OUTPUT_BUF,
 						channel->dcam_path_id, pframe);
 			} else {
+				if ((channel->share_buf_queue.cnt > channel->zsl_buffer_num) && (module->cap_status != CAM_CAPTURE_RAWPROC)) {
+					pframe = camera_dequeue(&channel->share_buf_queue,
+						struct camera_frame, list);
+					if (pframe->sync_data)
+						dcam_if_release_sync(pframe->sync_data, pframe);
+					ret = dcam_ops->cfg_path(
+							 module->dcam_dev_handle,
+							 DCAM_PATH_CFG_OUTPUT_BUF,
+							 channel->dcam_path_id, pframe);
+				}
 				complete(&module->cap_thrd.thread_com);
 			}
 		} else {
@@ -1853,7 +2004,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 			return ret;
 		}
 		if (atomic_read(&module->state) == CAM_RUNNING) {
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 			if (ret) {
 				put_empty_frame(pframe);
 			} else {
@@ -1891,7 +2042,7 @@ int dcam_callback(enum dcam_cb_type type, void *param, void *priv_data)
 		/* temp: statis/irq share same queue with frame data. */
 		/* todo: separate statis/irq and frame queue. */
 		if (atomic_read(&module->state) == CAM_RUNNING) {
-			ret = camera_enqueue(&module->frm_queue, pframe);
+			ret = camera_enqueue(&module->frm_queue, &pframe->list);
 			if (ret) {
 				put_empty_frame(pframe);
 			} else {
@@ -2015,7 +2166,7 @@ static int cal_channel_swapsize(struct camera_module *module)
 	ch_cap = &module->channel[CAM_CH_CAP];
 	ch_vid = &module->channel[CAM_CH_VID];
 
-	if (module->grp->hw_info->prj_id == SHARKL5pro) {
+	if (module->grp->hw_info->ip_dcam[module->dcam_idx]->rds_en) {
 		if (ch_prev->ch_uinfo.src_size.w <= PRE_RDS_OUT) {
 			module->zoom_solution = ZOOM_RDS;
 			module->rds_limit= 10;
@@ -2278,10 +2429,6 @@ static int cal_channel_size_bininig(
 		dcam_out.h = (trim_pv.size_y >> shift);
 		dcam_out.h = ALIGN_DOWN(dcam_out.h, 2);
 
-		/* avoid isp fetch fbd timeout when isp src width > 1856 */
-		if (dcam_out.w > 1856)
-			ch_prev->compress_input = 0;
-
 		if (ch_prev->compress_input) {
 			dcam_out.h = ALIGN_DOWN(dcam_out.h, DCAM_FBC_TILE_HEIGHT);
 			trim_pv.size_y = (dcam_out.h << shift);
@@ -2450,10 +2597,6 @@ static int cal_channel_size_rds(struct camera_module *module)
 		align_w = MAX(align_w, DCAM_OUTPUT_DEBUG_ALIGN);
 		dcam_out.w = divide_ratio16(trim_pv.size_x, ratio_min);
 		dcam_out.h = divide_ratio16(trim_pv.size_y, ratio_min);
-
-		/* avoid isp fetch fbd timeout when isp src width > 1856 */
-		if (dcam_out.w > 1856)
-			ch_prev->compress_input = 0;
 
 		if (ch_prev->compress_input)
 			align_h = MAX(align_h, DCAM_FBC_TILE_HEIGHT);
@@ -2671,38 +2814,17 @@ static int config_channel_bigsize(
 	return ret;
 }
 
-static int capture_is_superzoom(struct camera_uchannel *ch_uinfo,
-	struct channel_context *channel, int coeff)
-{
-	int ret = 0;
-
-	if (!ch_uinfo || !channel) {
-		pr_err("fail to input ptr ctx_size or channel is NULL\n");
-		return ret;
-	}
-
-	pr_debug("superzoom trim_isp: %d, %d, dst size: %d, %d\n",
-		channel->trim_isp.size_x, channel->trim_isp.size_y,
-		ch_uinfo->dst_size.w, ch_uinfo->dst_size.h);
-
-	if (ch_uinfo->dst_size.w > coeff * channel->trim_isp.size_x
-		|| ch_uinfo->dst_size.h > coeff * channel->trim_isp.size_y)
-		ret = 1;
-
-	return ret;
-}
-
 static int config_channel_size(
 	struct camera_module *module,
 	struct channel_context *channel)
 {
 	int ret = 0;
 	int is_zoom, loop_count;
-	int superzoom_coeff = SUPERZOOM_DEFAULT_COEFF;
 	uint32_t isp_ctx_id, isp_path_id;
 	struct isp_offline_param *isp_param;
 	struct channel_context *vid;
 	struct camera_uchannel *ch_uinfo = NULL;
+	struct cam_hw_info *hw = NULL;
 	struct dcam_path_cfg_param ch_desc;
 	struct isp_ctx_size_desc ctx_size;
 	struct img_trim path_trim;
@@ -2715,6 +2837,7 @@ static int config_channel_size(
 		loop_count = 1;
 	}
 
+	hw = module->grp->hw_info;
 	ch_uinfo = &channel->ch_uinfo;
 	/* DCAM full path not updating for zoom. */
 	if (is_zoom && channel->ch_id == CAM_CH_CAP)
@@ -2722,7 +2845,7 @@ static int config_channel_size(
 
 	if (!is_zoom && (channel->swap_size.w > 0)) {
 		camera_queue_init(&channel->share_buf_queue,
-			CAM_SHARED_BUF_NUM, 0, put_k_frame);
+			CAM_SHARED_BUF_NUM, put_k_frame);
 
 		/* alloc middle buffer for channel */
 		channel->alloc_start = 1;
@@ -2798,6 +2921,31 @@ static int config_channel_size(
 	if (ret && ch_desc.priv_size_data)
 		kfree(ch_desc.priv_size_data);
 
+	if (!is_zoom && channel->ch_id == CAM_CH_PRE) {
+		isp_ctx_id = (channel->isp_path_id >> ISP_CTXID_OFFSET);
+		isp_path_id = (channel->isp_path_id & ISP_PATHID_MASK);
+		ctx_size.src.w = ch_uinfo->src_size.w;
+		ctx_size.src.h = ch_uinfo->src_size.h;
+		ctx_size.crop = channel->trim_dcam;
+		ret = isp_ops->cfg_path(module->isp_dev_handle,
+				ISP_PATH_CFG_CTX_SIZE,
+				isp_ctx_id, 0, &ctx_size);
+		if (ret != 0)
+			goto exit;
+		path_trim = channel->trim_isp;
+		ret = isp_ops->cfg_path(module->isp_dev_handle,
+				ISP_PATH_CFG_PATH_SIZE,
+				isp_ctx_id, isp_path_id, &path_trim);
+		if (ret != 0)
+				goto exit;
+		if (vid->enable) {
+			path_trim = vid->trim_isp;
+			ret = isp_ops->cfg_path(module->isp_dev_handle,
+				ISP_PATH_CFG_PATH_SIZE,
+				isp_ctx_id, ISP_SPATH_VID, &path_trim);
+		}
+	}
+
 	/* isp path for prev/video will update from input frame. */
 	if (channel->ch_id == CAM_CH_PRE) {
 		pr_info("update channel size done for preview\n");
@@ -2809,9 +2957,6 @@ cfg_isp:
 	isp_path_id = (channel->isp_path_id & ISP_PATHID_MASK);
 
 	if (channel->ch_id == CAM_CH_CAP) {
-		struct img_size size = {0};
-		int superzoom_flag = 0;
-
 		ctx_size.src.w = ch_uinfo->src_size.w;
 		ctx_size.src.h = ch_uinfo->src_size.h;
 		ctx_size.crop = channel->trim_dcam;
@@ -2821,46 +2966,6 @@ cfg_isp:
 		ret = isp_ops->cfg_path(module->isp_dev_handle,
 				ISP_PATH_CFG_CTX_SIZE,
 				isp_ctx_id, 0, &ctx_size);
-		if (ret != 0)
-			goto exit;
-
-		if (s_dbg_superzoom_coeff > 0 &&
-			s_dbg_superzoom_coeff < SUPERZOOM_COEFF_UP_MAX) {
-			superzoom_coeff = s_dbg_superzoom_coeff;
-			pr_debug("sw %d, user proc sfs val , superzoom coeff %d, \n",
-				isp_ctx_id, superzoom_coeff);
-		}
-
-		if (capture_is_superzoom(ch_uinfo, channel, superzoom_coeff)) {
-			size.w = superzoom_coeff * channel->trim_isp.size_x;
-			size.h = superzoom_coeff * channel->trim_isp.size_y;
-			if (size.w > ch_uinfo->dst_size.w)
-				size.w = ch_uinfo->dst_size.w;
-			if (size.h > ch_uinfo->dst_size.h)
-				size.h = ch_uinfo->dst_size.h;
-			channel->cap_status = TO_DO_CAP_SUPERZOOM;
-			superzoom_flag = 1;
-			pr_debug("dcam id %d, sw %d, superzoom path dst w %d, h %d, channel: trim w %d, h %d, ch_uinfo dst %d, %d\n",
-				module->idx, isp_ctx_id, size.w, size.h, channel->trim_isp.size_x,
-				channel->trim_isp.size_y, ch_uinfo->dst_size.w, ch_uinfo->dst_size.h);
-		} else {
-			size.w = ch_uinfo->dst_size.w;
-			size.h = ch_uinfo->dst_size.h;
-			channel->cap_status = NONE_CAP_SUPERZOOM;
-			superzoom_flag = 0;
-			pr_debug("dcam id %d, sw %d, no superzoom path dst w %d, h %d, ch_uinfo src w %d, h %d , dst_size %d, %d\n",
-				module->idx, isp_ctx_id, size.w, size.h, ch_uinfo->dst_size.w, ch_uinfo->dst_size.h,
-				ch_uinfo->dst_size.w, ch_uinfo->dst_size.h);
-		}
-		ret = isp_ops->cfg_path(module->isp_dev_handle,
-				ISP_PATH_CFG_PATH_DST,
-				isp_ctx_id, isp_path_id, &size);
-		if (ret != 0)
-			goto exit;
-
-		ret = isp_ops->cfg_path(module->isp_dev_handle,
-				ISP_PATH_CFG_CTX_SUPERZOOM,
-				isp_ctx_id, isp_path_id, &superzoom_flag);
 		if (ret != 0)
 			goto exit;
 	}
@@ -3016,7 +3121,8 @@ next:
 	update_pv = update_c = update_always = 0;
 	/* Get node from the preview/video/cap coef queue if exist */
 	if (ch_prev->enable)
-		pre_zoom_coeff = camera_dequeue(&ch_prev->zoom_coeff_queue);
+		pre_zoom_coeff = camera_dequeue(&ch_prev->zoom_coeff_queue,
+			struct camera_frame, list);
 	if (pre_zoom_coeff) {
 		crop = (struct sprd_img_rect *)pre_zoom_coeff->priv_data;
 		ch_prev->ch_uinfo.src_crop = *crop;
@@ -3026,7 +3132,8 @@ next:
 	}
 
 	if (ch_vid->enable)
-		vid_zoom_coeff = camera_dequeue(&ch_vid->zoom_coeff_queue);
+		vid_zoom_coeff = camera_dequeue(&ch_vid->zoom_coeff_queue,
+			struct camera_frame, list);
 	if (vid_zoom_coeff) {
 		crop = (struct sprd_img_rect *)vid_zoom_coeff->priv_data;
 		ch_vid->ch_uinfo.src_crop = *crop;
@@ -3036,7 +3143,8 @@ next:
 	}
 
 	if (ch_cap->enable)
-		cap_zoom_coeff = camera_dequeue(&ch_cap->zoom_coeff_queue);
+		cap_zoom_coeff = camera_dequeue(&ch_cap->zoom_coeff_queue,
+			struct camera_frame, list);
 	if (cap_zoom_coeff) {
 		crop = (struct sprd_img_rect *)cap_zoom_coeff->priv_data;
 		ch_cap->ch_uinfo.src_crop = *crop;
@@ -3069,69 +3177,46 @@ next:
 static int capture_proc(void *param)
 {
 	int ret = 0;
-	uint32_t cnt_3dnr= 0;
 	struct camera_module *module;
 	struct camera_frame *pframe;
 	struct channel_context *channel;
 
 	module = (struct camera_module *)param;
 	channel = &module->channel[CAM_CH_CAP];
-	pframe = camera_dequeue(&channel->share_buf_queue);
-	if (!pframe)
-		return 0;
+	do {
+		pframe = camera_dequeue(&channel->share_buf_queue,
+				struct camera_frame, list);
+		if (!pframe)
+			return 0;
+		if (module->dcam_cap_status != DCAM_CAPTURE_START_WITH_TIMESTAMP &&
+			pframe->boot_sensor_time < module->capture_times) {
+			pr_debug("cam%d cap skip frame type[%d] cap_time[%lld] sof_time[%lld]\n",
+				module->idx,
+				module->dcam_cap_status,
+				module->capture_times,
+				pframe->boot_sensor_time);
+			if (pframe->sync_data)
+				dcam_if_release_sync(pframe->sync_data, pframe);
+			ret = dcam_ops->cfg_path(
+				module->dcam_dev_handle,
+				DCAM_PATH_CFG_OUTPUT_BUF,
+				channel->dcam_path_id, pframe);
+		} else {
+			break;
+		}
+	} while (pframe);
 
 	ret = -1;
 	if (module->cap_status != CAM_CAPTURE_STOP) {
-		pr_info("enter\n");
-		if (channel->cap_status == NONE_CAP_SUPERZOOM
-			|| module->cap_status == CAM_CAPTURE_RAWPROC) {
-			/*Not to do superzoom capture*/
-			pr_info("capture frame cam id %d, fid[%d],  frame w %d, h %d\n",
-				module->idx, pframe->fid,
-				pframe->width, pframe->height);
-			ret = isp_ops->proc_frame(module->isp_dev_handle, pframe,
-						channel->isp_path_id >> ISP_CTXID_OFFSET);
-		} else {
-			/*superzoom capture*/
-			if (channel->uinfo_3dnr) {
-				/*3DNR capture*/
-				ret = isp_ops->get_3dnr_cnt(module->isp_dev_handle,
-						channel->isp_path_id >> ISP_CTXID_OFFSET, &cnt_3dnr);
-				if (ret) {
-					pr_err("fail to superzoom get 3dnr cnt\n");
-					goto exit;
-				}
-
-				if (cnt_3dnr % 5 != 4) {
-					/*3dnr 0~3 frame*/
-					pr_info("superzoom 3DNR capture frame fid[%d],  frame w %d, h %d, 3dr cnt %d\n",
-						pframe->fid, pframe->width, pframe->height, cnt_3dnr);
-					ret = isp_ops->proc_frame(module->isp_dev_handle, pframe,
-								channel->isp_path_id >> ISP_CTXID_OFFSET);
-					goto exit;
-				}
-			}
-
-			/*NONE 3DNR or 3DNR 4frame capture , need to wait*/
-			ret = wait_for_completion_interruptible_timeout(
-					&channel->superzoom_frm, msecs_to_jiffies(2000));
-			if (ret == ERESTARTSYS) {
-				pr_err("fail to wait as interrupted\n");
-				ret = -EFAULT;
-				goto exit;
-			} else if (ret == 0) {
-				pr_err("fail to wait timeout.\n");
-				ret = -EFAULT;
-				goto exit;
-			}
-
-			pr_info("superzoom capture frame fid[%d],  frame w %d, h %d, 3dnr %d, cnt %d\n",
-				pframe->fid, pframe->width, pframe->height, channel->uinfo_3dnr, cnt_3dnr);
-			ret = isp_ops->proc_frame(module->isp_dev_handle, pframe,
-				channel->isp_path_id >> ISP_CTXID_OFFSET);
-		}
+		pr_info("capture frame cam id %d, fid[%d],  frame w %d, h %d\n",
+			module->idx, pframe->fid,
+			pframe->width, pframe->height);
+		pr_info("cap time %lld, frame time %lld\n",
+			module->capture_times, pframe->boot_sensor_time);
+		ret = isp_ops->proc_frame(module->isp_dev_handle, pframe,
+					channel->isp_path_id >> ISP_CTXID_OFFSET);
 	}
-exit:
+
 	if (ret) {
 		pr_info("capture stop or isp queue overflow\n");
 		if (module->cam_uinfo.dcam_slice_mode && pframe->dcam_idx == DCAM_ID_1) {
@@ -3307,7 +3392,8 @@ static int dumpraw_proc(void *param)
 					module->dump_count);
 				break;
 			}
-			pframe = camera_dequeue(&module->dump_queue);
+			pframe = camera_dequeue(&module->dump_queue,
+				struct camera_frame, list);
 			if (!pframe)
 				continue;
 
@@ -3840,23 +3926,6 @@ static int init_cam_channel(
 
 		ret = isp_ops->cfg_path(module->isp_dev_handle,
 				ISP_PATH_CFG_CTX_BASE, isp_ctx_id, 0, &ctx_desc);
-
-		if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-			&& channel->ch_id == CAM_CH_CAP) {
-			init_param.cam_id = module->idx;
-			init_param.is_superzoom = 1;
-			ret = isp_ops->get_context(module->isp_dev_handle, &init_param);
-			if (ret != ISP_CONTEXT_SUPERZOOM) {
-				pr_err("fail to get isp superzoom context cam%d ch %d\n",
-					module->idx, channel->ch_id);
-				goto exit;
-			}
-
-			isp_ops->set_callback(module->isp_dev_handle,
-					ISP_CONTEXT_SUPERZOOM, isp_callback, module);
-			ret = isp_ops->cfg_path(module->isp_dev_handle,
-					ISP_PATH_CFG_CTX_BASE, ISP_CONTEXT_SUPERZOOM, 0, &ctx_desc);
-		}
 	}
 
 	if (new_isp_path) {
@@ -3889,23 +3958,6 @@ static int init_cam_channel(
 		ret = isp_ops->cfg_path(module->isp_dev_handle,
 					ISP_PATH_CFG_PATH_BASE,
 					isp_ctx_id, isp_path_id, &path_desc);
-
-		if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-			&& channel->ch_id == CAM_CH_CAP) {
-			ret = isp_ops->get_path(
-					module->isp_dev_handle, ISP_CONTEXT_SUPERZOOM, isp_path_id);
-			if (ret < 0) {
-				pr_err("fail to get isp path %d from superzoom\n", isp_path_id);
-				if (new_isp_ctx)
-					isp_ops->put_context(module->isp_dev_handle,
-							ISP_CONTEXT_SUPERZOOM);
-				goto exit;
-			}
-
-			ret = isp_ops->cfg_path(module->isp_dev_handle,
-					ISP_PATH_CFG_PATH_BASE,
-					ISP_CONTEXT_SUPERZOOM, isp_path_id, &path_desc);
-		}
 	}
 
 	if (new_isp_path && channel->ch_uinfo.slave_img_en) {
@@ -3987,7 +4039,7 @@ static void cam_timer_callback(unsigned long data)
 			frame->irq_type = CAMERA_IRQ_IMG;
 			frame->irq_property = IRQ_MAX_DONE;
 		}
-		ret = camera_enqueue(&module->frm_queue, frame);
+		ret = camera_enqueue(&module->frm_queue, &frame->list);
 		complete(&module->frm_com);
 		if (ret)
 			pr_err("fail to enqueue.\n");
@@ -4075,15 +4127,10 @@ static int camera_create_thread(struct camera_module *module,
 
 static void camera_stop_thread(struct cam_thread_info *thrd)
 {
-	unsigned long timeleft = 0;
-
 	if (thrd->thread_task) {
 		atomic_set(&thrd->thread_stop, 1);
 		complete(&thrd->thread_com);
-		timeleft = wait_for_completion_timeout(&thrd->thread_stop_com,
-				msecs_to_jiffies(THREAD_STOP_TIMEOUT));
-		if (timeleft == 0)
-			pr_err("fail to stop %s thread, timeout\n", thrd->thread_name);
+		wait_for_completion(&thrd->thread_stop_com);
 		thrd->thread_task = NULL;
 	}
 }
@@ -4141,6 +4188,12 @@ static int camera_module_init(struct camera_module *module)
 	sprd_init_timer(&module->cam_timer, (unsigned long)module);
 	module->attach_sensor_id = SPRD_SENSOR_ID_MAX + 1;
 	module->is_smooth_zoom = 1; /* temp for smooth zoom */
+	camera_queue_init(&module->frm_queue,
+		CAM_FRAME_Q_LEN, camera_put_empty_frame);
+	camera_queue_init(&module->irq_queue,
+		CAM_IRQ_Q_LEN, camera_put_empty_frame);
+	camera_queue_init(&module->statis_queue,
+		CAM_STATIS_Q_LEN, camera_put_empty_frame);
 
 	pr_info("module[%d] init OK %p!\n", module->idx, module);
 	return 0;
@@ -4154,6 +4207,9 @@ exit:
 static int camera_module_deinit(struct camera_module *module)
 {
 	put_cam_flash_handle(module->flash_core_handle);
+	camera_queue_clear(&module->frm_queue, struct camera_frame, list);
+	camera_queue_clear(&module->irq_queue, struct camera_frame, list);
+	camera_queue_clear(&module->statis_queue, struct camera_frame, list);
 	camera_stop_thread(&module->cap_thrd);
 	camera_stop_thread(&module->zoom_thrd);
 	camera_stop_thread(&module->dump_thrd);
@@ -4430,6 +4486,7 @@ static int img_ioctl_set_function_mode(
 	ret |= get_user(module->cam_uinfo.is_3dnr, &uparam->need_3dnr);
 	ret |= get_user(module->cam_uinfo.is_dual, &uparam->dual_cam);
 	ret |= get_user(module->cam_uinfo.is_afbc, &uparam->need_afbc);
+	ret |= get_user(module->cam_uinfo.is_ifbc, &uparam->need_ifbc);
 	module->cam_uinfo.is_rgb_ltm = 0;
 	module->cam_uinfo.is_yuv_ltm = 0;
 
@@ -4438,16 +4495,21 @@ static int img_ioctl_set_function_mode(
 		module->cam_uinfo.is_yuv_ltm = 0;
 	}
 
+	if (module->grp->hw_info->prj_id == ROC1) {
+		module->cam_uinfo.is_yuv_ltm = 0;
+	}
+
 	/* no use */
 	module->cam_uinfo.is_3dnr = 0;
 
-	pr_info("4in1:[%d], 3dnr[%d], rgb_ltm[%d], yuv_ltm[%d], dual[%d]\n, afbc[%d]\n",
+	pr_info("4in1:[%d], 3dnr[%d], rgb_ltm[%d], yuv_ltm[%d], dual[%d], afbc[%d], ifbc[%d]\n",
 		module->cam_uinfo.is_4in1,
 		module->cam_uinfo.is_3dnr,
 		module->cam_uinfo.is_rgb_ltm,
 		module->cam_uinfo.is_yuv_ltm,
 		module->cam_uinfo.is_dual,
-		module->cam_uinfo.is_afbc);
+		module->cam_uinfo.is_afbc,
+		module->cam_uinfo.is_ifbc);
 
 	if (unlikely(ret)) {
 		pr_err("fail to copy from user, ret %d\n", ret);
@@ -4548,7 +4610,7 @@ static int img_ioctl_set_cam_security(
 			goto exit;
 		}
 
-		sec_ret = camca_security_set(&uparam);
+		sec_ret = camca_security_set(&uparam, CAM_TRUSTY_ENTER);
 
 		if (!sec_ret) {
 			ret = -EFAULT;
@@ -4755,7 +4817,6 @@ static int img_ioctl_set_output_size(
 			&uparam->aux_img.dst_size, sizeof(struct sprd_img_size));
 
 	// TODO get this from HAL
-	dst->is_compressed = 0;
 	dst->scene = scene_mode;
 	if (cap_type == CAM_CAP_RAW_FULL && dst->is_high_fps)
 		dst->is_high_fps = 0;
@@ -5028,15 +5089,16 @@ static int img_ioctl_set_crop(
 		crop->x, crop->y, crop->w, crop->h, max.w, max.h);
 
 	if (zoom) {
-		if (camera_enqueue(&ch->zoom_coeff_queue, zoom_param)) {
+		if (camera_enqueue(&ch->zoom_coeff_queue, &zoom_param->list)) {
 			/* if zoom queue overflow, discard first one node in queue*/
 			pr_warn("ch %d zoom q overflow\n", channel_id);
-			first = camera_dequeue(&ch->zoom_coeff_queue);
+			first = camera_dequeue(&ch->zoom_coeff_queue,
+				struct camera_frame, list);
 			if (first) {
 				kfree(first->priv_data);
 				put_empty_frame(first);
 			}
-			camera_enqueue(&ch->zoom_coeff_queue, zoom_param);
+			camera_enqueue(&ch->zoom_coeff_queue, &zoom_param->list);
 		}
 		zoom_param = NULL;
 		if (ch_vid->enable && channel_id == CAM_CH_PRE)
@@ -5191,7 +5253,7 @@ static int img_ioctl_set_frame_addr(
 			unsigned long arg)
 {
 	int ret = 0;
-	uint32_t i, cmd;
+	uint32_t i = 0, cmd = ISP_PATH_CFG_OUTPUT_BUF;
 	struct sprd_img_parm param;
 	struct channel_context *ch = NULL;
 	struct channel_context *ch_prv = NULL;
@@ -5247,13 +5309,6 @@ static int img_ioctl_set_frame_addr(
 			pframe->buf.offset[2], param.is_reserved_buf,
 			pframe->user_fid);
 
-		if (param.is_reserved_buf) {
-			int32_t mfd = param.fd_array[i];
-			dcam_ops->ioctl(module->dcam_dev_handle,
-				DCAM_IOCTL_CFG_RESERV_STATSBUF,
-				&mfd);
-		}
-
 		ret = cambuf_get_ionbuf(&pframe->buf);
 		if (ret) {
 			put_empty_frame(pframe);
@@ -5262,7 +5317,7 @@ static int img_ioctl_set_frame_addr(
 		}
 
 		if (param.channel_id == CAM_CH_CAP || param.is_reserved_buf) {
-			pr_info("ch %d, mfd %d, off 0x%x 0x%x 0x%x, size 0x%x, reserved %d\n",
+			pr_debug("ch %d, mfd %d, off 0x%x 0x%x 0x%x, size 0x%x, reserved %d\n",
 				pframe->channel_id, pframe->buf.mfd[0],
 				pframe->buf.offset[0], pframe->buf.offset[1],
 				pframe->buf.offset[2], (uint32_t)pframe->buf.size[0],
@@ -5270,34 +5325,17 @@ static int img_ioctl_set_frame_addr(
 		}
 
 		if (ch->isp_path_id >= 0) {
-			struct camera_frame *pframe1;
-
-			if (param.is_reserved_buf &&
-				((ch->ch_id == CAM_CH_CAP)
-				|| (ch->ch_id == CAM_CH_PRE)
-				|| (ch->ch_id == CAM_CH_VID && !ch_prv->enable))) {
-				cmd = DCAM_PATH_CFG_OUTPUT_RESERVED_BUF;
-				pframe1 = get_empty_frame();
-				pframe1->is_reserved = 1;
-				pframe1->buf.type = CAM_BUF_USER;
-				pframe1->buf.mfd[0] = param.fd_array[i];
-				pframe1->buf.offset[0] = param.frame_addr_array[i].y;
-				pframe1->buf.offset[1] = param.frame_addr_array[i].u;
-				pframe1->buf.offset[2] = param.frame_addr_array[i].v;
-				pframe1->channel_id = ch->ch_id;
-				cambuf_get_ionbuf(&pframe1->buf);
-				ret = dcam_ops->cfg_path(module->dcam_dev_handle,
-						cmd, ch->dcam_path_id, pframe1);
-				if (ret) {
-					cambuf_put_ionbuf(&pframe1->buf);
-					put_empty_frame(pframe1);
-				}
-			}
-
 			cmd = ISP_PATH_CFG_OUTPUT_BUF;
 			if (param.is_reserved_buf) {
 				ch->reserved_buf_fd = pframe->buf.mfd[0];
-				cmd = ISP_PATH_CFG_OUTPUT_RESERVED_BUF;
+				pframe->is_reserved = 1;
+				ch->res_frame = pframe;
+				pr_debug("ch %d, mfd 0x%x, off 0x%x 0x%x 0x%x, size %d user_fid[%d]\n",
+					pframe->channel_id, pframe->buf.mfd[0],
+					pframe->buf.offset[0], pframe->buf.offset[1],
+					pframe->buf.offset[2], (uint32_t)pframe->buf.size[0],
+					pframe->user_fid);
+				continue;
 			}
 			ret = isp_ops->cfg_path(module->isp_dev_handle, cmd,
 					ch->isp_path_id >> ISP_CTXID_OFFSET,
@@ -5307,9 +5345,16 @@ static int img_ioctl_set_frame_addr(
 			cmd = DCAM_PATH_CFG_OUTPUT_BUF;
 			if (param.is_reserved_buf) {
 				ch->reserved_buf_fd = pframe->buf.mfd[0];
-				cmd = DCAM_PATH_CFG_OUTPUT_RESERVED_BUF;
 				pframe->is_reserved = 1;
+				ch->res_frame = pframe;
+				pr_debug("ch %d, mfd 0x%x, off 0x%x 0x%x 0x%x, size %d user_fid[%d]\n",
+					pframe->channel_id, pframe->buf.mfd[0],
+					pframe->buf.offset[0], pframe->buf.offset[1],
+					pframe->buf.offset[2], (uint32_t)pframe->buf.size[0],
+					pframe->user_fid);
+				continue;
 			}
+
 			ret = dcam_ops->cfg_path(module->dcam_dev_handle,
 					cmd, ch->dcam_path_id, pframe);
 			/* 4in1_raw_capture, maybe need two image once */
@@ -5675,12 +5720,141 @@ static int img_ioctl_put_cam_res(
 	return ret;
 }
 
+static int camcore_resframe_set(struct camera_module *module)
+{
+	int ret = 0;
+	struct channel_context *ch = NULL, *ch_prv = NULL;
+	uint32_t i = 0, j = 0, cmd = ISP_PATH_CFG_OUTPUT_RESERVED_BUF;
+	uint32_t max_size = 0, out_size = 0, in_size = 0;
+	struct camera_frame *pframe = NULL;
+	struct camera_frame *pframe1;
+
+	for (i = 0; i < CAM_CH_MAX; i++) {
+		ch = &module->channel[i];
+		if (ch->enable) {
+			if (ch->ch_uinfo.dst_fmt != IMG_PIX_FMT_GREY)
+				out_size = ch->ch_uinfo.dst_size.w *ch->ch_uinfo.dst_size.h * 3 / 2;
+			else
+				out_size = cal_sprd_raw_pitch(ch->ch_uinfo.dst_size.w, module->cam_uinfo.sensor_if.if_spec.mipi.is_loose)
+					* ch->ch_uinfo.dst_size.h;
+
+			if (ch->ch_uinfo.sn_fmt != IMG_PIX_FMT_GREY)
+				in_size = ch->ch_uinfo.src_size.w *ch->ch_uinfo.src_size.h * 3 / 2;
+			else
+				in_size = cal_sprd_raw_pitch(ch->ch_uinfo.src_size.w, module->cam_uinfo.sensor_if.if_spec.mipi.is_loose)
+					* ch->ch_uinfo.src_size.h;
+
+			max_size = max3(max_size, out_size, in_size);
+			pr_debug("cam%d, ch %d, max_size = %d, %d, %d\n", module->idx, i, max_size, in_size, out_size);
+		}
+	}
+
+	ch_prv = &module->channel[CAM_CH_PRE];
+	for (i = 0; i < CAM_CH_MAX; i++) {
+		ch = &module->channel[i];
+		pframe = ch->res_frame;
+		if (!ch->enable || !pframe)
+			continue;
+		if (ch->isp_path_id >= 0 && ch->ch_uinfo.dst_fmt != IMG_PIX_FMT_GREY) {
+			if (((ch->ch_id == CAM_CH_CAP)
+				|| (ch->ch_id == CAM_CH_PRE)
+				|| (ch->ch_id == CAM_CH_VID && !ch_prv->enable))) {
+				cmd = DCAM_PATH_CFG_OUTPUT_RESERVED_BUF;
+				pframe1 = get_empty_frame();
+				pframe1->is_reserved = 1;
+				pframe1->buf.type = CAM_BUF_USER;
+				pframe1->buf.mfd[0] = pframe->buf.mfd[0];
+				pframe1->buf.offset[0] = pframe->buf.offset[0];
+				pframe1->buf.offset[1] = pframe->buf.offset[1];
+				pframe1->buf.offset[2] = pframe->buf.offset[2];
+				pframe1->channel_id = ch->ch_id;
+
+				ret = cambuf_get_ionbuf(&pframe1->buf);
+				if (ret) {
+					pr_err("fail to get ionbuf on cam%d, ch %d\n", module->idx, i);
+					put_empty_frame(pframe1);
+					ret = -EFAULT;
+					break;
+				}
+
+				for (j = 0; j < 3; j++)
+					pframe1->buf.size[j] = max_size;
+				ret = dcam_ops->cfg_path(module->dcam_dev_handle,
+					cmd, ch->dcam_path_id, pframe1);
+				if (ret) {
+					pr_err("fail to cfg path on cam%d, ch %d\n", module->idx, i);
+					cambuf_put_ionbuf(&pframe1->buf);
+					put_empty_frame(pframe1);
+				}
+			}
+
+			cmd = ISP_PATH_CFG_OUTPUT_RESERVED_BUF;
+			for (j = 0; j < 3; j++)
+				pframe->buf.size[j] = max_size;
+
+			ret = isp_ops->cfg_path(module->isp_dev_handle, cmd,
+				ch->isp_path_id >> ISP_CTXID_OFFSET,
+				ch->isp_path_id & ISP_PATHID_MASK, pframe);
+		} else {
+			cmd = DCAM_PATH_CFG_OUTPUT_RESERVED_BUF;
+			for (j = 0; j < 3; j++)
+				pframe->buf.size[j] = max_size;
+
+			ret = dcam_ops->cfg_path(module->dcam_dev_handle,
+				cmd, ch->dcam_path_id, pframe);
+			/* 4in1_raw_capture, maybe need two image once */
+			if (ch->second_path_enable) {
+				uint32_t is_loose = 0;
+				uint32_t offset = 0;
+
+				ch->is_loose = module->cam_uinfo.sensor_if.if_spec.mipi.is_loose;
+
+				pframe1 = get_empty_frame();
+				pframe1->buf.type = CAM_BUF_USER;
+				pframe1->buf.mfd[0] = ch->res_frame->buf.mfd[0];
+				/* raw capture: 4cell + bin-sum, cal offset */
+				if (ch->dcam_path_id == 0)
+					is_loose = 0;
+				else
+					is_loose = ch->is_loose;
+				offset = cal_sprd_raw_pitch(ch->ch_uinfo.src_size.w, is_loose);
+				offset *= ch->ch_uinfo.src_size.h;
+				offset = ALIGN_UP(offset, PAGE_SIZE);
+				/* first buf offset: p->frame_addr_array[i].y */
+				offset += pframe->buf.offset[0];
+				pframe1->buf.offset[0] = offset;
+				pframe1->channel_id = ch->ch_id;
+
+				ret = cambuf_get_ionbuf(&pframe1->buf);
+				if (ret) {
+					put_empty_frame(pframe1);
+					pr_err("fail to get second buffer fail, ret %d\n", ret);
+					ret = -EFAULT;
+					break;
+				}
+				ret = dcam_ops->cfg_path(module->dcam_dev_handle,
+					cmd, ch->second_path_id, pframe1);
+			}
+		}
+
+		if (ret) {
+			pr_err("fail to set output buffer for ch%d.\n", ch->ch_id);
+			cambuf_put_ionbuf(&pframe->buf);
+			put_empty_frame(pframe);
+			ret = -EFAULT;
+			break;
+		}
+	}
+
+	return ret;
+}
+
 static int img_ioctl_stream_on(
 			struct camera_module *module,
 			unsigned long arg)
 {
 	int ret = 0;
-	uint32_t i, j, line_w, isp_ctx_id, isp_path_id;
+	uint32_t i, line_w, isp_ctx_id, isp_path_id;
 	uint32_t uframe_sync, live_ch_count = 0, shutoff = 0;
 	struct channel_context *ch = NULL;
 	struct channel_context *ch_pre = NULL, *ch_vid = NULL;
@@ -5746,7 +5920,8 @@ static int img_ioctl_stream_on(
 	ret = dcam_ops->ioctl(module->dcam_dev_handle,
 				DCAM_IOCTL_INIT_STATIS_Q, NULL);
 
-	for (i = 0;  i < CAM_CH_MAX; i++) {
+	camcore_resframe_set(module);
+	for (i = 0; i < CAM_CH_MAX; i++) {
 		ch = &module->channel[i];
 		if (!ch->enable || (ch->ch_id == CAM_CH_RAW))
 			continue;
@@ -5767,118 +5942,19 @@ static int img_ioctl_stream_on(
 
 		camera_queue_init(&ch->zoom_coeff_queue,
 			(module->is_smooth_zoom ? CAM_ZOOM_COEFF_Q_LEN : 1),
-			0, camera_put_empty_frame);
+			camera_put_empty_frame);
 
-		if (ch->alloc_start) {
-			ret = wait_for_completion_interruptible(&ch->alloc_com);
-			if (ret != 0) {
-				pr_err("fail to config channel/path param work %d\n",
-					ret);
-				flush_workqueue(module->workqueue);
+		if (i == CAM_CH_PRE || i == CAM_CH_VID) {
+			ret = cam_cfg_path_buffer(module, i);
+			if (ret) {
+				pr_err("fail to cfg path buffer\n");
 				goto exit;
 			}
-			ch->alloc_start = 0;
-
-			if (atomic_read(&ch->err_status) != 0) {
-				pr_err("fail to get ch %d correct status\n", ch->ch_id);
-				ret = -EFAULT;
-				goto exit;
-			}
-
-			/* set shared frame for dcam output */
-			while (1) {
-				struct camera_frame *pframe = NULL;
-
-				pframe = camera_dequeue(&ch->share_buf_queue);
-				if (pframe == NULL)
-					break;
-				if (module->cam_uinfo.is_4in1 &&
-					i == CAM_CH_CAP)
-					ret = dcam_ops->cfg_path(
-						module->dcam_dev_handle,
-						DCAM_PATH_CFG_OUTPUT_BUF,
-						ch->aux_dcam_path_id,
-						pframe);
-				else
-					ret = dcam_ops->cfg_path(
-						module->dcam_dev_handle,
-						DCAM_PATH_CFG_OUTPUT_BUF,
-						ch->dcam_path_id,
-						pframe);
-				if (ret) {
-					pr_err("fail to config dcam output buffer\n");
-					camera_enqueue(&ch->share_buf_queue,
-						pframe);
-					ret = -EINVAL;
-					goto exit;
-				}
-			}
-			isp_ctx_id = ch->isp_path_id >> ISP_CTXID_OFFSET;
-			isp_path_id = ch->isp_path_id & ISP_PATHID_MASK;
-
-			for (j = 0; j < ISP_NR3_BUF_NUM; j++) {
-				if (ch->nr3_bufs[j] == NULL)
-					continue;
-				ret = isp_ops->cfg_path(module->isp_dev_handle,
-						ISP_PATH_CFG_3DNR_BUF,
-						isp_ctx_id, isp_path_id,
-						ch->nr3_bufs[j]);
-				if (ret) {
-					pr_err("fail to config isp 3DNR buffer\n");
-					goto exit;
-				}
-			}
-
-			if (module->cam_uinfo.is_rgb_ltm) {
-				for (j = 0; j < ISP_LTM_BUF_NUM; j++) {
-					if (ch->ltm_bufs[LTM_RGB][j] == NULL) {
-						pr_debug("ch->ltm_bufs[%d][%d] NULL\n",
-							LTM_RGB, j);
-						continue;
-					}
-					ret = isp_ops->cfg_path(module->isp_dev_handle,
-							ISP_PATH_CFG_RGB_LTM_BUF,
-							isp_ctx_id, isp_path_id,
-							ch->ltm_bufs[LTM_RGB][j]);
-					if (ret) {
-						pr_err("fail to config isp rgb LTM buffer\n");
-						goto exit;
-					}
-				}
-			}
-
-			if (module->cam_uinfo.is_yuv_ltm) {
-				for (j = 0; j < ISP_LTM_BUF_NUM; j++) {
-					if (ch->ltm_bufs[LTM_YUV][j] == NULL) {
-						pr_debug("ch->ltm_bufs[%d][%d] NULL\n",
-							LTM_YUV, j);
-						continue;
-					}
-					ret = isp_ops->cfg_path(module->isp_dev_handle,
-							ISP_PATH_CFG_YUV_LTM_BUF,
-							isp_ctx_id, isp_path_id,
-							ch->ltm_bufs[LTM_YUV][j]);
-					if (ret) {
-						pr_err("fail to config isp yuv LTM buffer\n");
-						goto exit;
-					}
-				}
-			}
-
-			if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-				&& ch->ch_id == CAM_CH_CAP) {
-				if (ch->superzoom_buf== NULL)
-					continue;
-				ret = isp_ops->cfg_path(module->isp_dev_handle,
-						ISP_PATH_CFG_SUPERZOOM_BUF,
-						isp_ctx_id, isp_path_id,
-						ch->superzoom_buf);
-				if (ret) {
-					pr_err("fail to config isp superzoom buffer sw %d,  path id %d\n",
-						isp_ctx_id, isp_path_id);
-					goto exit;
-				}
-			}
+		}
+		ret = cam_cfg_ltm_buffer(module, i);
+		if (ret) {
+			pr_err("fail to cfg ltm buffer\n");
+			goto exit;
 		}
 	}
 
@@ -5902,20 +5978,11 @@ static int img_ioctl_stream_on(
 		}
 	}
 
-	pr_info("wait for wq done.\n");
-	flush_workqueue(module->workqueue);
-
-	camera_queue_init(&module->frm_queue,
-		CAM_FRAME_Q_LEN, 0, camera_put_empty_frame);
-	camera_queue_init(&module->irq_queue,
-		CAM_IRQ_Q_LEN, 0, camera_put_empty_frame);
-	camera_queue_init(&module->statis_queue,
-		CAM_STATIS_Q_LEN, 0, camera_put_empty_frame);
 	camera_queue_init(&module->zsl_fifo_queue,
-			CAM_SHARED_BUF_NUM, 0, put_k_frame);
+			CAM_SHARED_BUF_NUM, put_k_frame);
 	/* no need release buffer, only release camera_frame */
 	camera_queue_init(&module->remosaic_queue,
-			CAM_IRQ_Q_LEN, 0, cam_release_camera_frame);
+			CAM_IRQ_Q_LEN, cam_release_camera_frame);
 
 	set_cap_info(module);
 
@@ -5944,15 +6011,8 @@ static int img_ioctl_stream_on(
 	atomic_set(&module->timeout_flag, 1);
 	ret = sprd_start_timer(&module->cam_timer, CAMERA_TIMEOUT);
 
-	if (hw->ip_dcam[module->dcam_idx]->superzoom_support) {
-		init_completion(&module->channel[CAM_CH_CAP].superzoom_frm);
-		complete(&module->channel[CAM_CH_CAP].superzoom_frm);
-		pr_info("superzoom stream on do complete, dcam %d\n",
-			module->dcam_idx);
-	}
-
 	if (module->dump_thrd.thread_task) {
-		camera_queue_init(&module->dump_queue, 10, 0, put_k_frame);
+		camera_queue_init(&module->dump_queue, 10, put_k_frame);
 		init_completion(&module->dump_com);
 		mutex_lock(&g_dbg_dump.dump_lock);
 		i = module->dcam_idx;
@@ -6002,15 +6062,12 @@ static int img_ioctl_stream_off(
 
 	pr_info("cam %d stream off. state: %d\n",
 		module->idx, atomic_read(&module->state));
+	flush_workqueue(module->workqueue);
 	atomic_set(&module->state, CAM_STREAM_OFF);
 	module->cap_status = CAM_CAPTURE_STOP;
 	module->dcam_cap_status = DCAM_CAPTURE_STOP;
 
 	hw = module->grp->hw_info;
-	if (hw->ip_dcam[module->dcam_idx]->superzoom_support) {
-		init_completion(&module->channel[CAM_CH_CAP].superzoom_frm);
-		pr_info("superzoom stream off init complete.\n");
-	}
 	/* stop raw dump */
 	if (module->dump_thrd.thread_task) {
 		if (module->in_dump)
@@ -6072,13 +6129,6 @@ static int img_ioctl_stream_off(
 			isp_ops->put_path(module->isp_dev_handle,
 					isp_ctx_id[i],
 					ch->isp_path_id & ISP_PATHID_MASK);
-			if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-				&& ch->ch_id == CAM_CH_CAP) {
-				pr_info("put path superzoom\n");
-				isp_ops->put_path(module->isp_dev_handle,
-					ISP_CONTEXT_SUPERZOOM,
-					ch->isp_path_id & ISP_PATHID_MASK);
-			}
 		}
 		if (ch->slave_isp_path_id >= 0) {
 			isp_ops->put_path(module->isp_dev_handle,
@@ -6091,19 +6141,13 @@ static int img_ioctl_stream_off(
 		ch = &module->channel[i];
 		if (!ch->enable || (ch->ch_id == CAM_CH_RAW))
 			continue;
-		camera_queue_clear(&ch->zoom_coeff_queue);
+		camera_queue_clear(&ch->zoom_coeff_queue,
+			struct camera_frame, list);
 
 		if ((ch->ch_id == CAM_CH_PRE) || (ch->ch_id == CAM_CH_CAP)) {
 			if (isp_ctx_id[i] != -1)
 				isp_ops->put_context(module->isp_dev_handle,
 					isp_ctx_id[i]);
-
-			if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-				&& ch->ch_id == CAM_CH_CAP) {
-				pr_info("put context superzoom\n");
-				isp_ops->put_context(module->isp_dev_handle,
-					ISP_CONTEXT_SUPERZOOM);
-			}
 
 			if (ch->alloc_start) {
 				ret = wait_for_completion_interruptible(
@@ -6126,7 +6170,8 @@ static int img_ioctl_stream_off(
 					cur = prev;
 				}
 			}
-			camera_queue_clear(&ch->share_buf_queue);
+			camera_queue_clear(&ch->share_buf_queue,
+				struct camera_frame, list);
 
 			for (j = 0; j < ISP_NR3_BUF_NUM; j++) {
 				if (ch->nr3_bufs[j]) {
@@ -6155,11 +6200,10 @@ static int img_ioctl_stream_off(
 				}
 			}
 
-			if (hw->ip_dcam[module->dcam_idx]->superzoom_support
-				&& ch->ch_id == CAM_CH_CAP) {
-				if (ch->superzoom_buf) {
-					put_k_frame(ch->superzoom_buf);
-					ch->superzoom_buf = NULL;
+			if (hw->ip_dcam[module->dcam_idx]->superzoom_support) {
+				if (ch->postproc_buf) {
+					put_k_frame(ch->postproc_buf);
+					ch->postproc_buf = NULL;
 					pr_info("superzoom put frame\n");
 				}
 			}
@@ -6198,17 +6242,18 @@ static int img_ioctl_stream_off(
 			msleep(20);
 		}
 
-		camera_queue_clear(&module->frm_queue);
-		camera_queue_clear(&module->irq_queue);
-		camera_queue_clear(&module->statis_queue);
 		if (module->dual_frame) {
-			camera_enqueue(&module->zsl_fifo_queue, module->dual_frame);
+			camera_enqueue(&module->zsl_fifo_queue,
+				&module->dual_frame->list);
 			module->dual_frame = NULL;
 		}
-		camera_queue_clear(&module->zsl_fifo_queue);
-		camera_queue_clear(&module->remosaic_queue);
+		camera_queue_clear(&module->zsl_fifo_queue,
+			struct camera_frame, list);
+		camera_queue_clear(&module->remosaic_queue,
+			struct camera_frame, list);
 		if (module->dump_thrd.thread_task)
-			camera_queue_clear(&module->dump_queue);
+			camera_queue_clear(&module->dump_queue,
+				struct camera_frame, list);
 		/* default 0, hal set 1 when needed */
 		module->auto_3dnr = 0;
 	}
@@ -6254,6 +6299,7 @@ static int img_ioctl_start_capture(
 	ktime_t start_time = 0;
 	uint32_t isp_idx = 0;
 	uint32_t cap_skip_num = 0;
+	uint32_t gtm_param_idx = DCAM_GTM_PARAM_CAP;
 
 	ret = copy_from_user(&param, (void __user *)arg,
 			sizeof(struct sprd_img_capture_param));
@@ -6269,17 +6315,24 @@ static int img_ioctl_start_capture(
 	}
 	hw = module->grp->hw_info;
 	start_time = ktime_get_boottime();
+	flush_workqueue(module->workqueue);
+	module->capture_times = start_time;
 
 	module->capture_scene = param.cap_scene;
 	isp_idx = module->channel[CAM_CH_CAP].isp_path_id >> ISP_CTXID_OFFSET;
 	if (module->capture_scene == CAPTURE_HDR
 		|| module->capture_scene == CAPTURE_SW3DNR
-		|| module->capture_scene == CAPTURE_HW3DNR) {
+		|| module->capture_scene == CAPTURE_HW3DNR
+		|| module->capture_scene == CAPTURE_FLASH) {
 		if (hw->hw_ops.core_ops.cam_gtm_ltm_dis)
 			hw->hw_ops.core_ops.cam_gtm_ltm_dis(
 				module->dcam_idx, isp_idx);
+	} else if (param.type == DCAM_CAPTURE_START_FROM_NEXT_SOF) {
+		dcam_ops->ioctl(module->dcam_dev_handle,
+			DCAM_IOCTL_CFG_GTM_UPDATE, &gtm_param_idx);
 	}
 	atomic_set(&module->cap_skip_frames, -1);
+	isp_ops->clear_stream_ctrl(module->isp_dev_handle, isp_idx);
 
 	/* recognize the capture scene */
 	if (param.type == DCAM_CAPTURE_START_FROM_NEXT_SOF) {
@@ -6321,6 +6374,7 @@ static int img_ioctl_start_capture(
 		}
 		config_4in1_channel_size(module, module->lowlux_4in1);
 	} else if (param.type == DCAM_CAPTURE_START) {
+		module->capture_times = param.timestamp;
 		module->dcam_cap_status = DCAM_CAPTURE_START;
 		atomic_set(&module->capture_frames_dcam, CAP_NUM_COMMON);
 	} else {
@@ -6368,7 +6422,8 @@ static int img_ioctl_stop_capture(
 	isp_idx = module->channel[CAM_CH_CAP].isp_path_id >> ISP_CTXID_OFFSET;
 	if (module->capture_scene == CAPTURE_HDR
 		|| module->capture_scene == CAPTURE_SW3DNR
-		|| module->capture_scene == CAPTURE_HW3DNR) {
+		|| module->capture_scene == CAPTURE_HW3DNR
+		|| module->capture_scene == CAPTURE_FLASH) {
 		if (hw->hw_ops.core_ops.cam_gtm_ltm_eb)
 			hw->hw_ops.core_ops.cam_gtm_ltm_eb(
 				module->dcam_idx, isp_idx);
@@ -6464,8 +6519,7 @@ static int raw_proc_done(struct camera_module *module)
 	ch->dcam_path_id = -1;
 	ch->isp_path_id = -1;
 	ch->aux_dcam_path_id = -1;
-	camera_queue_clear(&module->frm_queue);
-	camera_queue_clear(&ch->share_buf_queue);
+	camera_queue_clear(&ch->share_buf_queue, struct camera_frame, list);
 	module->cam_uinfo.dcam_slice_mode = CAM_SLICE_NONE;
 	module->cam_uinfo.slice_num = 0;
 
@@ -6800,15 +6854,12 @@ static int raw_proc_post(
 	pr_info("raw proc, src %p, mid %p, dst %p\n",
 		src_frame, mid_frame, dst_frame);
 	camera_queue_init(&ch->share_buf_queue,
-			CAM_SHARED_BUF_NUM, 0, put_k_frame);
-	camera_queue_init(&module->frm_queue,
-		CAM_FRAME_Q_LEN, 0, camera_put_empty_frame);
+			CAM_SHARED_BUF_NUM, put_k_frame);
 	module->cap_status = CAM_CAPTURE_RAWPROC;
 	module->dcam_cap_status = DCAM_CAPTURE_START;
 	atomic_set(&module->state, CAM_RUNNING);
 
 	dcam_hwsim_extra(module->dcam_idx);
-	isp_hwsim_extra(ch->isp_path_id >> ISP_CTXID_OFFSET);
 
 	ret = dcam_ops->proc_frame(module->dcam_dev_handle, src_frame);
 	if (ret)
@@ -6921,7 +6972,7 @@ static int img_ioctl_4in1_set_raw_addr(struct camera_module *module,
 	struct sprd_img_parm param;
 	struct channel_context *ch;
 	struct camera_frame *pframe;
-	int i;
+	int i, j;
 
 	ret = copy_from_user(&param, (void __user *)arg,
 				sizeof(struct sprd_img_parm));
@@ -6966,6 +7017,10 @@ static int img_ioctl_4in1_set_raw_addr(struct camera_module *module,
 		if (param.is_reserved_buf) {
 			ch->reserved_buf_fd = pframe->buf.mfd[0];
 			pframe->is_reserved = 1;
+			ch->res_frame = pframe;
+			for (j = 0; j < 3; j++)
+				pframe->buf.size[j] = cal_sprd_raw_pitch(ch->ch_uinfo.src_size.w, module->cam_uinfo.sensor_if.if_spec.mipi.is_loose)
+					* ch->ch_uinfo.src_size.h;
 			ret = dcam_ops->cfg_path(module->dcam_dev_handle,
 					DCAM_PATH_CFG_OUTPUT_RESERVED_BUF,
 					ch->dcam_path_id, pframe);
@@ -7028,7 +7083,8 @@ static int img_ioctl_4in1_post_proc(struct camera_module *module,
 	/* get frame: 1:check id;2:check time;3:get first,4:get new */
 	i = camera_queue_cnt(&module->remosaic_queue);
 	while (i--) {
-		pframe = camera_dequeue(&module->remosaic_queue);
+		pframe = camera_dequeue(&module->remosaic_queue,
+			struct camera_frame, list);
 		/* check frame id */
 		if (pframe == NULL)
 			break;
@@ -7036,7 +7092,7 @@ static int img_ioctl_4in1_post_proc(struct camera_module *module,
 			break;
 		if (pframe->boot_sensor_time == sensor_time)
 			break;
-		camera_enqueue(&module->remosaic_queue, pframe);
+		camera_enqueue(&module->remosaic_queue, &pframe->list);
 		pframe = NULL;
 	}
 	if (pframe == NULL) {
@@ -7376,9 +7432,9 @@ int test_dcam(struct camera_module *module,
 				channel->dcam_path_id, user_frame);
 
 	camera_queue_init(&channel->share_buf_queue,
-			CAM_SHARED_BUF_NUM, 0, put_k_frame);
+			CAM_SHARED_BUF_NUM, put_k_frame);
 	camera_queue_init(&module->frm_queue,
-			CAM_FRAME_Q_LEN, 0, camera_put_empty_frame);
+			CAM_FRAME_Q_LEN, camera_put_empty_frame);
 
 	atomic_set(&module->state, CAM_RUNNING);
 
@@ -7387,7 +7443,8 @@ int test_dcam(struct camera_module *module,
 	pr_info("start wait for DCAM callback.\n");
 	ret = wait_for_completion_interruptible(&module->frm_com);
 	pr_info("wait done.\n");
-	user_frame = camera_dequeue(&module->frm_queue);
+	user_frame = camera_dequeue(&module->frm_queue,
+		struct camera_frame, list);
 
 	cambuf_put_ionbuf(&user_frame->buf);
 	put_empty_frame(user_frame);
@@ -7397,8 +7454,8 @@ int test_dcam(struct camera_module *module,
 	dcam_ops->put_path(module->dcam_dev_handle, channel->dcam_path_id);
 	dcam_ops->close(module->dcam_dev_handle);
 
-	camera_queue_clear(&module->frm_queue);
-	camera_queue_clear(&channel->share_buf_queue);
+	camera_queue_clear(&module->frm_queue, struct camera_frame, list);
+	camera_queue_clear(&channel->share_buf_queue, struct camera_frame, list);
 
 	return ret;
 
@@ -7649,9 +7706,9 @@ int test_isp(struct camera_module *module,
 	}
 
 	camera_queue_init(&channel->share_buf_queue,
-			CAM_SHARED_BUF_NUM, 0, put_k_frame);
+			CAM_SHARED_BUF_NUM, put_k_frame);
 	camera_queue_init(&module->frm_queue,
-			CAM_FRAME_Q_LEN, 0, camera_put_empty_frame);
+			CAM_FRAME_Q_LEN, camera_put_empty_frame);
 
 	atomic_set(&module->state, CAM_RUNNING);
 
@@ -7663,7 +7720,8 @@ int test_isp(struct camera_module *module,
 		ret = wait_for_completion_interruptible(&module->frm_com);
 		pr_info("wait done.\n");
 
-		pframe_out = camera_dequeue(&module->frm_queue);
+		pframe_out = camera_dequeue(&module->frm_queue,
+			struct camera_frame, list);
 		pr_info("get ch %d dst frame %p. mfd %d\n",
 			pframe_out->channel_id, pframe_out,
 			pframe_out->buf.mfd[0]);
@@ -7674,8 +7732,9 @@ int test_isp(struct camera_module *module,
 		put_empty_frame(pframe_out);
 	}
 
-	camera_queue_clear(&module->frm_queue);
-	pframe_in = camera_dequeue(&channel->share_buf_queue);
+	camera_queue_clear(&module->frm_queue, struct camera_frame, list);
+	pframe_in = camera_dequeue(&channel->share_buf_queue,
+		struct camera_frame, list);
 	if (pframe_in) {
 		cambuf_put_ionbuf(&pframe_in->buf);
 		put_empty_frame(pframe_in);
@@ -7964,7 +8023,8 @@ rewait:
 		}
 
 		pchannel = NULL;
-		pframe = camera_dequeue(&module->frm_queue);
+		pframe = camera_dequeue(&module->frm_queue,
+			struct camera_frame, list);
 
 		if (!pframe) {
 			/* any exception happens or user trigger exit. */
@@ -8049,7 +8109,8 @@ rewait:
 			/* 4in1 report frame for remosaic
 			 * save frame for 4in1_post IOCTL
 			 */
-			ret = camera_enqueue(&module->remosaic_queue, pframe);
+			ret = camera_enqueue(&module->remosaic_queue,
+				&pframe->list);
 			if (!ret)
 				break;
 			/* fail, give back */
@@ -8155,7 +8216,6 @@ static ssize_t sprd_img_write(struct file *file, const char __user *u_data,
 	return cnt;
 }
 
-
 static int sprd_img_open(struct inode *node, struct file *file)
 {
 	int ret = 0;
@@ -8248,10 +8308,14 @@ static int sprd_img_open(struct inode *node, struct file *file)
 
 		g_empty_frm_q = &grp->empty_frm_q;
 		camera_queue_init(g_empty_frm_q,
-				CAM_EMP_Q_LEN_MAX, 0,
+				CAM_EMP_Q_LEN_MAX,
 				free_empty_frame);
+		g_empty_state_q = &grp->empty_state_q;
+		camera_queue_init(g_empty_state_q,
+				CAM_EMP_Q_LEN_MAX,
+				free_empty_state);
 
-		pr_info("init %p\n", g_empty_frm_q);
+		pr_info("init frm_q%p state_q%p\n", g_empty_frm_q, g_empty_state_q);
 	}
 
 	module->idx = idx;
@@ -8309,8 +8373,8 @@ static int sprd_img_release(struct inode *node, struct file *file)
 	if (module->grp->camsec_cfg.camsec_mode  != SEC_UNABLE) {
 		bool ret = 0;
 
+		ret = camca_security_set(&module->grp->camsec_cfg, CAM_TRUSTY_EXIT);
 		module->grp->camsec_cfg.camsec_mode = SEC_UNABLE;
-		ret = camca_security_set(&module->grp->camsec_cfg);
 
 		pr_info("camca :camsec_mode%d, ret %d\n",
 				module->grp->camsec_cfg.camsec_mode, ret);
@@ -8377,8 +8441,10 @@ static int sprd_img_release(struct inode *node, struct file *file)
 
 		/* g_leak_debug_cnt should be 0 after clr, or else memory leak.
 		 */
-		ret = camera_queue_clear(g_empty_frm_q);
+		camera_queue_clear(g_empty_frm_q, struct camera_frame, list);
 		g_empty_frm_q = NULL;
+		camera_queue_clear(g_empty_state_q, struct isp_stream_ctrl, list);
+		g_empty_state_q = NULL;
 
 		ret = mdbg_check();
 
@@ -8509,8 +8575,10 @@ static const struct of_device_id sprd_cam_of_match[] = {
 	{ .compatible = "sprd,sharkl3-cam", .data = &sharkl3_hw_info},
 	#elif defined (PROJ_SHARKL5PRO)
 	{ .compatible = "sprd,sharkl5pro-cam", .data = &sharkl5pro_hw_info},
-	#endif
+	#elif defined (PROJ_ROC1)
+	{ .compatible = "sprd,roc1-cam", .data = &roc1_hw_info},
 	{ },
+	#endif
 };
 
 static struct platform_driver sprd_img_driver = {

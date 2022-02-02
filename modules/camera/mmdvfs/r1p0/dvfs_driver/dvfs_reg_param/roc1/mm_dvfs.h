@@ -11,7 +11,7 @@
  ********************************************************************
  */
 
-#ifndef __MM_DVFS_REG_H____
+#ifndef __MM_DVFS_REG_H___
 #define __MM_DVFS_REG_H___
 
 #include <linux/of_address.h>

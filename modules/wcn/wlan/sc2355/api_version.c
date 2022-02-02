@@ -287,9 +287,18 @@ struct api_version_t g_api_array[] = {
 		.cmd_id = WIFI_CMD_VOWIFI_DATA_PROTECT,
 		.drv_version = 1,
 	},
+	[82]{	/*ID:82*/
+		.cmd_id = WIFI_CMD_MIRACAST,
+		.drv_version = 1,
+	},
 	[84]{
 		/*ID:84*/
 		.cmd_id = WIFI_CMD_PACKET_OFFLOAD,
+		.drv_version = 1,
+	},
+	[87]{
+		/*ID:87 set misc mode*/
+		.cmd_id = WIFI_CMD_SET_SNIFFER,
 		.drv_version = 1,
 	},
 	[128]{	/*ID:0x80*/

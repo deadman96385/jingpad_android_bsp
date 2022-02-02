@@ -158,7 +158,13 @@ sprdwl_dequeue_qos_buf(struct sprdwl_msg_buf *msg_buf, int ac_index)
 	else
 		lock = &msg_buf->xmit_msg_list->send_lock;
 	spin_lock_bh(lock);
+	if (IS_ERR_OR_NULL(msg_buf->skb)) {
+		spin_unlock_bh(lock);
+		wl_err("%s:%d skb is error\n", __func__, __LINE__);
+		return;
+	}
 	dev_kfree_skb(msg_buf->skb);
+	msg_buf->skb = NULL;
 	list_del(&msg_buf->list);
 	sprdwl_free_msg_buf(msg_buf, msg_buf->msglist);
 	spin_unlock_bh(lock);
@@ -182,7 +188,13 @@ void sprdwl_flush_tx_qoslist(struct sprdwl_tx_msg *tx_msg, int mode, int ac_inde
 
 		list_for_each_entry_safe(pos_buf, temp_buf,
 					 data_list, list) {
+			if (IS_ERR_OR_NULL(pos_buf->skb)) {
+				spin_unlock_bh(plock);
+				wl_err("%s:%d skb is error\n", __func__, __LINE__);
+				return;
+			}
 			dev_kfree_skb(pos_buf->skb);
+			pos_buf->skb = NULL;
 			list_del(&pos_buf->list);
 			sprdwl_free_msg_buf(pos_buf, pos_buf->msglist);
 		}
@@ -1254,6 +1266,7 @@ int sprdwl_tx_msg_func(void *pdev, struct sprdwl_msg_buf *msg)
 		}
 		dscr->buffer_info.msdu_tid = tid;
 		peer_entry = &intf->peer_entry[dscr->sta_lut_index];
+		prepare_addba(intf, dscr->sta_lut_index, peer_entry, tid);
 /*TODO. temp for MARLIN2 test*/
 #if 0
 		qos_index = qos_match_q(&tx_msg->tx_list_data,
@@ -1280,8 +1293,6 @@ int sprdwl_tx_msg_func(void *pdev, struct sprdwl_msg_buf *msg)
 
 	if (msg->msg_type != SPRDWL_TYPE_DATA)
 		sprdwl_queue_msg_buf(msg, msg->msglist);
-
-	prepare_addba(intf, dscr->sta_lut_index, peer_entry, tid);
 
 	if (msg->msg_type == SPRDWL_TYPE_CMD)
 		queue_work(tx_msg->tx_queue, &tx_msg->tx_work);
@@ -1684,6 +1695,27 @@ bool is_vowifi_pkt(struct sk_buff *skb, bool *b_cmd_path)
 	unsigned char iphdrlen = 0;
 	struct iphdr *iphdr;
 	struct udphdr *udphdr;
+	u32 mark;
+
+	mark = skb->mark & DUAL_VOWIFI_MASK_MARK;
+	switch (mark) {
+		case DUAL_VOWIFI_NOT_SUPPORT:
+		break;
+		case DUAL_VOWIFI_SIP_MARK:
+		case DUAL_VOWIFI_IKE_MARK:
+			ret = true;
+			(*b_cmd_path) = true;
+		return ret;
+		case DUAL_VOWIFI_VOICE_MARK:
+		case DUAL_VOWIFI_VIDEO_MARK:
+			ret = true;
+			(*b_cmd_path) = false;
+		return ret;
+
+		default:
+			wl_info("Dual vowifi: unexpect mark bits 0x%x\n", skb->mark);
+		break;
+	}
 
 	if (ethhdr->h_proto != htons(ETH_P_IP))
 		return false;

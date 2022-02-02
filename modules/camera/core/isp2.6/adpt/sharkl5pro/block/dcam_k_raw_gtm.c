@@ -79,30 +79,34 @@ int dcam_k_raw_gtm_slice(uint32_t idx, struct dcam_dev_gtm_slice_info *gtm_slice
 	return ret;
 }
 
-int dcam_k_raw_gtm_block(struct dcam_dev_param *param)
+int dcam_k_raw_gtm_block(uint32_t gtm_param_idx,
+	struct dcam_dev_param *param)
 {
 	int ret = 0;
 	unsigned int i = 0;
-	uint32_t idx = param->idx;
 	unsigned int val = 0;
+	uint32_t idx = 0;
 	struct dcam_dev_raw_gtm_block_info *p;
 	struct dcam_dev_gtm_slice_info *gtm_slice;
 	struct dcam_pipe_dev *dev = NULL;
+	struct dcam_dev_gtm_param *gtm = NULL;
 
-	if (param == NULL)
+	if (param == NULL || gtm_param_idx >= DCAM_GTM_PARAM_MAX)
 		return -EPERM;
 
+	gtm = &param->gtm[gtm_param_idx];
+	idx = param->idx;
 	/* update ? */
-	if (!(param->gtm.update & _UPDATE_INFO))
+	if (!(gtm->update & _UPDATE_INFO) || (!gtm->update_en))
 		return 0;
 
 	dev = (struct dcam_pipe_dev *)param->dev;
-	param->gtm.update &= (~(_UPDATE_INFO));
+	gtm->update &= (~(_UPDATE_INFO));
 
-	p = &(param->gtm.gtm_info);
+	p = &(gtm->gtm_info);
 	dcam_k_raw_gtm_set_default(p);
 
-	if (g_dcam_bypass[param->idx] & (1 << _E_GTM))
+	if (g_dcam_bypass[idx] & (1 << _E_GTM))
 		p->gtm_mod_en = 0;
 	gtm_slice = &(p->slice);
 	DCAM_REG_MWR(idx, DCAM_GTM_GLB_CTRL, BIT_0, (p->gtm_mod_en & 0x1));
@@ -185,6 +189,7 @@ int dcam_k_raw_gtm_block(struct dcam_dev_param *param)
 int dcam_k_cfg_raw_gtm(struct isp_io_param *param, struct dcam_dev_param *p)
 {
 	int ret = 0;
+	struct dcam_dev_gtm_param *gtm = NULL;
 
 	if (NULL == param->property_param || NULL == p) {
 		pr_err("property_param is null error.\n");
@@ -193,30 +198,35 @@ int dcam_k_cfg_raw_gtm(struct isp_io_param *param, struct dcam_dev_param *p)
 
 	switch (param->property) {
 	case DCAM_PRO_RAW_GTM_BLOCK:
+		if (param->scene_id == PM_SCENE_CAP)
+			gtm = &p->gtm[DCAM_GTM_PARAM_CAP];
+		else
+			gtm = &p->gtm[DCAM_GTM_PARAM_PRE];
 		/* online mode not need mutex, response faster
 		 * Offline need mutex to protect param
 		 */
 		if (DCAM_ONLINE_MODE) {
-			ret = copy_from_user((void *)&(p->gtm.gtm_info),
+			ret = copy_from_user((void *)&(gtm->gtm_info),
 				param->property_param,
-				sizeof(p->gtm.gtm_info));
+				sizeof(gtm->gtm_info));
 			if (ret) {
 				pr_err("fail to copy, ret=0x%x\n", (unsigned int)ret);
 				return -EPERM;
 			}
-			p->gtm.update |= _UPDATE_INFO;
-			ret = dcam_k_raw_gtm_block(p);
+			gtm->update |= _UPDATE_INFO;
+			if (param->scene_id != PM_SCENE_CAP)
+				dcam_k_raw_gtm_block(DCAM_GTM_PARAM_PRE, p);
 		} else {
 			mutex_lock(&p->param_lock);
-			ret = copy_from_user((void *)&(p->gtm.gtm_info),
+			ret = copy_from_user((void *)&(gtm->gtm_info),
 				param->property_param,
-				sizeof(p->gtm.gtm_info));
+				sizeof(gtm->gtm_info));
 			if (ret) {
 				mutex_unlock(&p->param_lock);
 				pr_err("fail to copy, ret=0x%x\n", (unsigned int)ret);
 				return -EPERM;
 			}
-			p->gtm.update |= _UPDATE_INFO;
+			gtm->update |= _UPDATE_INFO;
 			mutex_unlock(&p->param_lock);
 		}
 		break;

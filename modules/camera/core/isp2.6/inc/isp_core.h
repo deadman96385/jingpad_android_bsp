@@ -27,19 +27,18 @@
 #include "isp_ltm.h"
 
 #define ISP_LINE_BUFFER_W		ISP_MAX_LINE_WIDTH
+#define ISP_IN_Q_LEN            4
+#define ISP_PROC_Q_LEN          2
+#define ISP_RESULT_Q_LEN        2
+#define ISP_SLW_IN_Q_LEN        12
+#define ISP_SLW_PROC_Q_LEN      12
+#define ISP_SLW_RESULT_Q_LEN    12
+#define ISP_OUT_BUF_Q_LEN       32
+#define ISP_RESERVE_BUF_Q_LEN   12
+#define ISP_STREAM_STATE_Q_LEN  12
 
-
-#define ISP_IN_Q_LEN			4
-#define ISP_PROC_Q_LEN			2
-#define ISP_RESULT_Q_LEN		2
-#define ISP_SLW_IN_Q_LEN			12
-#define ISP_SLW_PROC_Q_LEN		12
-#define ISP_SLW_RESULT_Q_LEN		12
-#define ISP_OUT_BUF_Q_LEN			32
-#define ISP_RESERVE_BUF_Q_LEN		12
-
-#define ODATA_YUV420			1
-#define ODATA_YUV422			0
+#define ODATA_YUV420            1
+#define ODATA_YUV422            0
 
 #define ISP_SC_COEFF_BUF_SIZE		(24 << 10)
 #define ISP_SC_COEFF_COEF_SIZE		(1 << 10)
@@ -62,9 +61,20 @@
 #define AFBC_HEADER_SIZE			16
 #define AFBC_PAYLOAD_SIZE			384
 
+#define ISP_IFBC_Y_PAD_WIDTH			64
+#define ISP_IFBC_Y_PAD_HEIGHT			16
+#define ISP_IFBC_PAD_W_YUV420			32
+#define ISP_IFBC_PAD_H_YUV420			8
+#define ISP_IFBC_BASE_ALIGN        256
+
 #define ISP_FBD_TILE_WIDTH        64
 #define ISP_FBD_TILE_HEIGHT       4
 #define ISP_FBD_BASE_ALIGN        256
+
+#define ISP_ALIGN_W(_a)	((_a) & ~(ISP_PIXEL_ALIGN_WIDTH - 1))
+#define ISP_ALIGN_H(_a)	((_a) & ~(ISP_PIXEL_ALIGN_HEIGHT - 1))
+#define ISP_DIV_ALIGN_W(_a, _b)	(((_a) / (_b)) & ~(ISP_PIXEL_ALIGN_WIDTH - 1))
+#define ISP_DIV_ALIGN_H(_a, _b)	(((_a) / (_b)) & ~(ISP_PIXEL_ALIGN_HEIGHT - 1))
 
 enum isp_work_mode {
 	ISP_CFG_MODE,
@@ -81,7 +91,7 @@ enum isp_fetch_format {
 	ISP_FETCH_YUV422_2FRAME,
 	ISP_FETCH_YVU422_2FRAME,
 	ISP_FETCH_RAW10,
-	ISP_FETCH_CSI2_RAW10, /* MIPI RAW10*/
+	ISP_FETCH_CSI2_RAW10,
 	ISP_FETCH_FULL_RGB10,
 	ISP_FETCH_YUV420_2FRAME,
 	ISP_FETCH_YVU420_2FRAME,
@@ -106,21 +116,30 @@ enum isp_raw_format{
 	ISP_RAW_FORMAT_MAX
 };
 
-enum isp_path_wk_status {
-	PATH_STATUS_IDLE,
-	PATH_STATUS_READY,
-	PATH_STATUS_RUNNING,
+enum isp_postproc_type {
+	POSTPROC_FRAME_DONE,
+	POSTPORC_HIST_DONE,
+	POSTPROC_MAX,
 };
 
 struct isp_pipe_dev;
 struct isp_pipe_context;
 
 typedef int (*func_isp_cfg_param)(
-	struct isp_io_param *param, uint32_t idx);
+	struct isp_io_param *param,
+	struct isp_k_block *isp_k_param, uint32_t idx);
+typedef int(*isp_irq_postproc)(void *handle,uint32_t idx,
+	enum isp_postproc_type type);
 
 struct isp_cfg_entry {
 	uint32_t sub_block;
 	func_isp_cfg_param cfg_func;
+};
+
+struct stream_ctrl_info {
+	uint32_t src_fmt;
+	struct img_size src;
+	struct img_trim src_crop;
 };
 
 struct isp_fetch_info {
@@ -237,8 +256,7 @@ struct isp_thumbscaler_info {
 	struct img_size uv_factor_in;
 	struct img_size uv_factor_out;
 
-	struct img_size src0; /* input image/slice size */
-
+	struct img_size src0;
 	struct img_trim y_trim;
 	struct img_size y_src_after_deci;
 	struct img_size y_dst_after_scaler;
@@ -288,21 +306,18 @@ struct isp_afbc_store_info {
 	struct store_border border;
 };
 
-struct isp_fbc_store_info {
+struct isp_ifbc_store_info {
 	/* ISP_FBC_STORE_PARAM */
 	uint32_t endian:2;
 	uint32_t color_format:4;
 	uint32_t mirror_en:1;
 	uint32_t slice_mode_en:1;
-	uint32_t bypass_flag:1;
+	uint32_t bypass:1;
 	/* ISP_FBC_STORE_SLICE_SIZE */
 	uint32_t size_in_ver;
 	uint32_t size_in_hor;
 	/* ISP_FBC_STORE_BORDER */
-	uint32_t right_border:8;
-	uint32_t left_border:8;
-	uint32_t down_border:8;
-	uint32_t up_border:8;
+	struct store_border border;
 	/* ISP_FBC_STORE_SLICE_Y_ADDR */
 	uint32_t y_tile_addr_init_x256;
 	/* ISP_FBC_STORE_SLICE_C_ADDR */
@@ -330,7 +345,8 @@ struct slice_cfg_input {
 	struct isp_fetch_info *frame_fetch;
 	struct isp_fbd_raw_info *frame_fbd_raw;
 	struct isp_store_info *frame_store[ISP_SPATH_NUM];
-	struct isp_afbc_store_info *frame_afbc_store[AFBC_PATH_NUM];
+	struct isp_afbc_store_info *frame_afbc_store[FBC_PATH_NUM];
+	struct isp_ifbc_store_info *frame_ifbc_store[FBC_PATH_NUM];
 	struct isp_scaler_info *frame_scaler[ISP_SPATH_NUM];
 	struct img_deci_info *frame_deci[ISP_SPATH_NUM];
 	struct img_trim *frame_trim0[ISP_SPATH_NUM];
@@ -353,17 +369,20 @@ struct isp_path_desc {
 	uint32_t skip_pipeline;
 	uint32_t uv_sync_v;
 	uint32_t frm_deci;
-	uint32_t out_fmt; /* forcc */
+	uint32_t out_fmt;
 	uint32_t bind_type;
 	uint32_t slave_path_id;
-	uint32_t store_fbc;/* 1 for fbc store; 0 for normal store */
+	uint32_t store_ifbc;/* 1 for ifbc store; 0 for normal store */
+	uint32_t store_afbc;/* 1 for afbc store; 0 for normal store */
 	uint32_t uframe_sync;
+	int32_t reserved_buf_fd;
+	size_t reserve_buf_size[3];
 	struct isp_pipe_context *attach_ctx;
 	struct cam_hw_info *hw;
 
 	struct isp_regular_info regular_info;
 	struct isp_store_info store;
-	struct isp_fbc_store_info fbc_store;
+	struct isp_ifbc_store_info ifbc_store;
 	struct isp_afbc_store_info afbc_store;
 	union {
 		struct isp_scaler_info scaler;
@@ -371,25 +390,23 @@ struct isp_path_desc {
 	};
 	struct img_deci_info deci;
 	struct img_trim in_trim;
+	struct img_trim stream_in_trim;
 	struct img_trim out_trim;
 	struct img_size src;
 	struct img_size dst;
+	struct img_size stream_dst;
 	struct img_endian data_endian;
 
 	int q_init;
 	struct camera_queue reserved_buf_queue;
-	/*struct camera_frame *reserved_out_buf;*/
 	struct camera_queue out_buf_queue;
 	struct camera_queue result_queue;
 };
-
 
 struct isp_pipe_context {
 	atomic_t user_cnt;
 	uint32_t started;
 	uint32_t ctx_id;
-	uint32_t major_ctx_id;
-	uint32_t sub_ctx_id;
 	uint32_t in_fmt; /* forcc */
 	uint32_t is_loose;
 	enum camera_id attach_cam_id;
@@ -410,7 +427,6 @@ struct isp_pipe_context {
 	uint32_t fetch_path_sel;/* 1: fetch_fbd; 0: fetch */
 	uint32_t fetch_fbd_4bit_bypass;/* 0: 14bit; 1: 10bit */
 	uint32_t nr3_fbc_fbd;/* 1: 3dnr compressed; 0: 3dnr plain data */
-	int superzoom_flag;
 	/* lock ctx/path param(size) updated from zoom */
 	struct mutex param_mutex;
 
@@ -421,6 +437,7 @@ struct isp_pipe_context {
 	struct img_scaler_info original;
 	struct img_size input_size;
 	struct img_trim input_trim;
+	struct stream_ctrl_info src_info;
 	struct isp_fetch_info fetch;
 	struct isp_fbd_raw_info fbd_raw;
 	struct isp_path_desc isp_path[ISP_SPATH_NUM];
@@ -431,12 +448,12 @@ struct isp_pipe_context {
 	struct camera_queue in_queue;
 	struct camera_queue proc_queue;
 
-	struct camera_frame *superzoom_buf;
+	struct camera_queue stream_ctrl_in_q;
+	struct camera_queue stream_ctrl_proc_q;
+
+	struct camera_frame *postproc_buf;
 	struct camera_frame *nr3_buf[ISP_NR3_BUF_NUM];
 	struct camera_frame *ltm_buf[LTM_MAX][ISP_LTM_BUF_NUM];
-	struct camera_queue ltm_avail_queue[LTM_MAX];
-	struct camera_queue ltm_wr_queue[LTM_MAX];
-
 	struct camera_buf statis_buf_array[STATIS_BUF_NUM_MAX];
 	struct camera_queue hist2_result_queue;
 
@@ -452,6 +469,7 @@ struct isp_pipe_context {
 	struct isp_3dnr_ctx_desc nr3_ctx;
 	struct isp_ltm_ctx_desc ltm_ctx;
 
+	isp_irq_postproc postproc_func;
 	isp_dev_callback isp_cb_func;
 	void *cb_priv_data;
 	struct cam_hw_info *hw;
@@ -470,15 +488,15 @@ struct isp_pipe_dev {
 	uint32_t irq_no[2];
 	atomic_t user_cnt;
 	atomic_t enable;
-	struct mutex path_mutex; /* lock ctx/path resource management */
+	struct mutex path_mutex;
 	spinlock_t ctx_lock;
 	enum isp_work_mode wmode;
+	enum sprd_cam_sec_mode sec_mode;
 	void *cfg_handle;
 	struct isp_ltm_share_ctx_desc *ltm_handle;
 	struct isp_pipe_context ctx[ISP_CONTEXT_SW_NUM];
 	struct isp_pipe_hw_context hw_ctx[ISP_CONTEXT_HW_NUM];
 	struct cam_hw_info *isp_hw;
-	enum sprd_cam_sec_mode sec_mode;
 };
 
 struct isp_statis_buf_size_info {

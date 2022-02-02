@@ -56,16 +56,16 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
  The list functions work with any structure that provides the fields psNext and
  ppsThis. In order to make a function available for a given type, it is required
- to use the funcion template macro that creates the actual code.
+ to use the function template macro that creates the actual code.
 
  There are 5 main types of functions:
- - INSERT	   : given a pointer to the head pointer of the list and a pointer
+ - INSERT      : given a pointer to the head pointer of the list and a pointer
                  to the node, inserts it as the new head.
  - INSERT TAIL : given a pointer to the head pointer of the list and a pointer
                  to the node, inserts the node at the tail of the list.
- - REMOVE	   : given a pointer to a node, removes it from its list.
- - FOR EACH	   : apply a function over all the elements of a list.
- - ANY		   : apply a function over the elements of a list, until one of them
+ - REMOVE      : given a pointer to a node, removes it from its list.
+ - FOR EACH    : apply a function over all the elements of a list.
+ - ANY         : apply a function over the elements of a list, until one of them
                  return a non null value, and then returns it.
 
  The two last functions can have a variable argument form, with allows to pass
@@ -90,7 +90,7 @@ void List_##TYPE##_ForEach(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode))
 #define IMPLEMENT_LIST_FOR_EACH(TYPE) \
 void List_##TYPE##_ForEach(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode))\
 {\
-	while(psHead)\
+	while (psHead)\
 	{\
 		pfnCallBack(psHead);\
 		psHead = psHead->psNext;\
@@ -100,8 +100,8 @@ void List_##TYPE##_ForEach(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode))\
 /*************************************************************************/ /*!
 @Function       List_##TYPE##_ForEachSafe
 @Description    Apply a callback function to all the elements of a list. Do it
-                in a safe way that handles the fact that a node might remove itself
-                from the list during the iteration.
+                in a safe way that handles the fact that a node might remove
+                itself from the list during the iteration.
 @Input          psHead        The head of the list to be processed.
 @Input          pfnCallBack   The function to be applied to each element of the list.
 */ /**************************************************************************/
@@ -113,7 +113,7 @@ void List_##TYPE##_ForEachSafe(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode))\
 {\
 	TYPE *psNext;\
 \
-	while(psHead)\
+	while (psHead)\
 	{\
 		psNext = psHead->psNext; \
 		pfnCallBack(psHead);\
@@ -129,7 +129,7 @@ void List_##TYPE##_ForEach_va(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode, va_
 void List_##TYPE##_ForEach_va(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode, va_list va), ...) \
 {\
 	va_list ap;\
-	while(psHead)\
+	while (psHead)\
 	{\
 		va_start(ap, pfnCallBack);\
 		pfnCallBack(psHead, ap);\
@@ -141,8 +141,8 @@ void List_##TYPE##_ForEach_va(TYPE *psHead, void(*pfnCallBack)(TYPE* psNode, va_
 
 /*************************************************************************/ /*!
 @Function       List_##TYPE##_Any
-@Description    Applies a callback function to the elements of a list until the function
-                returns a non null value, then returns it.
+@Description    Applies a callback function to the elements of a list until
+                the function returns a non null value, then returns it.
 @Input          psHead        The head of the list to be processed.
 @Input          pfnCallBack   The function to be applied to each element of the list.
 @Return         The first non null value returned by the callback function.
@@ -157,7 +157,7 @@ void* List_##TYPE##_Any(TYPE *psHead, void* (*pfnCallBack)(TYPE* psNode))\
 	TYPE *psNextNode;\
 	pResult = NULL;\
 	psNextNode = psHead;\
-	while(psHead && !pResult)\
+	while (psHead && !pResult)\
 	{\
 		psNextNode = psNextNode->psNext;\
 		pResult = pfnCallBack(psHead);\
@@ -178,7 +178,7 @@ void* List_##TYPE##_Any_va(TYPE *psHead, void*(*pfnCallBack)(TYPE* psNode, va_li
 	va_list ap;\
 	TYPE *psNextNode;\
 	void* pResult = NULL;\
-	while(psHead && !pResult)\
+	while (psHead && !pResult)\
 	{\
 		psNextNode = psHead->psNext;\
 		va_start(ap, pfnCallBack);\
@@ -201,7 +201,7 @@ RTYPE List_##TYPE##_##RTYPE##_Any(TYPE *psHead, RTYPE (*pfnCallBack)(TYPE* psNod
 	TYPE *psNextNode;\
 	result = CONTINUE;\
 	psNextNode = psHead;\
-	while(psHead && result == CONTINUE)\
+	while (psHead && result == CONTINUE)\
 	{\
 		psNextNode = psNextNode->psNext;\
 		result = pfnCallBack(psHead);\
@@ -220,7 +220,7 @@ RTYPE List_##TYPE##_##RTYPE##_Any_va(TYPE *psHead, RTYPE(*pfnCallBack)(TYPE* psN
 	va_list ap;\
 	TYPE *psNextNode;\
 	RTYPE result = CONTINUE;\
-	while(psHead && result == CONTINUE)\
+	while (psHead && result == CONTINUE)\
 	{\
 		psNextNode = psHead->psNext;\
 		va_start(ap, pfnCallBack);\
@@ -244,7 +244,7 @@ void List_##TYPE##_Remove(TYPE *psNode)
 void List_##TYPE##_Remove(TYPE *psNode)\
 {\
 	(*psNode->ppsThis)=psNode->psNext;\
-	if(psNode->psNext)\
+	if (psNode->psNext)\
 	{\
 		psNode->psNext->ppsThis = psNode->ppsThis;\
 	}\
@@ -252,7 +252,7 @@ void List_##TYPE##_Remove(TYPE *psNode)\
 
 /*************************************************************************/ /*!
 @Function       List_##TYPE##_Insert
-@Description    Inserts a given node at the beginnning of the list.
+@Description    Inserts a given node at the beginning of the list.
 @Input          psHead   The pointer to the pointer to the head node.
 @Input          psNode   The pointer to the node to be inserted.
 */ /**************************************************************************/
@@ -265,7 +265,7 @@ void List_##TYPE##_Insert(TYPE **ppsHead, TYPE *psNewNode)\
 	psNewNode->ppsThis = ppsHead;\
 	psNewNode->psNext = *ppsHead;\
 	*ppsHead = psNewNode;\
-	if(psNewNode->psNext)\
+	if (psNewNode->psNext)\
 	{\
 		psNewNode->psNext->ppsThis = &(psNewNode->psNext);\
 	}\
@@ -306,23 +306,23 @@ void List_##TYPE##_Reverse(TYPE **ppsHead)
 #define IMPLEMENT_LIST_REVERSE(TYPE) \
 void List_##TYPE##_Reverse(TYPE **ppsHead)\
 {\
-    TYPE *psTmpNode1; \
-    TYPE *psTmpNode2; \
-    TYPE *psCurNode; \
+	TYPE *psTmpNode1; \
+	TYPE *psTmpNode2; \
+	TYPE *psCurNode; \
 	psTmpNode1 = NULL; \
 	psCurNode = *ppsHead; \
-	while(psCurNode) { \
-    	psTmpNode2 = psCurNode->psNext; \
-        psCurNode->psNext = psTmpNode1; \
+	while (psCurNode) { \
+		psTmpNode2 = psCurNode->psNext; \
+		psCurNode->psNext = psTmpNode1; \
 		psTmpNode1 = psCurNode; \
 		psCurNode = psTmpNode2; \
-		if(psCurNode) \
+		if (psCurNode) \
 		{ \
 			psTmpNode1->ppsThis = &(psCurNode->psNext); \
 		} \
 		else \
 		{ \
-			psTmpNode1->ppsThis = ppsHead;		\
+			psTmpNode1->ppsThis = ppsHead; \
 		} \
 	} \
 	*ppsHead = psTmpNode1; \

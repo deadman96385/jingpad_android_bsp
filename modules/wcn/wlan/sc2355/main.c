@@ -70,8 +70,28 @@ void sprdwl_netif_rx(struct sk_buff *skb, struct net_device *ndev)
 	intf = (struct sprdwl_intf *)(vif->priv->hw_priv);
 	rx_if = (struct sprdwl_rx_if *)intf->sprdwl_rx;
 
-	print_hex_dump_debug("RX packet: ", DUMP_PREFIX_OFFSET,
-			     16, 1, skb->data, skb->len, 0);
+	if (atomic_read(&vif->priv->monitor_mode)) {
+		wl_info("sniffer data cnt : %d \n", vif->priv->monitor_data_cnt++);
+		if (skb->len > 64)
+			print_hex_dump(KERN_WARNING, "RX data packet: ", DUMP_PREFIX_OFFSET,
+				       16, 1, skb->data, 64, 0);
+		else
+			print_hex_dump(KERN_WARNING, "RX packet: ", DUMP_PREFIX_OFFSET,
+				       16, 1, skb->data, skb->len, 0);
+		//sub_type &= 0xfc;
+		skb->dev = ndev;
+		/*report data for monitor mode*/
+		skb_set_mac_header(skb, 0);
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+		skb->pkt_type = PACKET_OTHERHOST;
+		skb->protocol = htons(ETH_P_802_2);
+		netif_rx_ni(skb);
+
+		ndev->stats.rx_packets++;
+		ndev->stats.rx_bytes += skb->len;
+		return;
+	}
+
 	skb->dev = ndev;
 	skb->protocol = eth_type_trans(skb, ndev);
 	if (skb->protocol == cpu_to_be16(ETH_P_PAE) &&
@@ -163,6 +183,13 @@ static int sprdwl_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct sprdwl_msg_buf *msg = NULL;
 	u8 *data_temp;
 	struct sprdwl_eap_hdr *eap_temp;
+	struct sprdwl_intf *intf = (struct sprdwl_intf *)vif->priv->hw_priv;
+
+	if (intf->cp_asserted == 1 || unlikely(intf->exit)) {
+		dev_kfree_skb(skb);
+		sprdwl_stop_net(vif);
+		return NETDEV_TX_OK;
+	}
 
 	/* drop nonlinearize skb */
 	if (skb_linearize(skb)) {
@@ -172,6 +199,11 @@ static int sprdwl_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		goto out;
 	}
 
+	if (intf->suspend_mode != SPRDWL_PS_RESUMED) {
+		wl_err("not resumed, drop skb\n");
+		dev_kfree_skb(skb);
+		return NETDEV_TX_OK;
+	}
 	data_temp = (u8 *)(skb->data) + sizeof(struct ethhdr);
 	eap_temp = (struct sprdwl_eap_hdr *)data_temp;
 	if (vif->mode == SPRDWL_MODE_P2P_GO &&
@@ -299,7 +331,6 @@ static int sprdwl_close(struct net_device *ndev)
 	struct sprdwl_vif *vif = netdev_priv(ndev);
 
 	netdev_info(ndev, "%s\n", __func__);
-
 	sprdwl_scan_done(vif, true);
 	sprdwl_sched_scan_done(vif, true);
 	netif_stop_queue(ndev);
@@ -337,6 +368,10 @@ static void sprdwl_tx_timeout(struct net_device *ndev)
 #define CMD_11V_SET_CFG			"11VCFG_SET"
 #define CMD_11V_WNM_SLEEP		"WNM_SLEEP"
 #define CMD_SET_MAX_CLIENTS		"MAX_STA"
+#define CMD_SNIFFER_MODE                "SNIFFER_MODE"
+#define CMD_SNIFFER_LISTEN_CHANNEL     "LISTEN_CHANNEL"
+#define CMD_SNIFFER_FILTER		"FILTER"
+#define CMD_SNIFFER_BAND		"BAND"
 
 static int sprdwl_priv_cmd(struct net_device *ndev, struct ifreq *ifr)
 {
@@ -540,6 +575,46 @@ out:
 	return ret;
 }
 
+int sprdwl_set_miracast(struct net_device *ndev, struct ifreq *ifr)
+{
+	struct sprdwl_vif *vif = netdev_priv(ndev);
+	struct sprdwl_priv *priv = vif->priv;
+	struct android_wifi_priv_cmd priv_cmd;
+	char *command = NULL;
+	unsigned short subtype;
+	int ret = 0, value;
+
+	if (!ifr->ifr_data)
+		return -EINVAL;
+	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(priv_cmd)))
+		return -EINVAL;
+
+	/*add length check to avoid invalid NULL ptr*/
+	if ((!priv_cmd.total_len) || (SPRDWL_MAX_CMD_TXLEN < priv_cmd.total_len)) {
+		netdev_err(ndev, "%s: priv cmd total len is invalid\n", __func__);
+		return -EINVAL;
+	}
+
+	command = kmalloc(priv_cmd.total_len, GFP_KERNEL);
+	if (!command)
+		return -EINVAL;
+	if (copy_from_user(command, priv_cmd.buf, priv_cmd.total_len)) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	subtype = *(unsigned short *)command;
+	if (subtype == 5) {
+		value = *((int *)(command + 2 * sizeof(unsigned short)));
+		netdev_info(ndev, "%s: set miracast value : %d\n",
+				__func__, value);
+		ret = sprdwl_enable_miracast(priv, vif->mode, value);
+	}
+out:
+	kfree(command);
+	return ret;
+}
+
 static int sprdwl_set_power_save(struct net_device *ndev, struct ifreq *ifr)
 {
 	struct sprdwl_vif *vif = netdev_priv(ndev);
@@ -552,6 +627,12 @@ static int sprdwl_set_power_save(struct net_device *ndev, struct ifreq *ifr)
 		return -EINVAL;
 	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(priv_cmd)))
 		return -EFAULT;
+
+	/*add length check to avoid invalid NULL ptr*/
+	if ( (!priv_cmd.total_len) || (MAX_PRIV_CMD_LEN < priv_cmd.total_len)) {
+		netdev_info(ndev, "%s: priv cmd total len is invalid\n", __func__);
+		return -EINVAL;
+	}
 
 	command = kmalloc(priv_cmd.total_len, GFP_KERNEL);
 	if (!command)
@@ -590,6 +671,133 @@ out:
 	return ret;
 }
 
+static int sprdwl_handle_sniffer_cmd(struct net_device *ndev, struct ifreq *ifr)
+{
+	struct sprdwl_vif *vif = netdev_priv(ndev);
+	struct sprdwl_priv *priv = vif->priv;
+	struct android_wifi_priv_cmd priv_cmd;
+	char *command = NULL;
+	int ret = 0, skip, value;
+	unsigned int channel = 0;
+	u16 chns_5g[64] = {0x00};
+
+	if (!ifr->ifr_data)
+		return -EINVAL;
+	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(priv_cmd)))
+		return -EFAULT;
+
+	command = kmalloc(priv_cmd.total_len, GFP_KERNEL);
+	if (!command)
+		return -ENOMEM;
+	if (copy_from_user(command, priv_cmd.buf, priv_cmd.total_len)) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (!strncasecmp(command, CMD_SNIFFER_MODE,
+			 strlen(CMD_SNIFFER_MODE))) {
+		skip = strlen(CMD_SNIFFER_MODE) + 1;
+		ret = kstrtoint(command + skip, 0, &value);
+		if (ret) {
+			netdev_err(ndev, "parse value failed, can not get value\n");
+			goto out;
+		}
+		netdev_info(ndev, "%s: set monitor mode,value : %d\n",
+			    __func__, value);
+		if (value == 1) {
+			if (atomic_read(&priv->monitor_mode) == 1) {
+				netdev_err(ndev, "already in monitor mode\n");
+				goto out;
+			}
+			ret = sprdwl_set_sniffer(priv, vif->ctx_id,
+						 SPRDWL_SNIFFER_ENABLE, value);
+			if (!ret) {
+				netdev_err(ndev, "set monitor success\n");
+				atomic_set(&priv->monitor_mode, 1);
+				priv->monitor_data_cnt = 0;
+				priv->monitor_mgmt_cnt = 0;
+			}
+		} else {
+			if (atomic_read(&priv->monitor_mode) == 0) {
+				netdev_err(ndev, "not in monitor mode,just return\n");
+				goto out;
+			}
+			ret = sprdwl_set_sniffer(priv, vif->ctx_id,
+						 SPRDWL_SNIFFER_ENABLE, value);
+			if (!ret) {
+				atomic_set(&priv->monitor_mode, 0);
+				netdev_err(ndev, "exit monitor success\n");
+			}
+		}
+	} else if (!strncasecmp(command, CMD_SNIFFER_LISTEN_CHANNEL,
+				strlen(CMD_SNIFFER_LISTEN_CHANNEL))) {
+		skip = strlen(CMD_SNIFFER_LISTEN_CHANNEL) + 1;
+		ret = kstrtoint(command + skip, 0, &value);
+		if (ret)
+			goto out;
+		netdev_info(ndev, "%s: set listen channel,value : %d\n",
+			    __func__, value);
+		if (!atomic_read(&priv->monitor_mode))
+			netdev_err(ndev, "%s: set listen channel not in monitor mode\n",
+				   __func__);
+		/*use scan command to set channel*/
+		if (value <= 14) {
+			wl_info("2.4G channel : %d\n", value);
+			channel |= (1 << (value - 1));
+		} else {
+			wl_info("set 5G channel\n");
+			chns_5g[0] = value;
+		}
+		ret = sprdwl_scan(vif->priv, vif->ctx_id, channel,
+				  0, NULL, 1, chns_5g);
+		if (ret) {
+			netdev_err(ndev, "sniffer set channel failed\n");
+			goto out;
+		}
+	} else if (!strncasecmp(command, CMD_SNIFFER_FILTER,
+	strlen(CMD_SNIFFER_FILTER))) {
+		skip = strlen(CMD_SNIFFER_FILTER) + 1;
+		ret = kstrtoint(command + skip, 0, &value);
+		if (ret)
+			goto out;
+		netdev_info(ndev, "%s: set filter,value : %d\n",
+			    __func__, value);
+		if (!atomic_read(&priv->monitor_mode))
+			netdev_err(ndev, "%s: set listen channel not in monitor mode\n",
+				   __func__);
+		/*use scan command to set channel*/
+		ret = sprdwl_set_sniffer(priv, vif->ctx_id,
+					 SPRDWL_SNIFFER_FILTER, value);
+		if (ret) {
+			netdev_err(ndev, "sniffer set filter failed\n");
+			goto out;
+		}
+	} else if (!strncasecmp(command, CMD_SNIFFER_BAND,
+				strlen(CMD_SNIFFER_BAND))) {
+		skip = strlen(CMD_SNIFFER_BAND) + 1;
+		ret = kstrtoint(command + skip, 0, &value);
+		if (ret)
+			goto out;
+		netdev_info(ndev, "%s: set band,value : %d\n", __func__, value);
+		if (!atomic_read(&priv->monitor_mode))
+			netdev_err(ndev, "%s: set band in monitor mode\n",
+				   __func__);
+		/*use scan command to set channel*/
+		ret = sprdwl_set_sniffer(priv, vif->ctx_id, SPRDWL_SNIFFER_BABD,
+					 value);
+		if (ret) {
+			netdev_err(ndev, "set sniffer band failed\n");
+			goto out;
+		}
+	} else {
+		netdev_err(ndev, "%s command not support\n", __func__);
+		ret = -ENOTSUPP;
+	}
+out:
+	kfree(command);
+	return ret;
+}
+
 static int sprdwl_set_tlv(struct net_device *ndev, struct ifreq *ifr)
 {
 	struct sprdwl_vif *vif = netdev_priv(ndev);
@@ -603,6 +811,12 @@ static int sprdwl_set_tlv(struct net_device *ndev, struct ifreq *ifr)
 
 	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(priv_cmd)))
 		return -EFAULT;
+
+	/*add length check to avoid invalid NULL ptr*/
+	if ( (!priv_cmd.total_len) || (MAX_PRIV_CMD_LEN < priv_cmd.total_len)) {
+		netdev_info(ndev, "%s: priv cmd total len is invalid\n", __func__);
+		return -EINVAL;
+	}
 
 	if (priv_cmd.total_len < sizeof(*tlv))
 		return -EINVAL;
@@ -667,6 +881,13 @@ static int sprdwl_set_p2p_mac(struct net_device *ndev, struct ifreq *ifr)
 		return -EINVAL;
 	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(priv_cmd)))
 		return -EFAULT;
+
+	/*add length check to avoid invalid NULL ptr*/
+	if ((!priv_cmd.total_len) || (SPRDWL_MAX_CMD_TXLEN < priv_cmd.total_len)) {
+		netdev_err(ndev, "%s: priv cmd total len is invalid\n", __func__);
+		return -EINVAL;
+	}
+
 	command = kmalloc(priv_cmd.total_len, GFP_KERNEL);
 	if (!command)
 		return -ENOMEM;
@@ -709,12 +930,13 @@ out:
 }
 
 #define SPRDWLIOCTL		(SIOCDEVPRIVATE + 1)
-#define SPRDWLGETSSID		(SIOCDEVPRIVATE + 2)
+#define SPRDWLSETMIRACAST	(SIOCDEVPRIVATE + 2)
 #define SPRDWLSETFCC		(SIOCDEVPRIVATE + 3)
 #define SPRDWLSETSUSPEND	(SIOCDEVPRIVATE + 4)
 #define SPRDWLSETCOUNTRY	(SIOCDEVPRIVATE + 5)
 #define SPRDWLSETP2PMAC         (SIOCDEVPRIVATE + 6)
 #define SPRDWLSETTLV		(SIOCDEVPRIVATE + 7)
+#define SPRDWLSNIFFER	           (SIOCDEVPRIVATE + 8)
 
 static int sprdwl_ioctl(struct net_device *ndev, struct ifreq *req, int cmd)
 {
@@ -722,9 +944,9 @@ static int sprdwl_ioctl(struct net_device *ndev, struct ifreq *req, int cmd)
 	case SPRDWLIOCTL:
 	case SPRDWLSETCOUNTRY:
 		return sprdwl_priv_cmd(ndev, req);
-	case SPRDWLGETSSID:
+	case SPRDWLSETMIRACAST:
 		netdev_err(ndev, "for vts test %d\n", cmd);
-		return 0;
+		return sprdwl_set_miracast(ndev, req);
 	case SPRDWLSETFCC:
 	case SPRDWLSETSUSPEND:
 		return sprdwl_set_power_save(ndev, req);
@@ -732,6 +954,8 @@ static int sprdwl_ioctl(struct net_device *ndev, struct ifreq *req, int cmd)
 		return sprdwl_set_tlv(ndev, req);
 	case SPRDWLSETP2PMAC:
 		return sprdwl_set_p2p_mac(ndev, req);
+	case SPRDWLSNIFFER:
+		return sprdwl_handle_sniffer_cmd(ndev, req);
 	default:
 		netdev_err(ndev, "Unsupported IOCTL %d\n", cmd);
 		return -ENOTSUPP;
@@ -1415,6 +1639,7 @@ static struct sprdwl_vif *sprdwl_register_netdev(struct sprdwl_priv *priv,
 	SET_NETDEV_DEV(ndev, wiphy_dev(priv->wiphy));
 
 	sprdwl_set_mac_addr(vif, addr, ndev->dev_addr);
+	memcpy(vif->mac, ndev->dev_addr, ETH_ALEN);
 
 	/* register new Ethernet interface */
 	ret = register_netdevice(ndev);

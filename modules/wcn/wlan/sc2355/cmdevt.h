@@ -177,7 +177,10 @@ enum SPRDWL_CMD_LIST {
 	/*Please add new command above line,
 	* conditional compile flag is not recommended
 	*/
+	WIFI_CMD_MIRACAST = 82,
 	WIFI_CMD_PACKET_OFFLOAD = 84,
+	WIFI_CMD_PAM_RESERVED = 86,
+	WIFI_CMD_SET_SNIFFER = 87,
 	WIFI_CMD_MAX
 };
 
@@ -635,6 +638,10 @@ struct sprdwl_cmd_set_mac_addr {
 	u8 mac[0];
 } __packed;
 
+struct sprdwl_cmd_miracast {
+	u8 value;
+} __packed;
+
 struct sprdwl_cmd_rsp_state_code {
 	__le32 code;
 } __packed;
@@ -947,6 +954,33 @@ struct sprdwl_cmd_packet_offload {
 	u8 data[0];
 } __packed;
 
+enum SPRDWL_SNIFFER_PARA_TYPE {
+	SPRDWL_SNIFFER_ENABLE = 0,
+	SPRDWL_SNIFFER_FILTER = 1,
+	SPRDWL_SNIFFER_BABD = 2,
+};
+
+enum SPRDWL_SNIFFER_FILTER_VALUE {
+	SPRDWL_SNIFFER_ALL = 0,
+	SPRDWL_SNIFFER_MGMT = 1,
+	SPRDWL_SNIFFER_BC_DATA = 2,
+	SPRDWL_SNIFFER_UC_DATA = 3,
+	SPRDWL_SNIFFER_ALL_DATA = 4,
+};
+
+enum SPRDWL_SNIFFER_BAND {
+	SPRDWL_SNIFFER_BW_20M = 0,
+	SPRDWL_SNIFFER_BW_40M = 1,
+	SPRDWL_SNIFFER_BW_80M = 2,
+	SPRDWL_SNIFFER_BW_160M = 3,
+	SPRDWL_SNIFFER_BW_80P80 = 4,
+};
+
+struct sprdwl_cmd_sniffer_para {
+	u8 type;
+	u8 value;
+} __packed;
+
 int sprdwl_cmd_rsp(struct sprdwl_priv *priv, u8 *msg);
 /*driver & fw API sync function start*/
 int sprdwl_sync_version(struct sprdwl_priv *priv);
@@ -1055,6 +1089,8 @@ int sprdwl_del_tx_ts(struct sprdwl_priv *priv, u8 vif_ctx_id, u8 tsid,
 		     const u8 *peer);
 int sprdwl_set_mc_filter(struct sprdwl_priv *priv,  u8 vif_ctx_id,
 			 u8 sub_type, u8 num, u8 *mac_addr);
+int sprdwl_enable_miracast(struct sprdwl_priv *priv,
+		u8 vif_mode, int val);
 int sprdwl_set_gscan_config(struct sprdwl_priv *priv, u8 vif_ctx_id, void *data,
 			    u16 len, u8 *r_buf, u16 *r_len);
 int sprdwl_set_gscan_scan_config(struct sprdwl_priv *priv, u8 vif_ctx_id,
@@ -1104,6 +1140,8 @@ int sprdwl_send_tdls_cmd(struct sprdwl_vif *vif, u8 vif_ctx_id, const u8 *peer,
 int sprdwl_fw_power_down_ack(struct sprdwl_priv *priv, u8 ctx_id);
 int sprdwl_cmd_host_wakeup_fw(struct sprdwl_priv *priv, u8 ctx_id);
 void sprdwl_work_host_wakeup_fw(struct sprdwl_vif *vif);
+int sprdwl_set_sniffer(struct sprdwl_priv *priv, u8 vif_ctx_id, u8 type,
+		       u8 value);
 struct sprdwl_msg_buf *__sprdwl_cmd_getbuf(struct sprdwl_priv *priv,
 					   u16 len, u8 ctx_id,
 					   enum sprdwl_head_rsp rsp,

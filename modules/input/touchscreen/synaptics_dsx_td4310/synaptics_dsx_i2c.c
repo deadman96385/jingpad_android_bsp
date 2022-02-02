@@ -425,7 +425,7 @@ struct synaptics_rmi4_f12_query_8 {
 				unsigned char data15_is_present:1;
 			} __packed;
 		};
-		unsigned char data[3];
+		unsigned char data[5];
 	};
 };
 
@@ -1149,10 +1149,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 			fingers_to_process--;
 		} while (fingers_to_process);
-
-		dev_dbg(&rmi4_data->i2c_client->dev,
-			"%s: Number of fingers to process = %d\n",
-			__func__, fingers_to_process);
 	}
 
 #ifdef F12_DATA_15_WORKAROUND
@@ -1212,17 +1208,6 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #ifndef TYPE_B_PROTOCOL
 			input_mt_sync(rmi4_data->input_dev);
 #endif
-
-			dev_dbg(&rmi4_data->i2c_client->dev,
-					"%s: Finger %d:\n"
-					"status = 0x%02x\n"
-					"x = %d\n"
-					"y = %d\n"
-					"wx = %d\n"
-					"wy = %d\n",
-					__func__, finger,
-					finger_status,
-					x, y, wx, wy);
 
 			touch_count++;
 		}
@@ -1355,10 +1340,6 @@ static void synaptics_rmi4_report_touch(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
 	unsigned char touch_count_2d;
-
-	dev_dbg(&rmi4_data->i2c_client->dev,
-			"%s: Function %02x reporting\n",
-			__func__, fhandler->fn_number);
 
 	switch (fhandler->fn_number) {
 	case SYNAPTICS_RMI4_F11:
@@ -3157,6 +3138,7 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 		const struct i2c_device_id *dev_id)
 {
 	int retval;
+	int ret;
 	int attr_index;
 	unsigned char attr_count;
 	struct synaptics_rmi4_data *rmi4_data;
@@ -3242,16 +3224,6 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 		goto err_enable_irq;
 	}
 
-	disable_irq_nosync(rmi4_data->irq);
-
-	retval = synaptics_rmi4_irq_enable(rmi4_data, true);
-	if (retval < 0) {
-		dev_err(&client->dev,
-				"%s: Failed to register attention interrupt\n",
-				__func__);
-		goto err_enable_irq;
-	}
-
 	if (!exp_data.initialized) {
 		mutex_init(&exp_data.mutex);
 		INIT_LIST_HEAD(&exp_data.list);
@@ -3294,11 +3266,33 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 		goto err_sysfs;
 	}
 
+	disable_irq_nosync(rmi4_data->irq);
+
+	ret = rmidev_module_init();
+	if (ret)
+		printk("%s() rmidev_module_init() ret = %d\n", __func__, ret);
+
+	ret = rmi4_fw_update_module_init();
+	if (ret)
+		printk("%s() rmi4_fw_update_module_init() ret = %d\n", __func__, ret);
+
+	ret = rmi4_f54_module_init();
+	if (ret)
+		printk("%s() rmi4_f54_module_init() ret = %d\n", __func__, ret);
+
+	retval = synaptics_rmi4_irq_enable(rmi4_data, true);
+	if (retval < 0) {
+		dev_err(&client->dev,
+				"%s: Failed to register attention interrupt\n",
+				__func__);
+		goto err_enable_irq;
+	}
+
 	dev_err(&client->dev,
 			"%s: ====Synaptics probe end======\n",
 			__func__);
 
-	return retval;
+	return 0;
 
 err_sysfs:
 
@@ -3617,7 +3611,6 @@ void rmi4_f54_module_exit(void);
 static int __init synaptics_rmi4_init(void)
 {
 	int ret;
-	
 	ret = i2c_add_driver(&synaptics_rmi4_driver);
 	if (ret)
 	{
@@ -3625,19 +3618,7 @@ static int __init synaptics_rmi4_init(void)
 		return ret;
 	}
 
-	ret = rmidev_module_init();
-	if (ret)
-		printk("%s() rmidev_module_init() ret = %d\n", __func__, ret);
-
-	ret = rmi4_fw_update_module_init();
-	if (ret)
-		printk("%s() rmi4_fw_update_module_init() ret = %d\n", __func__, ret);
-
-	ret = rmi4_f54_module_init();
-	if (ret)
-		printk("%s() rmi4_f54_module_init() ret = %d\n", __func__, ret);
-
-	return 0;	
+	return 0;
 }
 
 /**

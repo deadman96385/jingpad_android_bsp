@@ -181,9 +181,9 @@ static struct nvm_name_table g_config_table[] = {
 	CF_TAB("Chain0_149", tx_scale.chain0[34][0], 1),
 	CF_TAB("Chain1_149", tx_scale.chain1[34][0], 1),
 	CF_TAB("Chain0_153", tx_scale.chain0[35][0], 1),
-	CF_TAB("Chain1_153", tx_scale.chain0[35][0], 1),
+	CF_TAB("Chain1_153", tx_scale.chain1[35][0], 1),
 	CF_TAB("Chain0_157", tx_scale.chain0[36][0], 1),
-	CF_TAB("Chain1_157", tx_scale.chain0[36][0], 1),
+	CF_TAB("Chain1_157", tx_scale.chain1[36][0], 1),
 	CF_TAB("Chain0_161", tx_scale.chain0[37][0], 1),
 	CF_TAB("Chain1_161", tx_scale.chain1[37][0], 1),
 	CF_TAB("Chain0_165", tx_scale.chain0[38][0], 1),
@@ -460,6 +460,26 @@ static int wifi_nvm_parse(const char *path, void *p_data)
 int get_wifi_config_param(struct wifi_conf_t *p)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
+#ifdef CONFIG_UMW2653
+#define CHIPID_REG 0x4083c208
+#define MARLIN_AB_CHIPID 0x23550001
+#define MARLIN_AC_CHIPID 0x23550002
+#define MARLIN_AD_CHIPID 0x23550003
+	unsigned long int chip_id = 0;
+	int ret = 0;
+
+	ret = sprdwcn_bus_reg_read(CHIPID_REG, &chip_id, 4);
+	if (ret < 0) {
+		pr_err("%s,marlin read chip ID fail\n", __func__);
+		return -1;
+	}
+	pr_info("marlin: chipid=%lx, %s\n", chip_id, __func__);
+	if (chip_id == MARLIN_AB_CHIPID)
+		return wifi_nvm_parse(SYSTEM_WIFI_AB_CONFIG_FILE, (void *)p);
+	else if (chip_id == MARLIN_AC_CHIPID)
+		return wifi_nvm_parse(SYSTEM_WIFI_AC_CONFIG_FILE, (void *)p);
+	return wifi_nvm_parse(SYSTEM_WIFI_CONFIG_FILE, (void *)p);
+#else
 	if (wcn_get_chip_type() == WCN_CHIP_ID_INVALID) {
 		pr_err("%s, marlin chip ID is invalid\n", __func__);
 		return -1;
@@ -471,6 +491,7 @@ int get_wifi_config_param(struct wifi_conf_t *p)
 	pr_info("%s, chip id of marlin3 lite is %d, open %s\n",
 		__func__, wcn_get_chip_type(), SYSTEM_WIFI_CONFIG_FILE);
 	return wifi_nvm_parse(SYSTEM_WIFI_CONFIG_FILE, (void *)p);
+#endif
 #else
 #define CHIPID_REG 0x4083c208
 #define MARLIN_AB_CHIPID 0x23550001

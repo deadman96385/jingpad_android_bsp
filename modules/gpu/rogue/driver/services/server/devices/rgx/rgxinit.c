@@ -1323,6 +1323,12 @@ PVRSRV_ERROR RGXInitDevPart2(PVRSRV_DEVICE_NODE	*psDeviceNode,
 	}
 #endif
 
+#if defined (SUPPORT_PDVFS)
+	OSAtomicWrite(&psDevInfo->iNumReactiveUpdates, 0);
+	OSAtomicWrite(&psDevInfo->iNumProactiveUpdates, 0);
+	OSAtomicWrite(&psDevInfo->iNumUnprofiledUpdates, 0);
+#endif
+
 #if defined(PDUMP)
 	if (!(RGX_IS_FEATURE_SUPPORTED(psDevInfo, S7_CACHE_HIERARCHY)))
 	{
@@ -1343,6 +1349,12 @@ PVRSRV_ERROR RGXInitDevPart2(PVRSRV_DEVICE_NODE	*psDeviceNode,
 			}
 		}
 	}
+#endif
+
+#if defined(SUPPORT_WORKLOAD_ESTIMATION)
+	/* Initialise work estimation destroy sync lock */
+	eError = OSLockCreate(&psDevInfo->hWorkEstDestroyLock, LOCK_TYPE_PASSIVE);
+	PVR_ASSERT(eError == PVRSRV_OK);
 #endif
 
 	psDevInfo->bDevInit2Done = IMG_TRUE;
@@ -3468,14 +3480,6 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
 	}
 #endif
 
-#if defined(SUPPORT_PDVFS) && !defined(RGXFW_META_SUPPORT_2ND_THREAD)
-	if (psDeviceNode->psDevConfig->sDVFS.sPDVFSData.hReactiveTimer)
-	{
-		OSDisableTimer(psDeviceNode->psDevConfig->sDVFS.sPDVFSData.hReactiveTimer);
-		OSRemoveTimer(psDeviceNode->psDevConfig->sDVFS.sPDVFSData.hReactiveTimer);
-	}
-#endif
-
 	/*The lock type need to be dispatch type here because it can be acquired from MISR (Z-buffer) path */
 	OSLockDestroy(psDeviceNode->sDummyPage.psPgLock);
 
@@ -3691,6 +3695,11 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
 	{
 		OSFreeMem(psDevInfo->sDevFeatureCfg.pszBVNCString);
 	}
+
+#if defined(SUPPORT_WORKLOAD_ESTIMATION)
+	/* De-init work estimation lock */
+	OSLockDestroy(psDevInfo->hWorkEstDestroyLock);
+#endif
 
 	/* DeAllocate devinfo */
 	OSFreeMem(psDevInfo);
@@ -4147,7 +4156,7 @@ PVRSRV_ERROR RGXRegisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode,
 	if (PVRSRV_OK != eError)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Failed to create Zero page lock", __func__));
-		goto free_zero_page;
+		goto free_dummy_page;
 	}
 #if defined(PDUMP)
 	psDeviceNode->sDummyPage.hPdumpPg = NULL;
@@ -4277,6 +4286,16 @@ PVRSRV_ERROR RGXRegisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode,
 	}
 
 	dllist_init(&psDevInfo->sMemoryContextList);
+
+    /* initialise ui32SLRHoldoffCounter */
+    if (RGX_INITIAL_SLR_HOLDOFF_PERIOD_MS > DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT)
+    {
+        psDevInfo->ui32SLRHoldoffCounter = RGX_INITIAL_SLR_HOLDOFF_PERIOD_MS / DEVICES_WATCHDOG_POWER_ON_SLEEP_TIMEOUT;
+    }
+    else
+    {
+        psDevInfo->ui32SLRHoldoffCounter = 0;
+    }
 
 	/* Setup static data and callbacks on the device specific device info */
 	psDevInfo->psDeviceNode		= psDeviceNode;
@@ -4414,10 +4433,10 @@ e12:
 	e0:
 	OSFreeMem(psDevInfo);
 
-	free_zero_page:
 	/* Destroy the zero page lock created above */
 	OSLockDestroy(psDeviceNode->sDevZeroPage.psPgLock);
 
+	free_dummy_page:
 	/* Destroy the dummy page lock created above */
 	OSLockDestroy(psDeviceNode->sDummyPage.psPgLock);
 

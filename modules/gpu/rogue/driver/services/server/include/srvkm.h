@@ -62,7 +62,7 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVDriverInit(void);
 /*************************************************************************/ /*!
 @Function     PVRSRVDriverInit
 @Description  Performs one time de-initialisation of Services.
-@Return       void 
+@Return       void
 */ /**************************************************************************/
 void IMG_CALLCONV PVRSRVDriverDeInit(void);
 
@@ -109,27 +109,27 @@ Example of usage:
 
 LOOP_UNTIL_TIMEOUT(MAX_HW_TIME_US)
 {
-	if(psQueueInfo->ui32ReadOffset == psQueueInfo->ui32WriteOffset)
+	if (psQueueInfo->ui32ReadOffset == psQueueInfo->ui32WriteOffset)
 	{
 		bTimeout = IMG_FALSE;
 		break;
 	}
-	
+
 	OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
 } END_LOOP_UNTIL_TIMEOUT();
 
 -----------------------------------------------------------------------------*/
 
-/*	uiNotLastLoop will remain at 1 until the timeout has expired, at which time		
+/*	uiNotLastLoop will remain at 1 until the timeout has expired, at which time
  * 	it will be decremented and the loop executed one final time. This is necessary
- *	when preemption is enabled. 
+ *	when preemption is enabled.
  */
 /* PRQA S 3411,3431 12 */ /* critical format, leave alone */
 #define LOOP_UNTIL_TIMEOUT(TIMEOUT) \
 {\
 	IMG_UINT32 uiOffset, uiStart, uiCurrent; \
 	IMG_INT32 iNotLastLoop;					 \
-	for(uiOffset = 0, uiStart = OSClockus(), uiCurrent = uiStart + 1, iNotLastLoop = 1;\
+	for (uiOffset = 0, uiStart = OSClockus(), uiCurrent = uiStart + 1, iNotLastLoop = 1;\
 		((uiCurrent - uiStart + uiOffset) < (TIMEOUT)) || iNotLastLoop--;				\
 		uiCurrent = OSClockus(),													\
 		uiOffset = uiCurrent < uiStart ? IMG_UINT32_MAX - uiStart : uiOffset,		\

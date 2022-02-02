@@ -276,19 +276,19 @@ static void get_odin_clock_settings(u32 value, u32 *lo_time, u32 *hi_time,
 	/* If the value is 1, High Time & Low Time are both set to 1
 	 * and the NOCOUNT bit is set to 1.
 	 */
-	 if (value == 1) {
+	if (value == 1) {
 		*lo_time = 1;
 		*hi_time = 1;
 
 		/* If od is an odd number then write 1 to NO_COUNT
-		 *  otherwise write 0.
+		 * otherwise write 0.
 		 */
 		*no_count = 1;
 
 		/* If m is and odd number then write 1 to EDGE bit of MR2
 		 * otherwise write 0.
 		 * If id is an odd number then write 1 to EDGE bit of ID
-		 *  otherwise write 0.
+		 * otherwise write 0.
 		 */
 		*edge = 0;
 		return;
@@ -364,7 +364,7 @@ bool pdp_odin_clocks_set(struct device *dev,
 	 * then apply changes and then un-reset mmcm & PDP.
 	 * Warm reset will keep the changes.
 	 *    wr 0x000080 0x1f7 ; # reset pdp
-	 *    wr 0x000090 8 ; # reset pdp  mmcm
+	 *    wr 0x000090 8 ; # reset pdp mmcm
 	 * then apply clock changes, then
 	 *    wr 0x000090 0x0 ; # un-reset pdp mmcm
 	 *    wr 0x000080 0x1ff ; # un-reset pdp
@@ -505,9 +505,9 @@ bool pdp_odin_clocks_set(struct device *dev,
 	core_wreg32(odn_core_reg, ODN_CORE_CLK_GEN_RESET, value);
 
 	/*
-	 * Wait until MMCM_LOCK_STATUS_PDPP bit is ‘1’ in register
+	 * Wait until MMCM_LOCK_STATUS_PDPP bit is '1' in register
 	 * MMCM_LOCK_STATUS. Issue an error if this does not
-	 * go to ‘1’ within 500ms.
+	 * go to '1' within 500ms.
 	 */
 	{
 		int count;
@@ -573,7 +573,7 @@ void pdp_odin_set_syncgen_enabled(struct device *dev, void __iomem *pdp_reg,
 			      ODN_PDP_SYNCCTRL_SYNCACTIVE_MASK);
 
 	/* Invert the pixel clock */
-	value = REG_VALUE_SET(value,  ODN_PIXEL_CLOCK_INVERTED,
+	value = REG_VALUE_SET(value, ODN_PIXEL_CLOCK_INVERTED,
 			      ODN_PDP_SYNCCTRL_CLKPOL_SHIFT,
 			      ODN_PDP_SYNCCTRL_CLKPOL_MASK);
 
@@ -671,7 +671,7 @@ void pdp_odin_set_plane_enabled(struct device *dev, void __iomem *pdp_reg,
 	}
 
 	value = pdp_rreg32(pdp_reg, GRPH_CTRL_OFFSET[plane]);
-	value = REG_VALUE_SET(value,enable ? 0x1 : 0x0,
+	value = REG_VALUE_SET(value, enable ? 0x1 : 0x0,
 			      GRPH_CTRL_GRPH_STREN_SHIFT[plane],
 			      GRPH_CTRL_GRPH_STREN_MASK[plane]);
 	pdp_wreg32(pdp_reg, GRPH_CTRL_OFFSET[plane], value);

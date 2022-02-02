@@ -84,6 +84,8 @@ enum {
 	CAMERA_IRQ_4IN1_DONE,
 	CAMERA_IRQ_PATH_SOF,
 	CAMERA_IRQ_BIGSIZE_DONE,
+	CAMERA_IRQ_FDRL,
+	CAMERA_IRQ_FDRH,
 	CAMERA_IRQ_TX_RESERVED,
 	CAMERA_IRQ_MAX
 };
@@ -229,9 +231,15 @@ enum dcam_capture_status {
 enum capture_scene {
 	CAPTURE_COMMON = 0,
 	CAPTURE_HDR,
+	CAPTURE_FDR,
 	CAPTURE_SW3DNR,
 	CAPTURE_HW3DNR,
 	CAPTURE_FLASH,
+};
+
+enum FDR_POST_SCENE {
+	FDR_POST_LOW = 0,
+	FDR_POST_HIGH
 };
 
 enum {
@@ -489,6 +497,7 @@ struct sprd_img_function_mode {
 	uint32_t need_3dnr; /* l5, not use,moved to sprd_img_3dnr_mode */
 	uint32_t dual_cam;
 	uint32_t need_afbc;
+	uint32_t need_ifbc;
 };
 #pragma pack(pop)
 
@@ -962,6 +971,12 @@ struct sprd_img_path_rect {
 					   struct sprd_img_function_mode)
 #define SPRD_IMG_IO_CAPABILITY       _IOW(SPRD_IMG_IO_MAGIC, 70, \
 						   struct sprd_img_size)
+#define SPRD_IMG_IO_POST_FDR         _IOW(SPRD_IMG_IO_MAGIC, 71,\
+					   struct sprd_img_parm)
+#define SPRD_IMG_IO_STREAM_PAUSE         _IOW(SPRD_IMG_IO_MAGIC, 72, uint32_t)
+#define SPRD_IMG_IO_STREAM_RESUME        _IOW(SPRD_IMG_IO_MAGIC, 73, uint32_t)
+
+
 /*
  * Dump dcam register.
  * buf:      input dump buffer addr

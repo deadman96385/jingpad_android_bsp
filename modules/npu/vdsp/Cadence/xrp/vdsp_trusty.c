@@ -46,8 +46,8 @@ struct tipc_msg_buf *vdsp_ca_handle_msg(void *data, struct tipc_msg_buf *rxbuf,u
 		/* get new buffer */
 		newbuf = tipc_chan_get_rxbuf(ca->chan);
 		if (newbuf) {
-			pr_debug("received new data, rxbuf %p, newbuf %p\n",
-						  rxbuf, newbuf);
+			//pr_debug("received new data, rxbuf %p, newbuf %p\n",
+			//			  rxbuf, newbuf);
 			/* queue an old buffer and return a new one */
 			list_add_tail(&rxbuf->node, &ca->rx_msg_queue);
 			wake_up_interruptible(&ca->readq);

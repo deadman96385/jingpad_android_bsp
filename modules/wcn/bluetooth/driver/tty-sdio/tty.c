@@ -87,6 +87,7 @@ extern void sdiohal_dump_aon_reg(void);
 
 static bool is_dumped = false;
 
+
 static ssize_t chipid_show(struct device *dev,
        struct device_attribute *attr, char *buf)
 {
@@ -503,7 +504,7 @@ static int mtty_tty_driver_init(struct mtty_device *device)
     if (!device->port)
         return -ENOMEM;
 
-    driver = alloc_tty_driver(MTTY_DEV_MAX_NR * 2);
+    driver = alloc_tty_driver(MTTY_DEV_MAX_NR);
     if (!driver)
         return -ENOMEM;
 
